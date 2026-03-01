@@ -13,8 +13,6 @@ env/
 .env.production
 backend/.env
 frontend/.env.local
-frontend/.env.example
-backend/.env.example
 *.secret
 *.key
 *.pem
