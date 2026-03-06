@@ -15,11 +15,12 @@ export default defineConfig({
     allowedHosts: [
       'localhost',
       '[IP_ADDRESS]',
-      '7c91-2a09-bac1-36c0-5d8-00-10c-1f.ngrok-free.app',
+      '1f71-2401-4900-88eb-4d95-807-27a0-668b-59b4.ngrok-free.app',
     ],
     proxy: {
       '/api': {
         target: 'http://localhost:8000',
+        // target: 'https://6b88kn0l-8000.inc1.devtunnels.ms/',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
