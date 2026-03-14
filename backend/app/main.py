@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from app.config import settings
-from app.routers import auth, documents, agent
+from app.routers import auth, documents, agent, admin
 from app.models.schemas import HealthResponse
 from app.services.pinecone_client import pinecone_client
 
@@ -38,6 +38,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(documents.router)
 app.include_router(agent.router)
+app.include_router(admin.router)
 
 
 @app.get("/health", response_model=HealthResponse)

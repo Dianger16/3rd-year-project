@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     supabase_anon_key: str = ""
     supabase_service_role_key: str = ""
     supabase_jwt_secret: str = ""
+    supabase_offline_mode: bool = False
 
     # Pinecone (Fast Vector Search)
     pinecone_api_key: str = ""

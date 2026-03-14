@@ -11,6 +11,9 @@ import uuid
 import json
 import httpx
 import logging
+import datetime
+import re
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, Dict, Any
 
 from app.config import settings
@@ -22,6 +25,266 @@ from app.services.supabase_client import get_supabase_admin
 from app.services.audit import log_audit_event
 
 logger = logging.getLogger(__name__)
+
+def is_network_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    if isinstance(exc, httpx.RequestError):
+        return True
+    return "getaddrinfo failed" in message or "name or service not known" in message or "nodename nor servname provided" in message
+
+def _safe_iso(raw: Optional[str]) -> str:
+    if not raw:
+        return ""
+    try:
+        parsed = datetime.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        return parsed.isoformat()
+    except Exception:
+        return str(raw)
+
+def _format_short_date(raw: Optional[str]) -> str:
+    if not raw:
+        return "-"
+    try:
+        parsed = datetime.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        return parsed.strftime("%Y-%m-%d")
+    except Exception:
+        return str(raw)
+
+def parse_date_string(raw: Optional[str]) -> Optional[datetime.date]:
+    if not raw:
+        return None
+    raw = raw.strip()
+    iso_match = re.search(r"\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b", raw)
+    if iso_match:
+        try:
+            return datetime.date(int(iso_match.group(1)), int(iso_match.group(2)), int(iso_match.group(3)))
+        except ValueError:
+            return None
+    alt_match = re.search(r"\b(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b", raw)
+    if alt_match:
+        try:
+            return datetime.date(int(alt_match.group(3)), int(alt_match.group(2)), int(alt_match.group(1)))
+        except ValueError:
+            return None
+    if raw.lower() == "today":
+        return datetime.datetime.now().date()
+    if raw.lower() == "tomorrow":
+        return datetime.datetime.now().date() + datetime.timedelta(days=1)
+    if raw.lower() == "yesterday":
+        return datetime.datetime.now().date() - datetime.timedelta(days=1)
+    return None
+
+class IntentPayload(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    is_flagged: bool = False
+    reason: Optional[str] = None
+    intent_type: Optional[str] = None
+    target_entity: Optional[str] = None
+    document_date: Optional[str] = None
+    date_reference: Optional[str] = None
+    doc_type: Optional[str] = None
+    role: Optional[str] = None
+    department: Optional[str] = None
+    course: Optional[str] = None
+    tags: Optional[list[str]] = None
+
+def fetch_admin_snapshot(supabase) -> dict:
+    snapshot: dict[str, Any] = {
+        "counts": {},
+        "users_by_role": {},
+        "recent_documents": [],
+        "recent_users": [],
+        "recent_audits": [],
+    }
+    if not supabase:
+        return snapshot
+
+    def safe_count(table: str, action_filter: Optional[str] = None) -> int:
+        try:
+            query = supabase.table(table).select("id", count="exact")
+            if action_filter:
+                query = query.eq("action", action_filter)
+            res = query.execute()
+            return int(res.count or 0)
+        except Exception:
+            return 0
+
+    def safe_role_count(role: str) -> int:
+        try:
+            res = supabase.table("profiles").select("id", count="exact").eq("role", role).execute()
+            return int(res.count or 0)
+        except Exception:
+            return 0
+
+    snapshot["counts"] = {
+        "total_users": safe_count("profiles"),
+        "total_documents": safe_count("documents"),
+        "total_conversations": safe_count("conversations"),
+        "total_queries": safe_count("audit_logs", "agent_query"),
+    }
+    snapshot["users_by_role"] = {
+        "student": safe_role_count("student"),
+        "faculty": safe_role_count("faculty"),
+        "admin": safe_role_count("admin"),
+    }
+
+    # Recent documents
+    try:
+        try:
+            doc_res = (
+                supabase.table("documents")
+                .select("id, filename, doc_type, department, course, tags, uploaded_at, created_at, uploader_id")
+                .order("uploaded_at", desc=True)
+                .limit(25)
+                .execute()
+            )
+        except Exception as exc:
+            if "uploaded_at" in str(exc):
+                doc_res = (
+                    supabase.table("documents")
+                    .select("id, filename, doc_type, department, course, tags, created_at, uploader_id")
+                    .order("created_at", desc=True)
+                    .limit(25)
+                    .execute()
+                )
+            else:
+                raise
+        for row in doc_res.data or []:
+            snapshot["recent_documents"].append(
+                {
+                    "id": row.get("id"),
+                    "filename": row.get("filename"),
+                    "doc_type": row.get("doc_type"),
+                    "department": row.get("department") or "",
+                    "course": row.get("course") or "",
+                    "tags": row.get("tags") or [],
+                    "uploaded_at": _safe_iso(row.get("uploaded_at") or row.get("created_at")),
+                    "uploader_id": row.get("uploader_id"),
+                }
+            )
+    except Exception:
+        snapshot["recent_documents"] = []
+
+    # Recent users
+    try:
+        user_res = (
+            supabase.table("profiles")
+            .select("id, email, full_name, role, department, created_at, academic_verified, identity_provider")
+            .order("created_at", desc=True)
+            .limit(15)
+            .execute()
+        )
+        for row in user_res.data or []:
+            snapshot["recent_users"].append(
+                {
+                    "id": row.get("id"),
+                    "email": row.get("email"),
+                    "full_name": row.get("full_name"),
+                    "role": row.get("role"),
+                    "department": row.get("department") or "",
+                    "created_at": _safe_iso(row.get("created_at")),
+                    "academic_verified": row.get("academic_verified"),
+                    "identity_provider": row.get("identity_provider"),
+                }
+            )
+    except Exception:
+        snapshot["recent_users"] = []
+
+    # Recent audits (lightweight)
+    try:
+        audit_res = (
+            supabase.table("audit_logs")
+            .select("action, user_id, created_at")
+            .order("created_at", desc=True)
+            .limit(20)
+            .execute()
+        )
+        snapshot["recent_audits"] = audit_res.data or []
+    except Exception:
+        snapshot["recent_audits"] = []
+
+    return snapshot
+
+def fetch_documents_for_date(supabase, target_date: datetime.date) -> list[dict]:
+    if not supabase:
+        return []
+    start = datetime.datetime.combine(target_date, datetime.time.min).isoformat()
+    end = (datetime.datetime.combine(target_date, datetime.time.min) + datetime.timedelta(days=1)).isoformat()
+    try:
+        try:
+            res = (
+                supabase.table("documents")
+                .select("id, filename, doc_type, department, course, tags, uploaded_at, created_at")
+                .gte("uploaded_at", start)
+                .lt("uploaded_at", end)
+                .order("uploaded_at", desc=False)
+                .execute()
+            )
+        except Exception as exc:
+            if "uploaded_at" in str(exc):
+                res = (
+                    supabase.table("documents")
+                    .select("id, filename, doc_type, department, course, tags, created_at")
+                    .gte("created_at", start)
+                    .lt("created_at", end)
+                    .order("created_at", desc=False)
+                    .execute()
+                )
+            else:
+                raise
+        return res.data or []
+    except Exception:
+        return []
+
+def render_admin_snapshot(snapshot: dict) -> str:
+    counts = snapshot.get("counts", {})
+    users_by_role = snapshot.get("users_by_role", {})
+    recent_docs = snapshot.get("recent_documents", [])
+    recent_users = snapshot.get("recent_users", [])
+
+    today = datetime.datetime.now().date()
+    tomorrow = today + datetime.timedelta(days=1)
+
+    lines = [
+        "ADMIN LIVE DATA SNAPSHOT:",
+        f"- Today: {today.isoformat()}",
+        f"- Tomorrow: {tomorrow.isoformat()}",
+        f"- Total users: {counts.get('total_users', 0)}",
+        f"- Users by role: students {users_by_role.get('student', 0)}, faculty {users_by_role.get('faculty', 0)}, admins {users_by_role.get('admin', 0)}",
+        f"- Total documents: {counts.get('total_documents', 0)}",
+        f"- Total conversations: {counts.get('total_conversations', 0)}",
+        f"- Total queries (audit): {counts.get('total_queries', 0)}",
+    ]
+
+    if recent_docs:
+        lines.append("Recent documents (latest 25):")
+        for doc in recent_docs:
+            date_str = _format_short_date(doc.get("uploaded_at"))
+            tags = ", ".join(doc.get("tags") or []) if isinstance(doc.get("tags"), list) else ""
+            lines.append(
+                f"- {date_str} | {doc.get('doc_type') or 'unknown'} | {doc.get('filename') or 'untitled'}"
+                f" | dept: {doc.get('department') or '-'} | course: {doc.get('course') or '-'}"
+                f"{f' | tags: {tags}' if tags else ''}"
+            )
+    else:
+        lines.append("Recent documents: none (0 total).")
+
+    if recent_users:
+        lines.append("Recent users (latest 15):")
+        for user in recent_users:
+            joined = _format_short_date(user.get("created_at"))
+            lines.append(
+                f"- {joined} | {user.get('email') or 'unknown'} | role: {user.get('role') or 'unknown'}"
+            )
+    else:
+        lines.append("Recent users: none (0 total).")
+
+    lines.append("If asked about holidays, check document titles/tags for 'holiday' or 'closed'. If none, state that no documents indicate a holiday.")
+    return "\n".join(lines)
+
+
+def utc_now_iso() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
 async def call_llm(messages: list, response_format: Optional[str] = None) -> str:
@@ -66,11 +329,20 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
     {history_context}
 
     Task 1 (Moderation): Analyze the user's latest query for explicit hate speech, severe harassment, direct threats, or extreme toxicity directed at the university or its staff. Do NOT flag questions, apologies, mild frustration, general complaints, or references to the moderation/flagging system itself. If an explicit and severe violation is detected, set `"is_flagged": true`. Otherwise, set it to `false`.
-    Task 2 (Context Extraction): Extract ANY relevant and specific filtering metadata from the user's query (e.g., 'department', 'course', 'tag', 'urgency', 'year', 'topic').
+    Task 2 (Intent Routing): Extract structured intent metadata so downstream tools can filter data before the main LLM response.
 
-    Return ONLY a valid JSON object. 
-    Example 1: {{"department": "Computer Science", "course": "CS101", "is_flagged": false}}
-    Example 2: {{"is_flagged": true, "reason": "Severe hate speech"}}
+    Return ONLY a valid JSON object with these fields when applicable:
+    - is_flagged: boolean
+    - reason: string (if flagged)
+    - intent_type: one of ["count_users","count_documents","list_documents","document_date_lookup","holiday_check","general"]
+    - target_entity: string (e.g., "students", "faculty", "admins", "users", "documents")
+    - document_date: "YYYY-MM-DD" if asking for uploads on a date (use today/tomorrow/yesterday if referenced)
+    - date_reference: one of ["today","tomorrow","yesterday"] if explicitly used
+    - doc_type, role, department, course, tags (if relevant)
+
+    Example 1: {{"intent_type":"count_users","target_entity":"students","is_flagged": false}}
+    Example 2: {{"intent_type":"document_date_lookup","document_date":"2026-03-14","is_flagged": false}}
+    Example 3: {{"is_flagged": true, "reason": "Severe hate speech"}}
     """
 
     try:
@@ -82,7 +354,14 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
             response_format="json",
         )
 
-        return json.loads(content)
+        raw = json.loads(content)
+        if not isinstance(raw, dict):
+            return {}
+        try:
+            validated = IntentPayload.model_validate(raw)
+            return validated.model_dump(exclude_none=True)
+        except Exception:
+            return raw
     except Exception as e:
         logger.warning(f"Intent extraction/moderation failed: {e}")
         return {}
@@ -97,16 +376,27 @@ async def run_agent_pipeline(
 ) -> AgentQueryResponse:
 
     conversation_id = conversation_id or str(uuid.uuid4())
-    supabase = get_supabase_admin()
+    supabase = None if settings.supabase_offline_mode else get_supabase_admin()
+    now_iso = utc_now_iso()
+    audit_user_id = None if str(user_id).startswith("dummy-id-") else user_id
 
     # Get previous messages for history window early for moderation
-    existing = (
-        supabase.table("conversations")
-        .select("messages")
-        .eq("id", conversation_id)
-        .execute()
-    )
-    messages = existing.data[0]["messages"] if existing.data else []
+    messages = []
+    if supabase:
+        try:
+            existing = (
+                supabase.table("conversations")
+                .select("messages")
+                .eq("id", conversation_id)
+                .execute()
+            )
+            messages = existing.data[0]["messages"] if existing.data else []
+        except Exception as e:
+            if is_network_error(e):
+                logger.warning("Supabase unreachable. Skipping conversation history for this request.")
+                supabase = None
+            else:
+                logger.error(f"Conversation fetch failed: {e}")
 
     # Format history for intent extractor
     history_text = "\n".join([f"{m['role']}: {m['content']}" for m in messages[-4:]])
@@ -119,15 +409,24 @@ async def run_agent_pipeline(
     if intent.get("is_flagged") is True:
         logger.warning(f"Flagged query from {user_id}: {query}")
 
-        supabase = get_supabase_admin()
-        profile_res = (
-            supabase.table("profiles")
-            .select("email, full_name")
-            .eq("id", user_id)
-            .execute()
-        )
-        user_email = profile_res.data[0]["email"] if profile_res.data else "Unknown"
-        user_name = profile_res.data[0]["full_name"] if profile_res.data else "Unknown"
+        user_email = "Unknown"
+        user_name = "Unknown"
+        if supabase:
+            try:
+                profile_res = (
+                    supabase.table("profiles")
+                    .select("email, full_name")
+                    .eq("id", user_id)
+                    .execute()
+                )
+                user_email = profile_res.data[0]["email"] if profile_res.data else "Unknown"
+                user_name = profile_res.data[0]["full_name"] if profile_res.data else "Unknown"
+            except Exception as e:
+                if is_network_error(e):
+                    logger.info("Supabase unreachable. Using fallback user identity for alert email.")
+                    supabase = None
+                else:
+                    logger.warning(f"Profile lookup failed for alert email: {e}")
 
         # Send Email Alert to Admin asynchronously
         from app.services.email_service import EmailService
@@ -148,34 +447,42 @@ async def run_agent_pipeline(
 
         # Save to history and return
         conversation_id = conversation_id or str(uuid.uuid4())
-        # The supabase client is already initialized above, no need to re-initialize here.
-        existing = (
-            supabase.table("conversations")
-            .select("messages")
-            .eq("id", conversation_id)
-            .execute()
-        )
-        messages = existing.data[0]["messages"] if existing.data else []
-        messages.extend(
-            [
-                {"role": "user", "content": query},
-                {"role": "assistant", "content": answer},
-            ]
-        )
+        if supabase:
+            existing = (
+                supabase.table("conversations")
+                .select("messages")
+                .eq("id", conversation_id)
+                .execute()
+            )
+            messages = existing.data[0]["messages"] if existing.data else []
+            messages.extend(
+                [
+                    {"role": "user", "content": query},
+                    {"role": "assistant", "content": answer},
+                ]
+            )
 
-        supabase.table("conversations").upsert(
-            {
-                "id": conversation_id,
-                "user_id": user_id,
-                "role": user_role,
-                "title": "Flagged Interaction",
-                "messages": messages[-20:],
-                "last_active": "now()",
-            }
-        ).execute()
+            try:
+                supabase.table("conversations").upsert(
+                    {
+                        "id": conversation_id,
+                        "user_id": user_id,
+                        "role": user_role,
+                        "title": "Flagged Interaction",
+                        "messages": messages[-20:],
+                        "last_active": now_iso,
+                    }
+                ).execute()
+            except Exception as e:
+                if is_network_error(e):
+                    logger.info("Supabase unreachable. Skipping flagged conversation persistence.")
+                else:
+                    logger.error(f"Conversation upsert failed (flagged): {e}")
 
         await log_audit_event(
-            user_id=user_id, action="flagged_query", payload={"query": query}
+            user_id=audit_user_id,
+            action="flagged_query",
+            payload={"query": query, "user_email": user_email},
         )
 
         return AgentQueryResponse(
@@ -186,7 +493,6 @@ async def run_agent_pipeline(
         )
 
     # 2. Search Pinecone for context
-    query_vector = get_single_embedding(query)
     allowed_types = get_allowed_doc_types(user_role)
 
     # Build filter dynamically
@@ -208,6 +514,7 @@ async def run_agent_pipeline(
 
     if pinecone_client.index:
         try:
+            query_vector = get_single_embedding(query)
             search_res = pinecone_client.index.query(
                 vector=query_vector, filter=base_filter, top_k=5, include_metadata=True
             )
@@ -246,39 +553,98 @@ async def run_agent_pipeline(
         logger.warning("Pinecone index not initialized. Skipping vector search.")
 
     if not chunks:
-        context_text += "\n[System Note: No specific university documents matched the query or the database is currently empty. Provide general helpful assistance if a general question was asked. If a question specifically asks for internal university data (policies, curriculum, deadlines), clarify that you don't have access to documents yet.]\n"
+        context_text += "\n[System Note: No specific university documents matched the query or the database is currently empty. If a question specifically asks for internal university data (policies, curriculum, deadlines), clarify that you don't have access to documents yet.]\n"
 
     # 3. Generate Answer (using OpenRouter)
-    import datetime
+    current_time_str = f"Current Date: {datetime.datetime.now().strftime('%A, %B %d, %Y')}. Current Time: {datetime.datetime.now().strftime('%I:%M %p')}"
 
-    now = datetime.datetime.now()
-    current_time_str = f"Current Date: {now.strftime('%A, %B %d, %Y')}. Current Time: {now.strftime('%I:%M %p')}"
+    admin_snapshot_text = ""
+    admin_snapshot = {}
+    if user_role == "admin":
+        date_hint = parse_date_string(
+            intent.get("document_date") if isinstance(intent, dict) else None
+        ) or parse_date_string(
+            intent.get("date_reference") if isinstance(intent, dict) else None
+        )
+        date_docs_text = ""
+        if supabase and date_hint:
+            docs_on_date = fetch_documents_for_date(supabase, date_hint)
+            if docs_on_date:
+                lines = [f"Documents uploaded on {date_hint.isoformat()} ({len(docs_on_date)}):"]
+                for row in docs_on_date:
+                    lines.append(
+                        f"- {_format_short_date(row.get('uploaded_at') or row.get('created_at'))} | {row.get('doc_type') or 'unknown'} | {row.get('filename') or 'untitled'}"
+                    )
+                date_docs_text = "\n".join(lines)
+            else:
+                date_docs_text = f"Documents uploaded on {date_hint.isoformat()}: 0."
 
-    system_message = f"""
-    You are UniGPT, the official, professional AI assistant for the University.
-    You are interacting with a user whose role is: {user_role}. Focus on providing accurate, helpful, and polite assistance.
+        if supabase:
+            try:
+                admin_snapshot = fetch_admin_snapshot(supabase)
+                admin_snapshot_text = render_admin_snapshot(admin_snapshot)
+            except Exception:
+                admin_snapshot_text = "ADMIN LIVE DATA SNAPSHOT: unavailable."
+        else:
+            admin_snapshot_text = "ADMIN LIVE DATA SNAPSHOT: unavailable (Supabase offline)."
+        if date_docs_text:
+            admin_snapshot_text = f"{admin_snapshot_text}\n{date_docs_text}"
 
-    SYSTEM CONTEXT:
-    - {current_time_str}
+        system_message = f"""
+        You are UniGPT Admin Assistant, a professional operations copilot for university administrators.
+        You are interacting with a user whose role is: {user_role}. Focus on operational clarity, policy accuracy, and concise answers.
 
-    CRITICAL GUARDRAILS & STRICT RULES:
-    1. Professionalism: NEVER speak negatively, disrespectfully, or spread rumors about any faculty member, staff, student, or the university itself. Maintain a strictly professional, supportive, and objective tone at all times.
-    2. Strict Relevance: You are ONLY for the University. If the user asks for general coding, external technical problems, or tasks completely unrelated to academics/campus, you MUST politely decline and steer them back to university queries. Do NOT perform general coding tasks or answer complex unrelated technical questions.
-    3. Accuracy (No Hallucinations): If the user asks about internal university policies, deadlines, specific events, or curriculum, you MUST rely ONLY on the provided context. If the answer is not in the context, explicitly state: "I'm sorry, but I don't have access to the specific documents containing that information right now." Do NOT guess or make up university data.
-    4. Conversational Context & Memory: You possess the history of this conversation. You MAY engage in polite conversation (greetings, referencing previous messages) as long as it stays grounded in your role as a University Assistant. Keep it strictly professional and helpful.
+        SYSTEM CONTEXT:
+        - {current_time_str}
 
-    Extracted Intent Filters: {json.dumps(intent)}
+        ADMIN GUARDRAILS:
+        1. Professionalism: NEVER speak negatively or disrespectfully about any faculty, staff, student, or the university.
+        2. Admin Scope: You may help with operational topics such as system health, audit logs, document ingestion, routing, and user management. Do not provide instructions outside university context.
+        3. Accuracy (No Hallucinations): If asked about internal policies or data not in context, explicitly say you do not have access to that information.
+        4. Privacy: Do not expose credentials, secrets, or sensitive personal data. Summarize or aggregate when possible.
 
-    CONTEXT FROM DATABASE:
-    {context_text}
-    
-    CRITICAL FORMATTING INSTRUCTIONS:
-    - Engage naturally! If the user asks a conversational question (e.g., "how are you?"), just respond politely and naturally (e.g., "I'm doing well, thank you!"). Do NOT mechanically quote their text back to them.
-    - You MUST use suitable emojis throughout your response to make the conversation friendly, engaging, and modern.
-    - Heavily utilize varied clean Markdown formatting (e.g., bullet points, bold text, italics) to organize information beautifully.
-    - If the user asks for tabular data, MUST use a Markdown table.
-    - If you extract actual information from the database context, explicitly cite the exact Source document name.
-    """
+        Extracted Intent Filters: {json.dumps(intent)}
+
+        CONTEXT FROM DATABASE:
+        {context_text}
+
+        {admin_snapshot_text}
+
+        RESPONSE FORMAT:
+        - Be concise and structured.
+        - Use Markdown for clarity when helpful.
+        - Avoid emojis.
+        - If you cite data from context, name the Source document.
+        - If total_documents is 0, explicitly say "0 documents" instead of "no access."
+        - If asked about dates, use the provided Today/Tomorrow fields.
+        - If asked "how many students/faculty/admins/users", use Users by role / Total users from the snapshot.
+        """
+    else:
+        system_message = f"""
+        You are UniGPT, the official, professional AI assistant for the University.
+        You are interacting with a user whose role is: {user_role}. Focus on providing accurate, helpful, and polite assistance.
+
+        SYSTEM CONTEXT:
+        - {current_time_str}
+
+        CRITICAL GUARDRAILS & STRICT RULES:
+        1. Professionalism: NEVER speak negatively, disrespectfully, or spread rumors about any faculty member, staff, student, or the university itself. Maintain a strictly professional, supportive, and objective tone at all times.
+        2. Strict Relevance: You are ONLY for the University. If the user asks for general coding, external technical problems, or tasks completely unrelated to academics/campus, you MUST politely decline and steer them back to university queries. Do NOT perform general coding tasks or answer complex unrelated technical questions.
+        3. Accuracy (No Hallucinations): If the user asks about internal university policies, deadlines, specific events, or curriculum, you MUST rely ONLY on the provided context. If the answer is not in the context, explicitly state: "I'm sorry, but I don't have access to the specific documents containing that information right now." Do NOT guess or make up university data.
+        4. Conversational Context & Memory: You possess the history of this conversation. You MAY engage in polite conversation (greetings, referencing previous messages) as long as it stays grounded in your role as a University Assistant. Keep it strictly professional and helpful.
+
+        Extracted Intent Filters: {json.dumps(intent)}
+
+        CONTEXT FROM DATABASE:
+        {context_text}
+        
+        CRITICAL FORMATTING INSTRUCTIONS:
+        - Engage naturally. If the user asks a conversational question (e.g., "how are you?"), respond politely and naturally.
+        - You MUST use suitable emojis throughout your response to make the conversation friendly, engaging, and modern.
+        - Heavily utilize varied clean Markdown formatting (e.g., bullet points, bold text, italics) to organize information beautifully.
+        - If the user asks for tabular data, MUST use a Markdown table.
+        - If you extract actual information from the database context, explicitly cite the exact Source document name.
+        """
 
     llm_messages = [{"role": "system", "content": system_message}]
     for m in messages[-8:]:
@@ -300,19 +666,28 @@ async def run_agent_pipeline(
     if len(messages) > 20:
         messages = messages[-20:]
 
-    supabase.table("conversations").upsert(
-        {
-            "id": conversation_id,
-            "user_id": user_id,
-            "role": user_role,
-            "title": query[:50],
-            "messages": messages,
-            "last_active": "now()",
-        }
-    ).execute()
+    if supabase:
+        try:
+            supabase.table("conversations").upsert(
+                {
+                    "id": conversation_id,
+                    "user_id": user_id,
+                    "role": user_role,
+                    "title": query[:50],
+                    "messages": messages,
+                    "last_active": now_iso,
+                    "updated_at": now_iso,
+                }
+            ).execute()
+        except Exception as e:
+            # Do not fail the entire user query if history persistence has issues.
+            if is_network_error(e):
+                logger.info("Supabase unreachable. Skipping conversation persistence.")
+            else:
+                logger.error(f"Conversation upsert failed: {e}")
 
     await log_audit_event(
-        user_id=user_id,
+        user_id=audit_user_id,
         action="agent_query",
         payload={"conv_id": conversation_id, "intent": intent},
     )
@@ -329,5 +704,5 @@ async def run_agent_pipeline(
             for c in chunks
         ],
         conversation_id=conversation_id,
-        role_badge=f"{user_role.title()} Agent",
+        role_badge="Admin Assistant" if user_role == "admin" else f"{user_role.title()} Agent",
     )

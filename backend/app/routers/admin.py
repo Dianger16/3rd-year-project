@@ -1,0 +1,302 @@
+"""
+Admin Router
+Provides admin-only endpoints for metrics and audit logs.
+"""
+
+from __future__ import annotations
+
+import datetime
+from typing import Any, Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
+from app.middleware.auth import AuthenticatedUser
+from app.middleware.auth import is_academic_email
+from app.middleware.rbac import require_roles
+from app.models.schemas import UserRole
+from app.services.pinecone_client import pinecone_client
+from app.services.supabase_client import get_supabase_admin
+from app.services.audit import log_audit_event
+
+router = APIRouter(tags=["Admin"])
+
+
+def utc_now() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def iso(dt: datetime.datetime) -> str:
+    return dt.astimezone(datetime.timezone.utc).isoformat()
+
+
+class AdminUserUpdateRequest(BaseModel):
+    full_name: Optional[str] = None
+    role: Optional[str] = None
+    department: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+
+@router.get("/admin/metrics")
+async def get_admin_metrics(
+    user: AuthenticatedUser = Depends(require_roles(UserRole.ADMIN)),
+) -> dict[str, Any]:
+    supabase = get_supabase_admin()
+
+    docs_res = supabase.table("documents").select("id", count="exact").execute()
+    conv_res = supabase.table("conversations").select("id", count="exact").execute()
+    users_res = supabase.table("profiles").select("id", count="exact").execute()
+
+    total_documents = docs_res.count or 0
+    total_conversations = conv_res.count or 0
+    total_users = users_res.count or 0
+
+    total_embeddings = 0
+    if pinecone_client.index:
+        try:
+            stats = pinecone_client.index.describe_index_stats()
+            # Pinecone returns a dict with `total_vector_count` on most versions.
+            total_embeddings = int(stats.get("total_vector_count") or 0)
+        except Exception:
+            total_embeddings = 0
+
+    # Time series from audit logs (last 7 days)
+    start = utc_now() - datetime.timedelta(days=6)
+    start_iso = iso(start.replace(hour=0, minute=0, second=0, microsecond=0))
+
+    audit_res = (
+        supabase.table("audit_logs")
+        .select("action,timestamp", count="exact")
+        .gte("timestamp", start_iso)
+        .order("timestamp", desc=False)
+        .execute()
+    )
+    audit_rows = audit_res.data or []
+
+    buckets: dict[str, dict[str, int]] = {}
+    for i in range(7):
+        day = (start + datetime.timedelta(days=i)).date().isoformat()
+        buckets[day] = {"queries": 0, "uploads": 0, "admin": 0, "auth": 0}
+
+    for row in audit_rows:
+        ts = row.get("timestamp")
+        if not ts:
+            continue
+        try:
+            day = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00")).date().isoformat()
+        except Exception:
+            continue
+
+        if day not in buckets:
+            continue
+
+        action = (row.get("action") or "").lower()
+        if action == "agent_query":
+            buckets[day]["queries"] += 1
+        elif action == "document_upload":
+            buckets[day]["uploads"] += 1
+        elif "login" in action or "signup" in action or "reset_password" in action:
+            buckets[day]["auth"] += 1
+        else:
+            buckets[day]["admin"] += 1
+
+    timeseries = [
+        {"date": day, **counts}
+        for day, counts in sorted(buckets.items(), key=lambda x: x[0])
+    ]
+
+    # Breakdown: users by role and documents by doc_type
+    role_counts = {"student": 0, "faculty": 0, "admin": 0}
+    try:
+        role_rows = supabase.table("profiles").select("role").execute().data or []
+        for r in role_rows:
+            role = (r.get("role") or "").lower()
+            if role in role_counts:
+                role_counts[role] += 1
+    except Exception:
+        pass
+
+    doc_type_counts = {"public": 0, "student": 0, "faculty": 0, "admin": 0}
+    try:
+        doc_rows = supabase.table("documents").select("doc_type").execute().data or []
+        for d in doc_rows:
+            dt = (d.get("doc_type") or "").lower()
+            if dt in doc_type_counts:
+                doc_type_counts[dt] += 1
+    except Exception:
+        pass
+
+    return {
+        "stats": {
+            "total_documents": total_documents,
+            "total_embeddings": total_embeddings,
+            "total_conversations": total_conversations,
+            "total_users": total_users,
+            "total_chats": total_conversations,
+        },
+        "breakdowns": {
+            "users_by_role": role_counts,
+            "documents_by_type": doc_type_counts,
+        },
+        "timeseries": {
+            "last_7_days": timeseries,
+        },
+    }
+
+
+@router.get("/admin/audit")
+async def get_audit_logs(
+    page: int = 1,
+    per_page: int = 50,
+    user: AuthenticatedUser = Depends(require_roles(UserRole.ADMIN)),
+) -> dict[str, Any]:
+    if per_page > 200:
+        raise HTTPException(status_code=400, detail="per_page too large")
+
+    supabase = get_supabase_admin()
+    offset = (page - 1) * per_page
+    res = (
+        supabase.table("audit_logs")
+        .select("*", count="exact")
+        .order("timestamp", desc=True)
+        .range(offset, offset + per_page - 1)
+        .execute()
+    )
+
+    rows = res.data or []
+    user_ids = {row.get("user_id") for row in rows if row.get("user_id")}
+    profiles: dict[str, dict[str, str]] = {}
+
+    if user_ids:
+        prof_res = (
+            supabase.table("profiles")
+            .select("id,email,full_name,role")
+            .in_("id", list(user_ids))
+            .execute()
+        )
+        for p in prof_res.data or []:
+            profiles[p["id"]] = {
+                "email": p.get("email", ""),
+                "full_name": p.get("full_name", ""),
+                "role": p.get("role", ""),
+            }
+
+    def map_row(row: dict[str, Any]) -> dict[str, Any]:
+        uid = row.get("user_id")
+        return {
+            "id": str(row.get("id", "")),
+            "action": row.get("action", ""),
+            "user_id": uid,
+            "user": profiles.get(uid) if uid else None,
+            "payload": row.get("payload") or {},
+            "ip_address": row.get("ip_address"),
+            "status": row.get("status"),
+            "timestamp": row.get("timestamp"),
+        }
+
+    return {
+        "logs": [map_row(r) for r in rows],
+        "total": res.count or len(rows),
+        "page": page,
+        "per_page": per_page,
+    }
+
+
+@router.get("/admin/users")
+async def list_admin_users(
+    page: int = 1,
+    per_page: int = 50,
+    user: AuthenticatedUser = Depends(require_roles(UserRole.ADMIN)),
+) -> dict[str, Any]:
+    if per_page > 200:
+        raise HTTPException(status_code=400, detail="per_page too large")
+
+    supabase = get_supabase_admin()
+    offset = (page - 1) * per_page
+    res = (
+        supabase.table("profiles")
+        .select("id,email,full_name,role,department,avatar_url,created_at", count="exact")
+        .order("created_at", desc=True)
+        .range(offset, offset + per_page - 1)
+        .execute()
+    )
+
+    rows = res.data or []
+
+    def map_profile(p: dict[str, Any]) -> dict[str, Any]:
+        email = p.get("email", "")
+        return {
+            "id": str(p.get("id", "")),
+            "email": email,
+            "full_name": p.get("full_name", ""),
+            "role": (p.get("role") or "student").lower(),
+            "department": p.get("department"),
+            "avatar_url": p.get("avatar_url"),
+            "created_at": str(p.get("created_at")) if p.get("created_at") else None,
+            "academic_verified": is_academic_email(email),
+            "identity_provider": None,
+        }
+
+    return {
+        "users": [map_profile(p) for p in rows],
+        "total": res.count or len(rows),
+        "page": page,
+        "per_page": per_page,
+    }
+
+
+@router.patch("/admin/users/{target_user_id}")
+async def update_admin_user(
+    target_user_id: str,
+    body: AdminUserUpdateRequest,
+    user: AuthenticatedUser = Depends(require_roles(UserRole.ADMIN)),
+) -> dict[str, Any]:
+    update_payload: dict[str, Any] = {}
+    if body.full_name is not None:
+        update_payload["full_name"] = body.full_name
+    if body.department is not None:
+        update_payload["department"] = body.department
+    if body.avatar_url is not None:
+        update_payload["avatar_url"] = body.avatar_url
+    if body.role is not None:
+        try:
+            update_payload["role"] = UserRole(body.role).value
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid role")
+
+    if not update_payload:
+        raise HTTPException(status_code=400, detail="No fields provided")
+
+    supabase = get_supabase_admin()
+    res = (
+        supabase.table("profiles")
+        .update(update_payload)
+        .eq("id", target_user_id)
+        .execute()
+    )
+
+    if not res.data:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    audit_user_id = None if user.id.startswith("dummy-id-") else user.id
+    await log_audit_event(
+        user_id=audit_user_id,
+        action="admin_user_update",
+        payload={"target_user_id": target_user_id, **update_payload},
+    )
+
+    p = res.data[0]
+    email = p.get("email", "")
+    return {
+        "user": {
+            "id": str(p.get("id", "")),
+            "email": email,
+            "full_name": p.get("full_name", ""),
+            "role": (p.get("role") or "student").lower(),
+            "department": p.get("department"),
+            "avatar_url": p.get("avatar_url"),
+            "created_at": str(p.get("created_at")) if p.get("created_at") else None,
+            "academic_verified": is_academic_email(email),
+            "identity_provider": None,
+        }
+    }

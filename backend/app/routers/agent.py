@@ -4,6 +4,7 @@ Hybrid: Supabase (Chat History) + Pinecone (Search).
 """
 
 from fastapi import APIRouter, HTTPException, Depends
+import httpx
 
 from app.models.schemas import (
     AgentQueryRequest, AgentQueryResponse,
@@ -16,22 +17,28 @@ from app.services.supabase_client import get_supabase_admin
 
 router = APIRouter(tags=["Agent"])
 
+def is_network_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    if isinstance(exc, httpx.RequestError):
+        return True
+    return "getaddrinfo failed" in message or "name or service not known" in message or "nodename nor servname provided" in message
+
 @router.post("/agent/query", response_model=AgentQueryResponse)
 async def agent_query(
     body: AgentQueryRequest,
     user: AuthenticatedUser = Depends(get_current_user),
 ):
-    try:
-        if (
-            settings.require_verified_academic_email_for_queries
-            and not user.id.startswith("dummy-id-")
-            and not is_academic_email(user.email)
-        ):
-            raise HTTPException(
-                status_code=403,
-                detail="Query access is locked until you sign in with your academic email or Microsoft college account.",
-            )
+    if (
+        settings.require_verified_academic_email_for_queries
+        and not user.id.startswith("dummy-id-")
+        and not is_academic_email(user.email)
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Query access is locked until you sign in with your academic email or Microsoft college account.",
+        )
 
+    try:
         return await run_agent_pipeline(
             query=body.query,
             user_id=user.id,
@@ -39,13 +46,25 @@ async def agent_query(
             conversation_id=body.conversation_id,
             context=body.context,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/agent/history", response_model=ConversationListResponse)
 async def get_history(user: AuthenticatedUser = Depends(get_current_user)):
+    if settings.supabase_offline_mode:
+        return ConversationListResponse(conversations=[], total=0)
     supabase = get_supabase_admin()
-    res = supabase.table("conversations").select("*").eq("user_id", user.id).order("last_active", desc=True).execute()
+    try:
+        res = supabase.table("conversations").select("*").eq("user_id", user.id).order("last_active", desc=True).execute()
+    except Exception as exc:
+        if is_network_error(exc):
+            raise HTTPException(
+                status_code=503,
+                detail="Cannot reach Supabase. Check SUPABASE_URL, DNS/VPN, or your internet connection.",
+            )
+        raise
     
     convs = [
         ConversationResponse(
