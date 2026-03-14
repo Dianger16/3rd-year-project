@@ -68,14 +68,21 @@ export const authApi = {
 };
 
 export const documentsApi = {
-    list: (token: string, params?: { page?: number; doc_type?: string }) => {
+    list: (token: string, params?: { page?: number; per_page?: number; doc_type?: string }) => {
         const query = new URLSearchParams();
         if (params?.page) query.set('page', String(params.page));
+        if (params?.per_page) query.set('per_page', String(params.per_page));
         if (params?.doc_type) query.set('doc_type', params.doc_type);
         return request<DocumentListResponse>(`/documents?${query.toString()}`, { token });
     },
     upload: (token: string, formData: FormData) =>
         request<DocumentResponse>('/admin/documents', { method: 'POST', body: formData, token, isFormData: true }),
+    update: (
+        token: string,
+        id: string,
+        data: Partial<Pick<DocumentResponse, 'doc_type' | 'department' | 'course' | 'tags' | 'visibility'>> & { metadata?: Record<string, unknown> }
+    ) =>
+        request<DocumentResponse>(`/admin/documents/${id}`, { method: 'PATCH', body: data, token }),
     delete: (token: string, id: string) =>
         request<void>(`/admin/documents/${id}`, { method: 'DELETE', token }),
 };
@@ -90,8 +97,22 @@ export const agentApi = {
 };
 
 export const adminApi = {
-    getAuditLogs: (token: string) =>
-        request<AuditLogListResponse>('/admin/audit', { token })
+    getAuditLogs: (token: string, params?: { page?: number; per_page?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.page) query.set('page', String(params.page));
+        if (params?.per_page) query.set('per_page', String(params.per_page));
+        const suffix = query.toString();
+        return request<AuditLogListResponse>(`/admin/audit${suffix ? `?${suffix}` : ''}`, { token });
+    },
+    getUsers: (token: string, params?: { page?: number; per_page?: number }) => {
+        const query = new URLSearchParams();
+        if (params?.page) query.set('page', String(params.page));
+        if (params?.per_page) query.set('per_page', String(params.per_page));
+        const suffix = query.toString();
+        return request<AdminUserListResponse>(`/admin/users${suffix ? `?${suffix}` : ''}`, { token });
+    },
+    updateUser: (token: string, id: string, data: Partial<Pick<AdminUser, 'full_name' | 'role' | 'department' | 'avatar_url'>>) =>
+        request<AdminUserUpdateResponse>(`/admin/users/${id}`, { method: 'PATCH', body: data, token }),
 };
 
 export const systemApi = {
@@ -107,6 +128,18 @@ export interface UserProfile {
     department?: string;
     created_at?: string;
     profileImage?: string | null;
+    academic_verified?: boolean;
+    identity_provider?: string | null;
+}
+
+export interface AdminUser {
+    id: string;
+    email: string;
+    full_name: string;
+    role: 'student' | 'faculty' | 'admin';
+    department?: string | null;
+    avatar_url?: string | null;
+    created_at?: string | null;
     academic_verified?: boolean;
     identity_provider?: string | null;
 }
@@ -159,6 +192,8 @@ export interface AuditLogEntry {
     user?: { email: string; full_name: string };
     target_id?: string;
     payload?: unknown;
+    ip_address?: string | null;
+    status?: string | null;
     timestamp?: string;
     created_at?: string; // Alias for timestamp
 }
@@ -166,6 +201,17 @@ export interface AuditLogEntry {
 export interface AuditLogListResponse {
     logs: AuditLogEntry[];
     total: number;
+}
+
+export interface AdminUserListResponse {
+    users: AdminUser[];
+    total: number;
+    page: number;
+    per_page: number;
+}
+
+export interface AdminUserUpdateResponse {
+    user: AdminUser;
 }
 
 export interface MetricsResponse {

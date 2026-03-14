@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { UserCircle, Mail, Shield, Calendar, Building, Edit2, Camera, X, Check, Save } from 'lucide-react';
@@ -6,9 +6,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
+import { agentApi, documentsApi } from '@/lib/api';
 
 const ProfilePage = () => {
-    const { user, updateUser } = useAuthStore();
+    const { user, updateUser, token } = useAuthStore();
     const { showToast } = useToastStore();
     const [isEditing, setIsEditing] = useState(false);
     const profileImage = user?.profileImage || null;
@@ -16,6 +17,60 @@ const ProfilePage = () => {
 
     const [formName, setFormName] = useState(user?.full_name || '');
     const [formDept, setFormDept] = useState(user?.department || '');
+    const [activity, setActivity] = useState({
+        totalQueries: 0,
+        documents: 0,
+        sessions: 0,
+        isLoading: true,
+        hasError: false,
+    });
+
+    useEffect(() => {
+        if (!isEditing) {
+            setFormName(user?.full_name || '');
+            setFormDept(user?.department || '');
+        }
+    }, [user?.full_name, user?.department, isEditing]);
+
+    useEffect(() => {
+        if (!token) {
+            setActivity((prev) => ({ ...prev, isLoading: false, hasError: false }));
+            return;
+        }
+        let cancelled = false;
+
+        const load = async () => {
+            setActivity((prev) => ({ ...prev, isLoading: true, hasError: false }));
+            try {
+                const [docsRes, historyRes] = await Promise.all([
+                    documentsApi.list(token, { page: 1, per_page: 1 }),
+                    agentApi.getHistory(token),
+                ]);
+                if (cancelled) return;
+                const sessions = historyRes.total ?? historyRes.conversations?.length ?? 0;
+                const totalQueries = (historyRes.conversations || []).reduce((sum, conv) => {
+                    const count = (conv.messages || []).filter((m) => m.role === 'user').length;
+                    return sum + count;
+                }, 0);
+                setActivity({
+                    totalQueries,
+                    documents: docsRes.total ?? 0,
+                    sessions,
+                    isLoading: false,
+                    hasError: false,
+                });
+            } catch {
+                if (!cancelled) {
+                    setActivity((prev) => ({ ...prev, isLoading: false, hasError: true }));
+                }
+            }
+        };
+
+        load();
+        return () => {
+            cancelled = true;
+        };
+    }, [token]);
 
     const roleColors: Record<string, string> = {
         student: 'bg-blue-500/15 text-blue-400 border-blue-500/20',
@@ -90,7 +145,7 @@ const ProfilePage = () => {
     ];
 
     return (
-        <div className="p-6 md:p-8 space-y-5 max-w-3xl mx-auto pb-24">
+        <div className="p-6 md:p-8 space-y-5 max-w-4xl mx-auto pb-24">
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
                 {/* Profile Header */}
                 <div className="relative rounded-2xl bg-zinc-900/40 border border-white/[0.06] overflow-hidden mb-5">
@@ -151,7 +206,7 @@ const ProfilePage = () => {
                                     <Button
                                         onClick={handleCancel}
                                         variant="glass"
-                                        className="h-9 flex-1 sm:flex-none rounded-xl text-xs font-semibold text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.02] px-5 transition-all active:scale-95 border border-transparent hover:border-white/5"
+                                        className="h-9 flex-1 sm:flex-none rounded-xl text-xs font-semibold text-zinc-300 hover:text-white hover:bg-white/[0.02] px-5 transition-all active:scale-95 border border-transparent hover:border-white/5"
                                     >
                                         Cancel
                                     </Button>
@@ -184,7 +239,7 @@ const ProfilePage = () => {
                                                 value={field.editValue}
                                                 onChange={e => field.onChange?.(e.target.value)}
                                                 placeholder={field.placeholder}
-                                                className="mt-0.5 h-8 px-2.5 rounded-lg border border-white/[0.08] bg-white/[0.03] text-xs outline-none focus:border-orange-500/30 w-full max-w-xs"
+                                                className="mt-0.5 h-8 px-2.5 rounded-lg border border-white/[0.08] bg-white/[0.03] text-xs text-white outline-none focus:border-orange-500/30 w-full max-w-xs placeholder:text-zinc-600"
                                             />
                                         ) : (
                                             <div className={`text-xs font-medium text-white mt-0.5 ${field.capitalize ? 'capitalize' : ''}`}>
@@ -206,9 +261,18 @@ const ProfilePage = () => {
                     <span className="text-xs font-semibold text-white block mb-4">Activity Summary</span>
                     <div className="grid grid-cols-2 xs:grid-cols-3 gap-3">
                         {[
-                            { label: 'Total Queries', value: '124' },
-                            { label: 'Documents', value: '38' },
-                            { label: 'Sessions', value: '67' },
+                            {
+                                label: 'Total Queries',
+                                value: (activity.isLoading || activity.hasError) ? '--' : activity.totalQueries.toLocaleString(),
+                            },
+                            {
+                                label: 'Documents',
+                                value: (activity.isLoading || activity.hasError) ? '--' : activity.documents.toLocaleString(),
+                            },
+                            {
+                                label: 'Sessions',
+                                value: (activity.isLoading || activity.hasError) ? '--' : activity.sessions.toLocaleString(),
+                            },
                         ].map(item => (
                             <div key={item.label} className="p-3 sm:p-4 rounded-xl bg-white/[0.02] border border-white/[0.04] text-center hover:bg-white/[0.04] hover:border-white/[0.08] transition-all">
                                 <div className="text-lg font-bold text-white">{item.value}</div>
