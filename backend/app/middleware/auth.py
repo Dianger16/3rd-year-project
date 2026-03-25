@@ -42,7 +42,7 @@ async def get_current_user(
     token = credentials.credentials
 
     # Dev Dummy Token Bypass
-    if token.startswith("dev-dummy-token-"):
+    if settings.enable_dummy_auth and token.startswith("dev-dummy-token-"):
         role = token.replace("dev-dummy-token-", "")
         dummy_data = {
             "admin": {

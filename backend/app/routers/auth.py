@@ -5,6 +5,7 @@ Simplified for Supabase Auth integration.
 
 from fastapi import APIRouter, HTTPException, Depends, Request
 import random
+import httpx
 from typing import Any
 from app.models.schemas import (
     LoginRequest,
@@ -24,6 +25,35 @@ from app.services.audit import log_audit_event
 from app.services.email_service import EmailService
 
 router = APIRouter(tags=["Authentication"])
+
+
+def is_network_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    if isinstance(exc, httpx.RequestError):
+        return True
+    return (
+        "getaddrinfo failed" in message
+        or "name or service not known" in message
+        or "temporary failure in name resolution" in message
+        or "nodename nor servname provided" in message
+    )
+
+
+def raise_supabase_unreachable() -> None:
+    raise HTTPException(
+        status_code=503,
+        detail="Cannot reach Supabase. Check SUPABASE_URL, DNS/VPN, and internet connectivity.",
+    )
+
+
+def extract_auth_users(users_response: Any) -> list[Any]:
+    if isinstance(users_response, list):
+        return users_response
+    if hasattr(users_response, "users"):
+        return list(getattr(users_response, "users") or [])
+    if isinstance(users_response, dict) and isinstance(users_response.get("users"), list):
+        return users_response["users"]
+    return []
 
 
 def build_oauth_redirect_url() -> str:
@@ -69,7 +99,7 @@ async def signup(request: Request, body: InitiateSignupRequest):
         otp_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
 
         # 2. Check if user already exists in Auth
-        users_resp = admin.auth.admin.list_users()
+        users_resp = extract_auth_users(admin.auth.admin.list_users())
         existing_auth_user = next(
             (u for u in users_resp if u.email == body.email), None
         )
@@ -128,9 +158,15 @@ async def signup(request: Request, body: InitiateSignupRequest):
         )
 
         # 4. Send professional OTP email with REAL code
-        EmailService.send_otp_email(
-            receiver_email=body.email, otp=otp_code, user_name=body.full_name
-        )
+        try:
+            EmailService.send_otp_email(
+                receiver_email=body.email, otp=otp_code, user_name=body.full_name
+            )
+        except Exception as smtp_error:
+            raise HTTPException(
+                status_code=502,
+                detail=f"OTP email delivery failed: {smtp_error}",
+            )
 
         return SignupResponse(
             message="Verification email dispatched with your secure code.",
@@ -139,13 +175,15 @@ async def signup(request: Request, body: InitiateSignupRequest):
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
+        if is_network_error(e):
+            raise_supabase_unreachable()
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/auth/login", response_model=AuthResponse)
 async def login(request: Request, body: LoginRequest):
-    """Login with email/password via Supabase with Dummy Fallback."""
-    # 1. Check for Dummy Credentials FIRST (Instant Dev Access)
+    """Login with email/password via Supabase (optional dummy auth only when enabled)."""
+    # 1. Optional dummy credentials for local development only
     dummy_accounts = {
         "admin@unigpt.edu": {
             "pass": "admin-password-123",
@@ -168,8 +206,11 @@ async def login(request: Request, body: LoginRequest):
     }
 
     if (
+        settings.enable_dummy_auth
+        and (
         body.email in dummy_accounts
         and body.password == dummy_accounts[body.email]["pass"]
+        )
     ):
         acc = dummy_accounts[body.email]
         return AuthResponse(
@@ -185,7 +226,7 @@ async def login(request: Request, body: LoginRequest):
             ),
         )
 
-    # 2. Attempt Real Supabase Auth
+    # 2. Attempt real Supabase auth
     try:
         supabase = get_supabase_client()
         auth_res = supabase.auth.sign_in_with_password(
@@ -232,18 +273,25 @@ async def login(request: Request, body: LoginRequest):
             access_token=auth_res.session.access_token,
             user=build_user_profile(p, auth_res.user),
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=401, detail=str(e))
+        if is_network_error(e):
+            raise_supabase_unreachable()
+        message = str(e).lower()
+        if "invalid login credentials" in message or "email not confirmed" in message:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/auth/verify", response_model=AuthResponse)
 async def verify_signup(request: Request, body: VerifySignupRequest):
-    """Verify signup OTP with custom logic and Development Bypass."""
+    """Verify signup OTP, then issue a real Supabase session token."""
     try:
         admin = get_supabase_admin()
 
         # 1. Find user to check OTP
-        users_res = admin.auth.admin.list_users()
+        users_res = extract_auth_users(admin.auth.admin.list_users())
         target_user = next((u for u in users_res if u.email == body.email), None)
 
         if not target_user:
@@ -293,9 +341,24 @@ async def verify_signup(request: Request, body: VerifySignupRequest):
         else:
             p = profile_res.data[0]
 
-        await log_audit_event(user_id=user_id, action="verify_signup")
+        # 5. Issue real session token so frontend has a cloud-authenticated login immediately.
+        supabase = get_supabase_client()
+        session_res = supabase.auth.sign_in_with_password(
+            {"email": body.email, "password": body.password}
+        )
+        if not session_res.user or not session_res.session:
+            raise HTTPException(
+                status_code=401,
+                detail="Email verified, but sign-in failed. Please log in with your password.",
+            )
+
+        await log_audit_event(
+            user_id=user_id,
+            action="verify_signup",
+            ip_address=request.client.host if request.client else None,
+        )
         return AuthResponse(
-            access_token=f"dev-dummy-token-{p.get('role', 'student')}",
+            access_token=session_res.session.access_token,
             user=build_user_profile(
                 {
                     "id": p["id"],
@@ -305,12 +368,14 @@ async def verify_signup(request: Request, body: VerifySignupRequest):
                     "department": p.get("department"),
                     "created_at": p.get("created_at"),
                 },
-                target_user,
+                session_res.user,
             ),
         )
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
+        if is_network_error(e):
+            raise_supabase_unreachable()
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -322,6 +387,8 @@ async def forgot_password(body: ForgotPasswordRequest):
         supabase.auth.reset_password_for_email(body.email)
         return {"status": "success", "message": "Recovery OTP sent if email exists"}
     except Exception as e:
+        if is_network_error(e):
+            raise_supabase_unreachable()
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -344,6 +411,8 @@ async def reset_password(body: ResetPasswordRequest):
         await log_audit_event(user_id=auth_res.user.id, action="reset_password")
         return {"status": "success", "message": "Password updated successfully"}
     except Exception as e:
+        if is_network_error(e):
+            raise_supabase_unreachable()
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -360,6 +429,8 @@ async def google_auth():
         )
         return {"url": res.url}
     except Exception as e:
+        if is_network_error(e):
+            raise_supabase_unreachable()
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -379,6 +450,8 @@ async def microsoft_auth():
         )
         return {"url": res.url}
     except Exception as e:
+        if is_network_error(e):
+            raise_supabase_unreachable()
         raise HTTPException(status_code=400, detail=str(e))
 
 
