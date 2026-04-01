@@ -77,6 +77,18 @@ def get_existing_public_tables(cur) -> list[str]:
     return [row[0] for row in cur.fetchall()]
 
 
+def get_public_table_columns(cur, table_name: str) -> set[str]:
+    cur.execute(
+        """
+        select column_name
+        from information_schema.columns
+        where table_schema = 'public' and table_name = %s
+        """,
+        (table_name,),
+    )
+    return {row[0] for row in cur.fetchall()}
+
+
 def ensure_social_auth_sync(cur) -> None:
     extra_sql = """
     CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -111,6 +123,90 @@ def ensure_social_auth_sync(cur) -> None:
     cur.execute(extra_sql)
 
 
+def ensure_runtime_columns_and_indexes(cur) -> None:
+    # Profiles: fields used by auth/profile/export and role-aware UI.
+    cur.execute(
+        """
+        ALTER TABLE public.profiles
+          ADD COLUMN IF NOT EXISTS program TEXT,
+          ADD COLUMN IF NOT EXISTS semester TEXT,
+          ADD COLUMN IF NOT EXISTS section TEXT,
+          ADD COLUMN IF NOT EXISTS roll_number TEXT,
+          ADD COLUMN IF NOT EXISTS academic_verified BOOLEAN DEFAULT FALSE,
+          ADD COLUMN IF NOT EXISTS identity_provider TEXT;
+        """
+    )
+
+    # Documents: fields used by upload pipeline and agent retrieval ordering/filtering.
+    cur.execute(
+        """
+        ALTER TABLE public.documents
+          ADD COLUMN IF NOT EXISTS uploaded_at TIMESTAMPTZ DEFAULT NOW(),
+          ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb,
+          ADD COLUMN IF NOT EXISTS file_size BIGINT,
+          ADD COLUMN IF NOT EXISTS mime_type TEXT,
+          ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+        """
+    )
+    doc_columns = get_public_table_columns(cur, "documents")
+    if "uploaded_at" in doc_columns and "created_at" in doc_columns:
+        cur.execute(
+            """
+            UPDATE public.documents
+            SET uploaded_at = COALESCE(uploaded_at, created_at, NOW())
+            WHERE uploaded_at IS NULL;
+            """
+        )
+    elif "uploaded_at" in doc_columns:
+        cur.execute(
+            """
+            UPDATE public.documents
+            SET uploaded_at = COALESCE(uploaded_at, NOW())
+            WHERE uploaded_at IS NULL;
+            """
+        )
+
+    # Conversations: used by agent upsert payload.
+    cur.execute(
+        """
+        ALTER TABLE public.conversations
+          ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+        """
+    )
+
+    # Non-destructive indexes to improve dashboard/agent latency.
+    if "doc_type" in doc_columns and "created_at" in doc_columns:
+        cur.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_documents_doc_type_created_at
+            ON public.documents (doc_type, created_at DESC);
+            """
+        )
+    if "doc_type" in doc_columns and "uploaded_at" in doc_columns:
+        cur.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_documents_doc_type_uploaded_at
+            ON public.documents (doc_type, uploaded_at DESC);
+            """
+        )
+    if "department" in doc_columns and "course" in doc_columns:
+        cur.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_documents_department_course
+            ON public.documents (department, course);
+            """
+        )
+
+    audit_columns = get_public_table_columns(cur, "audit_logs")
+    if {"user_id", "action", "created_at"}.issubset(audit_columns):
+        cur.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_audit_logs_user_action_created_at
+            ON public.audit_logs (user_id, action, created_at DESC);
+            """
+        )
+
+
 def migrate() -> None:
     load_environment()
     db_params = get_db_params()
@@ -139,6 +235,9 @@ def migrate() -> None:
 
             print("Ensuring social auth profile sync trigger...")
             ensure_social_auth_sync(cur)
+
+            print("Ensuring runtime columns and indexes...")
+            ensure_runtime_columns_and_indexes(cur)
 
         conn.commit()
         print("Migration completed successfully.")
