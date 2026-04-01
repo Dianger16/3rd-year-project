@@ -101,6 +101,22 @@ def derive_document_tags(
     return normalized
 
 
+def derive_route_targets(doc_type: str) -> list[str]:
+    """
+    Defines which user roles can retrieve a document.
+    """
+    normalized = (doc_type or "").strip().lower()
+    if normalized == "public":
+        return ["student", "faculty", "admin"]
+    if normalized == "student":
+        return ["student", "admin"]
+    if normalized == "faculty":
+        return ["faculty", "admin"]
+    if normalized == "admin":
+        return ["admin"]
+    return ["admin"]
+
+
 # ─── Text Chunking ───
 
 
@@ -200,6 +216,7 @@ async def process_document(
         tags=tags,
         metadata=metadata,
     )
+    route_targets = derive_route_targets(doc_type)
 
     # 1. Extract & Chunk text
     try:
@@ -231,6 +248,7 @@ async def process_document(
                 "doc_type": doc_type,
                 "audience": doc_type,
                 "role": doc_type,
+                "route_targets": route_targets,
                 "department": department or "",
                 "course": course or "",
                 "tags": derived_tags,
@@ -262,4 +280,5 @@ async def process_document(
         "embedding_count": len(embeddings),
         "text_length": len(full_text),
         "tags": derived_tags,
+        "route_targets": route_targets,
     }

@@ -21,6 +21,7 @@ from app.services.supabase_client import get_supabase_admin
 from app.services.document_processor import (
     SUPPORTED_EXTENSIONS,
     derive_document_tags,
+    derive_route_targets,
     is_supported_document,
     process_document,
 )
@@ -131,6 +132,7 @@ async def upload_document(
         tags=[str(tag) for tag in parsed_tags],
         metadata=parsed_metadata,
     )
+    route_targets = derive_route_targets(validated_doc_type.value)
 
     # 1. Save metadata to Supabase Postgres
     supabase = get_supabase_admin()
@@ -147,7 +149,7 @@ async def upload_document(
     }
     extended_payload = {
         **base_payload,
-        "metadata": parsed_metadata,
+        "metadata": {**parsed_metadata, "route_targets": route_targets},
         "file_size": len(file_bytes),
         "mime_type": file.content_type or "",
     }
@@ -183,6 +185,7 @@ async def upload_document(
                     "chunk_count": processing_result.get("chunk_count", 0),
                     "embedding_count": processing_result.get("embedding_count", 0),
                     "text_length": processing_result.get("text_length", 0),
+                    "route_targets": processing_result.get("route_targets", route_targets),
                 },
                 "updated_at": utc_now_iso(),
             }
@@ -199,6 +202,7 @@ async def upload_document(
             "doc_type": validated_doc_type.value,
             "tags": derived_tags,
             "chunk_count": processing_result.get("chunk_count", 0),
+            "route_targets": processing_result.get("route_targets", route_targets),
             "uploader_email": user.email,
         },
     )
@@ -255,6 +259,7 @@ async def update_document(
         tags=[str(t) for t in manual_tags] if isinstance(manual_tags, list) else [],
         metadata=next_metadata,
     )
+    route_targets = derive_route_targets(next_doc_type)
 
     update_payload: dict[str, Any] = {
         "doc_type": next_doc_type,
@@ -265,7 +270,7 @@ async def update_document(
     if body.visibility is not None:
         update_payload["visibility"] = bool(body.visibility)
     if "metadata" in doc or body.metadata is not None:
-        update_payload["metadata"] = next_metadata
+        update_payload["metadata"] = {**next_metadata, "route_targets": route_targets}
     if "updated_at" in doc:
         update_payload["updated_at"] = utc_now_iso()
 
@@ -298,6 +303,7 @@ async def update_document(
                         "department": next_department or "",
                         "course": next_course or "",
                         "tags": derived_tags,
+                        "route_targets": route_targets,
                     },
                 )
             except Exception:
@@ -307,7 +313,12 @@ async def update_document(
     await log_audit_event(
         user_id=audit_user_id,
         action="document_update",
-        payload={"doc_id": document_id, "doc_type": next_doc_type, "tags": derived_tags},
+        payload={
+            "doc_id": document_id,
+            "doc_type": next_doc_type,
+            "tags": derived_tags,
+            "route_targets": route_targets,
+        },
     )
 
     return DocumentResponse(
