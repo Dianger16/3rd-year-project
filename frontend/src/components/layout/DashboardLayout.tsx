@@ -261,19 +261,31 @@ export default function DashboardLayout() {
                                             animate={{ opacity: 1, y: 0, scale: 1 }}
                                             exit={{ opacity: 0, y: 8, scale: 0.96 }}
                                             className="fixed sm:absolute right-4 left-4 sm:left-auto sm:right-0 top-20 sm:top-[calc(100%+0.5rem)] w-80 bg-zinc-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[100] origin-top-right"
+                                            data-lenis-prevent
                                         >
                                             <div className="px-4 py-3 border-b border-white/[0.06] flex items-center justify-between">
                                                 <span className="text-sm font-semibold text-white">Notifications</span>
                                                 <span className="text-[10px] text-orange-400 font-semibold">{unreadCount} new</span>
                                             </div>
-                                            <div className="max-h-64 overflow-y-auto">
+                                            <div
+                                                className="max-h-64 overflow-y-auto overflow-x-hidden overscroll-contain"
+                                                data-lenis-prevent
+                                            >
                                                 {!isLoadingNotifications && notifications.length === 0 && (
                                                     <div className="px-4 py-6 text-xs text-zinc-500">
                                                         No notifications yet.
                                                     </div>
                                                 )}
                                                 {notifications.map((n) => (
-                                                    <div key={n.id} className={cn("px-4 py-3 hover:bg-white/[0.03] cursor-pointer border-b border-white/[0.04] last:border-0 transition-colors", n.unread && "bg-orange-500/[0.03]")}>
+                                                    <div
+                                                        key={n.id}
+                                                        className={cn("px-4 py-3 hover:bg-white/[0.03] cursor-pointer border-b border-white/[0.04] last:border-0 transition-colors", n.unread && "bg-orange-500/[0.03]")}
+                                                        onClick={() => {
+                                                            setShowNotifications(false);
+                                                            setIsLoadingNotifications(false);
+                                                            navigate('/dashboard/notifications', { state: { focusNotificationId: n.id } });
+                                                        }}
+                                                    >
                                                         <div className="flex items-start gap-3">
                                                             {n.unread ? (
                                                                 <div className="w-1.5 h-1.5 rounded-full bg-orange-500 mt-1.5 shrink-0" />
@@ -281,8 +293,8 @@ export default function DashboardLayout() {
                                                                 <div className="w-1.5 h-1.5 opacity-0 shrink-0" />
                                                             )}
                                                             <div className="flex-1 min-w-0">
-                                                                <p className="text-xs text-zinc-300 leading-relaxed font-medium">{n.title}</p>
-                                                                <p className="text-[11px] text-zinc-500 mt-1">{n.message}</p>
+                                                                <p className="text-xs text-zinc-300 leading-relaxed font-medium break-words">{n.title}</p>
+                                                                <p className="text-[11px] text-zinc-500 mt-1 break-words">{n.message}</p>
                                                                 <p className="text-[10px] text-zinc-600 mt-1">{formatTimeAgo(n.uploaded_at)}</p>
                                                             </div>
                                                         </div>

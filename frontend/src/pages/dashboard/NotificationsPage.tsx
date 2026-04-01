@@ -4,6 +4,8 @@ import { motion } from 'framer-motion';
 import { authApi, type UserNotificationItem } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 
 const formatDate = (value?: string | null) => {
     if (!value) return 'Unknown time';
@@ -21,8 +23,11 @@ const formatDate = (value?: string | null) => {
 export default function NotificationsPage() {
     const { token } = useAuthStore();
     const { showToast } = useToastStore();
+    const navigate = useNavigate();
+    const location = useLocation();
     const [items, setItems] = useState<UserNotificationItem[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [focusedNotificationId, setFocusedNotificationId] = useState<string | null>(null);
     const hasLoadedOnceRef = useRef(false);
 
     const unread = useMemo(() => items.filter((item) => item.unread).length, [items]);
@@ -57,6 +62,36 @@ export default function NotificationsPage() {
         authApi.markNotificationsRead(token).catch(() => undefined);
         setItems((prev) => prev.map((item) => ({ ...item, unread: false })));
     }, [token, unread]);
+
+    useEffect(() => {
+        const state = location.state as { focusNotificationId?: string } | null;
+        const nextId = state?.focusNotificationId || null;
+        if (!nextId) return;
+        setFocusedNotificationId(nextId);
+
+        const timer = window.setTimeout(() => {
+            setFocusedNotificationId(null);
+            navigate(location.pathname, { replace: true, state: {} });
+        }, 2800);
+
+        return () => window.clearTimeout(timer);
+    }, [location.pathname, location.state, navigate]);
+
+    useEffect(() => {
+        if (!focusedNotificationId || items.length === 0) return;
+        const el = document.querySelector(`[data-notification-id="${focusedNotificationId}"]`);
+        if (el instanceof HTMLElement) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }, [focusedNotificationId, items]);
+
+    const openNotificationInChat = (item: UserNotificationItem) => {
+        const scope = [item.course, item.department].filter(Boolean).join(' / ');
+        const prefill = scope
+            ? `Summarize this notification and next steps: ${item.title}. Scope: ${scope}.`
+            : `Summarize this notification and next steps: ${item.title}.`;
+        navigate('/dashboard/chat', { state: { prefill } });
+    };
 
     return (
         <div className="h-full overflow-y-auto">
@@ -96,18 +131,31 @@ export default function NotificationsPage() {
                         items.map((item) => (
                             <div
                                 key={item.id}
-                                className="px-5 py-4 border-b border-white/[0.05] last:border-b-0 hover:bg-white/[0.03] transition-colors"
+                                data-notification-id={item.id}
+                                className={cn(
+                                    "px-5 py-4 border-b border-white/[0.05] last:border-b-0 hover:bg-white/[0.03] transition-colors",
+                                    focusedNotificationId === item.id && "bg-orange-500/[0.08] border-orange-500/30"
+                                )}
                             >
                                 <div className="flex gap-3">
                                     <div className="w-8 h-8 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center mt-0.5">
                                         <FileText className="w-4 h-4 text-orange-300" />
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-2">
-                                            <p className="text-sm font-semibold text-white truncate">{item.title}</p>
-                                            {item.unread && <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />}
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="min-w-0 flex items-center gap-2">
+                                                <p className="text-sm font-semibold text-white truncate">{item.title}</p>
+                                                {item.unread && <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />}
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => openNotificationInChat(item)}
+                                                className="shrink-0 h-8 px-3 rounded-lg border border-white/[0.12] bg-white/[0.03] hover:bg-white/[0.07] text-[11px] font-semibold text-orange-300 hover:text-orange-200 transition-colors"
+                                            >
+                                                View Notification
+                                            </button>
                                         </div>
-                                        <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{item.message}</p>
+                                        <p className="text-xs text-zinc-400 mt-1 leading-relaxed break-words">{item.message}</p>
                                         <div className="flex flex-wrap items-center gap-3 mt-2">
                                             {item.course && (
                                                 <span className="text-[11px] text-zinc-500">Course: {item.course}</span>
