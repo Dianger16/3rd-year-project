@@ -47,6 +47,7 @@ class Settings(BaseSettings):
 
     # Embeddings (Local HuggingFace model)
     embedding_model_name: str = "all-MiniLM-L6-v2"
+    preload_embeddings_on_startup: bool = True
 
     # Dev flags
     mock_llm: bool = False
