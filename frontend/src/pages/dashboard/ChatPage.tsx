@@ -159,10 +159,6 @@ export default function ChatPage() {
     const { token, user } = useAuthStore();
     const location = useLocation();
     const navigate = useNavigate();
-    const isStudent = user?.role === 'student';
-    const isQueryLocked = Boolean(user) && isStudent && !user.academic_verified;
-    const academicDomain = (import.meta.env.VITE_ACADEMIC_EMAIL_DOMAIN || 'krmu.edu.in').replace(/^@/, '').toLowerCase();
-    const academicVerificationMessage = `Query access is locked for this account. Sign in using your academic email (ending with @${academicDomain}) to continue.`;
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -185,7 +181,6 @@ export default function ChatPage() {
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (isQueryLocked) return;
         if (!input.trim() || !token || isQuerying) return;
         const query = input;
         setInput('');
@@ -226,11 +221,6 @@ export default function ChatPage() {
                                 <p className="text-zinc-500 text-sm leading-relaxed max-w-md mx-auto">
                                     Ask me anything about your university — courses, policies, research, deadlines, and more.
                                 </p>
-                                {isQueryLocked && (
-                                    <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-100 max-w-lg mx-auto">
-                                        {academicVerificationMessage}
-                                    </div>
-                                )}
                             </div>
 
                         </motion.div>
@@ -272,11 +262,6 @@ export default function ChatPage() {
             {/* ───── Input Bar — Premium ───── */}
             <div className="px-2 sm:px-6 pb-2 sm:pb-6 pt-0 shrink-0 bg-transparent">
                 <form onSubmit={handleSend} className="max-w-3xl mx-auto">
-                    {isQueryLocked && (
-                        <div className="mb-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-100">
-                            You can browse the dashboard, but chat queries are disabled until academic verification is completed. Use an academic email ending with @{academicDomain}.
-                        </div>
-                    )}
                     {error && (
                         <div className="mb-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] text-red-200 flex items-center justify-between gap-3">
                             <span>{error}</span>
@@ -300,7 +285,7 @@ export default function ChatPage() {
                             data-lenis-prevent="true"
                             className="flex-1 bg-transparent px-4 py-3 sm:px-5 sm:py-4 text-xs sm:text-sm placeholder:text-zinc-600 outline-none resize-none max-h-40 min-h-[44px] sm:min-h-[52px] text-white overflow-y-auto overscroll-contain"
                             rows={1}
-                            disabled={isQuerying || isQueryLocked}
+                            disabled={isQuerying}
                         />
                         <div className="flex items-center gap-1.5 sm:gap-2 p-2 sm:p-2.5 shrink-0">
                             {messages.length > 0 && (
@@ -317,7 +302,7 @@ export default function ChatPage() {
                                 type="submit"
                                 size="icon"
                                 className="h-9 w-9 rounded-xl bg-orange-600 hover:bg-orange-500 text-white shadow-md shadow-orange-500/20 transition-all hover:shadow-lg hover:shadow-orange-500/30 active:scale-90 disabled:opacity-30 disabled:hover:scale-100 disabled:shadow-none"
-                                disabled={!input.trim() || isQuerying || isQueryLocked}
+                                disabled={!input.trim() || isQuerying}
                             >
                                 <ArrowUp className="w-4 h-4" />
                             </Button>
