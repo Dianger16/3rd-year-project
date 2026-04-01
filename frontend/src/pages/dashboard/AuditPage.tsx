@@ -1,10 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, Search, Filter, Clock, Activity, Download, ChevronRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { adminApi, type AuditLogEntry } from '@/lib/api';
-import { useAuthStore } from '@/store/authStore';
 
 interface AuditLog {
     id: string;
@@ -18,52 +16,17 @@ interface AuditLog {
     details: string;
 }
 
-const actionToType = (action: string): AuditLog['type'] => {
-    const a = (action || '').toLowerCase();
-    if (a.includes('document_')) return 'upload';
-    if (a.includes('agent_query')) return 'query';
-    if (a.includes('login') || a.includes('signup') || a.includes('reset_password')) return 'auth';
-    if (a.includes('admin') || a.includes('invite') || a.includes('role')) return 'admin';
-    return 'system';
-};
-
-const actionToTitle = (action: string): string => {
-    const a = (action || '').toLowerCase();
-    if (a === 'document_upload') return 'Document Uploaded';
-    if (a === 'document_update') return 'Document Updated';
-    if (a === 'document_delete') return 'Document Deleted';
-    if (a === 'agent_query') return 'Query Processed';
-    if (a === 'login') return 'Successful Login';
-    if (a === 'verify_signup') return 'Email Verified';
-    if (a === 'signup_initiated') return 'Signup Initiated';
-    if (a === 'reset_password') return 'Password Reset';
-    return action.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-};
-
-const buildDetails = (entry: AuditLogEntry): string => {
-    const payload = (entry.payload as any) || {};
-    if (entry.action === 'document_upload') {
-        const name = payload.filename ? ` (${payload.filename})` : '';
-        const dtype = payload.doc_type ? ` [${payload.doc_type}]` : '';
-        return `Uploaded document${name}${dtype}.`;
-    }
-    if (entry.action === 'document_update') {
-        const dtype = payload.doc_type ? `doc_type=${payload.doc_type}` : '';
-        return `Updated document metadata${dtype ? ` (${dtype})` : ''}.`;
-    }
-    if (entry.action === 'document_delete') {
-        return `Deleted document ${payload.filename ? payload.filename : payload.doc_id || ''}`.trim();
-    }
-    if (entry.action === 'agent_query') {
-        return `Conversation ${payload.conv_id ? payload.conv_id : ''}`.trim();
-    }
-    return payload && Object.keys(payload).length ? JSON.stringify(payload) : '—';
-};
+const INITIAL_LOGS: AuditLog[] = [
+    { id: '1', event: 'Successful Login', user: 'admin@unigpt.edu', role: 'admin', timestamp: '2024-03-15T09:30:00Z', ip: '192.168.1.100', type: 'auth', status: 'success', details: 'Google OAuth login from Windows/Chrome.' },
+    { id: '2', event: 'Document Uploaded', user: 'dr.smith@unigpt.edu', role: 'faculty', timestamp: '2024-03-15T09:15:00Z', ip: '142.250.190.46', type: 'upload', status: 'success', details: 'Uploaded CS301_Syllabus.pdf (2.4MB)' },
+    { id: '3', event: 'Failed Login Attempt', user: 'unknown@unigpt.edu', role: 'unknown', timestamp: '2024-03-15T09:10:00Z', ip: 'Unknown', type: 'auth', status: 'error', details: 'Invalid credentials. 3rd attempt.' },
+    { id: '4', event: 'User Role Changed', user: 'admin@unigpt.edu', role: 'admin', timestamp: '2024-03-15T08:45:00Z', ip: '192.168.1.100', type: 'admin', status: 'warning', details: 'Changed john.doe role from Student to Faculty.' },
+    { id: '5', event: 'High Volume Queries', user: 'system', role: 'system', timestamp: '2024-03-15T08:00:00Z', ip: 'Internal', type: 'system', status: 'warning', details: 'Spike in API requests detected (+400%).' },
+    { id: '6', event: 'Query Processed', user: 'student1@unigpt.edu', role: 'student', timestamp: '2024-03-15T07:30:00Z', ip: '192.168.1.150', type: 'query', status: 'success', details: 'Query: "When is the CS101 final?" - Latency: 1.2s' },
+];
 
 const AuditPage = () => {
-    const { token } = useAuthStore();
-    const [logs, setLogs] = useState<AuditLog[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
+    const [logs, setLogs] = useState<AuditLog[]>(INITIAL_LOGS);
     const [searchQuery, setSearchQuery] = useState('');
     const [filterType, setFilterType] = useState<string>('all');
     const [expandedLog, setExpandedLog] = useState<string | null>(null);
@@ -85,45 +48,11 @@ const AuditPage = () => {
         error: <div className="w-2 h-2 rounded-full bg-red-500" />,
     };
 
-    useEffect(() => {
-        if (!token) return;
-        let cancelled = false;
-        const load = async () => {
-            setIsLoading(true);
-            try {
-                const res = await adminApi.getAuditLogs(token, { page: 1, per_page: 200 });
-                if (cancelled) return;
-
-                const mapped: AuditLog[] = (res.logs || []).map((entry) => ({
-                    id: String(entry.id),
-                    event: actionToTitle(entry.action),
-                    user: entry.user?.email || entry.user_id || 'system',
-                    role: (entry.user as any)?.role || '—',
-                    timestamp: entry.timestamp || (entry as any).created_at || '',
-                    ip: entry.ip_address || '—',
-                    type: actionToType(entry.action),
-                    status: (entry.status as any) || 'success',
-                    details: buildDetails(entry),
-                }));
-                setLogs(mapped);
-            } catch (err) {
-                if (!cancelled) setLogs([]);
-            } finally {
-                if (!cancelled) setIsLoading(false);
-            }
-        };
-        load();
-        return () => { cancelled = true; };
-    }, [token]);
-
-    const filtered = useMemo(() => {
-        const q = searchQuery.trim().toLowerCase();
-        return logs.filter(log => {
-            const matchesSearch = !q || log.event.toLowerCase().includes(q) || log.user.toLowerCase().includes(q);
-            const matchesType = filterType === 'all' || log.type === filterType;
-            return matchesSearch && matchesType;
-        });
-    }, [logs, searchQuery, filterType]);
+    const filtered = logs.filter(log => {
+        const matchesSearch = log.event.toLowerCase().includes(searchQuery.toLowerCase()) || log.user.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesType = filterType === 'all' || log.type === filterType;
+        return matchesSearch && matchesType;
+    });
 
     const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
 
@@ -240,10 +169,7 @@ const AuditPage = () => {
                         </AnimatePresence>
                     </div>
                 ))}
-                {isLoading && (
-                    <div className="py-12 text-center text-zinc-600 text-xs">Loading audit logs...</div>
-                )}
-                {!isLoading && filtered.length === 0 && (
+                {filtered.length === 0 && (
                     <div className="py-12 text-center text-zinc-600 text-xs">No audit logs match criteria.</div>
                 )}
             </motion.div>

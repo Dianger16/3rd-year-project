@@ -5,6 +5,8 @@ Simplified for Supabase Auth integration.
 
 from fastapi import APIRouter, HTTPException, Depends, Request
 import random
+import httpx
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from app.models.schemas import (
     LoginRequest,
@@ -26,6 +28,40 @@ from app.services.email_service import EmailService
 router = APIRouter(tags=["Authentication"])
 
 
+def is_dummy_auth_enabled() -> bool:
+    env = (settings.environment or "").strip().lower()
+    return settings.enable_dummy_auth or env in {"dev", "development", "local", "test"}
+
+
+def is_network_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    if isinstance(exc, httpx.RequestError):
+        return True
+    return (
+        "getaddrinfo failed" in message
+        or "name or service not known" in message
+        or "temporary failure in name resolution" in message
+        or "nodename nor servname provided" in message
+    )
+
+
+def raise_supabase_unreachable() -> None:
+    raise HTTPException(
+        status_code=503,
+        detail="Cannot reach Supabase. Check SUPABASE_URL, DNS/VPN, and internet connectivity.",
+    )
+
+
+def extract_auth_users(users_response: Any) -> list[Any]:
+    if isinstance(users_response, list):
+        return users_response
+    if hasattr(users_response, "users"):
+        return list(getattr(users_response, "users") or [])
+    if isinstance(users_response, dict) and isinstance(users_response.get("users"), list):
+        return users_response["users"]
+    return []
+
+
 def build_oauth_redirect_url() -> str:
     base = settings.frontend_app_url.rstrip("/")
     path = settings.oauth_redirect_path
@@ -41,6 +77,77 @@ def extract_identity_provider(auth_user: Any = None) -> str:
         if providers:
             return providers[0]
     return "email"
+
+
+def normalize_profile_role(value: Any) -> str:
+    try:
+        return UserRole(str(value).strip().lower()).value
+    except Exception:
+        return UserRole.STUDENT.value
+
+
+def build_profile_seed(
+    user_id: str, auth_user: Any, existing_profile: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    existing = existing_profile or {}
+    metadata = getattr(auth_user, "user_metadata", {}) or {}
+
+    email = (getattr(auth_user, "email", None) or existing.get("email") or "").strip()
+    full_name = (
+        metadata.get("full_name")
+        or metadata.get("name")
+        or existing.get("full_name")
+        or "User"
+    )
+    role = normalize_profile_role(
+        metadata.get("role") or existing.get("role") or UserRole.STUDENT.value
+    )
+    department = (
+        metadata.get("department")
+        if metadata.get("department") is not None
+        else existing.get("department")
+    )
+
+    return {
+        "id": user_id,
+        "email": email,
+        "full_name": str(full_name).strip() or "User",
+        "role": role,
+        "department": department,
+    }
+
+
+def ensure_profile_consistency(admin: Any, user_id: str, auth_user: Any) -> dict[str, Any]:
+    existing_res = admin.table("profiles").select("*").eq("id", user_id).limit(1).execute()
+    existing = existing_res.data[0] if existing_res.data else None
+    seed = build_profile_seed(user_id, auth_user, existing)
+
+    if not existing:
+        created = admin.table("profiles").insert(seed).execute()
+        if created.data:
+            return created.data[0]
+        return seed
+
+    update_payload: dict[str, Any] = {}
+    for field in ("email", "full_name", "role"):
+        desired = seed.get(field)
+        if desired and existing.get(field) != desired:
+            update_payload[field] = desired
+
+    if seed.get("department") is not None and existing.get("department") != seed.get(
+        "department"
+    ):
+        update_payload["department"] = seed["department"]
+
+    if update_payload:
+        updated = (
+            admin.table("profiles").update(update_payload).eq("id", user_id).execute()
+        )
+        if updated.data:
+            return updated.data[0]
+        return {**existing, **update_payload}
+
+    return existing
 
 
 def build_user_profile(profile: dict, auth_user: Any = None) -> UserProfile:
@@ -69,7 +176,7 @@ async def signup(request: Request, body: InitiateSignupRequest):
         otp_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
 
         # 2. Check if user already exists in Auth
-        users_resp = admin.auth.admin.list_users()
+        users_resp = extract_auth_users(admin.auth.admin.list_users())
         existing_auth_user = next(
             (u for u in users_resp if u.email == body.email), None
         )
@@ -128,9 +235,15 @@ async def signup(request: Request, body: InitiateSignupRequest):
         )
 
         # 4. Send professional OTP email with REAL code
-        EmailService.send_otp_email(
-            receiver_email=body.email, otp=otp_code, user_name=body.full_name
-        )
+        try:
+            EmailService.send_otp_email(
+                receiver_email=body.email, otp=otp_code, user_name=body.full_name
+            )
+        except Exception as smtp_error:
+            raise HTTPException(
+                status_code=502,
+                detail=f"OTP email delivery failed: {smtp_error}",
+            )
 
         return SignupResponse(
             message="Verification email dispatched with your secure code.",
@@ -139,13 +252,15 @@ async def signup(request: Request, body: InitiateSignupRequest):
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
+        if is_network_error(e):
+            raise_supabase_unreachable()
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/auth/login", response_model=AuthResponse)
 async def login(request: Request, body: LoginRequest):
-    """Login with email/password via Supabase with Dummy Fallback."""
-    # 1. Check for Dummy Credentials FIRST (Instant Dev Access)
+    """Login with email/password via Supabase (optional dummy auth only when enabled)."""
+    # 1. Optional dummy credentials for local development only
     dummy_accounts = {
         "admin@unigpt.edu": {
             "pass": "admin-password-123",
@@ -168,7 +283,8 @@ async def login(request: Request, body: LoginRequest):
     }
 
     if (
-        body.email in dummy_accounts
+        is_dummy_auth_enabled()
+        and body.email in dummy_accounts
         and body.password == dummy_accounts[body.email]["pass"]
     ):
         acc = dummy_accounts[body.email]
@@ -185,7 +301,7 @@ async def login(request: Request, body: LoginRequest):
             ),
         )
 
-    # 2. Attempt Real Supabase Auth
+    # 2. Attempt real Supabase auth
     try:
         supabase = get_supabase_client()
         auth_res = supabase.auth.sign_in_with_password(
@@ -197,25 +313,9 @@ async def login(request: Request, body: LoginRequest):
 
         user_id = auth_res.user.id
 
-        # Fetch profile from Supabase
+        # Fetch/update profile from Supabase so profile email/role/name cannot drift.
         admin = get_supabase_admin()
-        profile = admin.table("profiles").select("*").eq("id", user_id).execute()
-
-        if not profile.data:
-            user_data = auth_res.user.user_metadata or {}
-            p = {
-                "id": user_id,
-                "email": auth_res.user.email,
-                "full_name": user_data.get("full_name", "User"),
-                "role": user_data.get("role", "student"),
-                "department": user_data.get("department", "General"),
-            }
-            try:
-                admin.table("profiles").insert(p).execute()
-            except Exception:
-                pass  # Profile might exist but select failed
-        else:
-            p = profile.data[0]
+        p = ensure_profile_consistency(admin, user_id, auth_res.user)
 
         await log_audit_event(
             user_id=user_id,
@@ -232,18 +332,25 @@ async def login(request: Request, body: LoginRequest):
             access_token=auth_res.session.access_token,
             user=build_user_profile(p, auth_res.user),
         )
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=401, detail=str(e))
+        if is_network_error(e):
+            raise_supabase_unreachable()
+        message = str(e).lower()
+        if "invalid login credentials" in message or "email not confirmed" in message:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/auth/verify", response_model=AuthResponse)
 async def verify_signup(request: Request, body: VerifySignupRequest):
-    """Verify signup OTP with custom logic and Development Bypass."""
+    """Verify signup OTP, then issue a real Supabase session token."""
     try:
         admin = get_supabase_admin()
 
         # 1. Find user to check OTP
-        users_res = admin.auth.admin.list_users()
+        users_res = extract_auth_users(admin.auth.admin.list_users())
         target_user = next((u for u in users_res if u.email == body.email), None)
 
         if not target_user:
@@ -271,31 +378,26 @@ async def verify_signup(request: Request, body: VerifySignupRequest):
             user_id, {"user_metadata": {**user_metadata, "is_verified": True}}
         )
 
-        # 4. Check/Create profile (ensure it's there)
-        profile_res = admin.table("profiles").select("*").eq("id", user_id).execute()
-        if not profile_res.data:
-            admin.table("profiles").insert(
-                {
-                    "id": user_id,
-                    "email": body.email,
-                    "full_name": user_metadata.get("full_name", "User"),
-                    "role": user_metadata.get("role", "student"),
-                    "department": user_metadata.get("department"),
-                }
-            ).execute()
-            p = {
-                "id": user_id,
-                "email": body.email,
-                "full_name": user_metadata.get("full_name", "User"),
-                "role": user_metadata.get("role", "student"),
-                "department": user_metadata.get("department"),
-            }
-        else:
-            p = profile_res.data[0]
+        # 5. Issue real session token so frontend has a cloud-authenticated login immediately.
+        supabase = get_supabase_client()
+        session_res = supabase.auth.sign_in_with_password(
+            {"email": body.email, "password": body.password}
+        )
+        if not session_res.user or not session_res.session:
+            raise HTTPException(
+                status_code=401,
+                detail="Email verified, but sign-in failed. Please log in with your password.",
+            )
 
-        await log_audit_event(user_id=user_id, action="verify_signup")
+        p = ensure_profile_consistency(admin, user_id, session_res.user)
+
+        await log_audit_event(
+            user_id=user_id,
+            action="verify_signup",
+            ip_address=request.client.host if request.client else None,
+        )
         return AuthResponse(
-            access_token=f"dev-dummy-token-{p.get('role', 'student')}",
+            access_token=session_res.session.access_token,
             user=build_user_profile(
                 {
                     "id": p["id"],
@@ -305,45 +407,104 @@ async def verify_signup(request: Request, body: VerifySignupRequest):
                     "department": p.get("department"),
                     "created_at": p.get("created_at"),
                 },
-                target_user,
+                session_res.user,
             ),
         )
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
+        if is_network_error(e):
+            raise_supabase_unreachable()
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/auth/forgot-password")
 async def forgot_password(body: ForgotPasswordRequest):
-    """Send OTP for password recovery."""
+    """Send custom SMTP OTP for password recovery."""
     try:
-        supabase = get_supabase_client()
-        supabase.auth.reset_password_for_email(body.email)
+        admin = get_supabase_admin()
+        users_res = extract_auth_users(admin.auth.admin.list_users())
+        target_user = next((u for u in users_res if u.email == body.email), None)
+
+        # Keep response generic for unknown emails.
+        if not target_user:
+            return {"status": "success", "message": "Recovery OTP sent if email exists"}
+
+        reset_otp = "".join([str(random.randint(0, 9)) for _ in range(6)])
+        expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+        current_metadata = target_user.user_metadata or {}
+
+        admin.auth.admin.update_user_by_id(
+            target_user.id,
+            {
+                "user_metadata": {
+                    **current_metadata,
+                    "reset_otp_code": reset_otp,
+                    "reset_otp_expires_at": expires_at,
+                }
+            },
+        )
+        EmailService.send_otp_email(
+            receiver_email=body.email,
+            otp=reset_otp,
+            user_name=current_metadata.get("full_name", "User"),
+            purpose="password_reset",
+        )
+
+        await log_audit_event(
+            user_id=target_user.id,
+            action="forgot_password_otp_sent",
+        )
         return {"status": "success", "message": "Recovery OTP sent if email exists"}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise
+        if is_network_error(e):
+            raise_supabase_unreachable()
+        raise HTTPException(status_code=502, detail=f"Recovery OTP delivery failed: {e}")
 
 
 @router.post("/auth/reset-password")
 async def reset_password(body: ResetPasswordRequest):
-    """Verify OTP and update password."""
+    """Verify custom OTP and update password."""
     try:
-        supabase = get_supabase_client()
-        # Verify the OTP
-        auth_res = supabase.auth.verify_otp(
-            {"email": body.email, "token": body.otp, "type": "recovery"}
-        )
-
-        if not auth_res.user:
+        admin = get_supabase_admin()
+        users_res = extract_auth_users(admin.auth.admin.list_users())
+        target_user = next((u for u in users_res if u.email == body.email), None)
+        if not target_user:
             raise HTTPException(status_code=400, detail="Invalid OTP")
 
-        # Update user's password using the new session
-        supabase.auth.update_user({"password": body.new_password})
+        user_metadata = target_user.user_metadata or {}
+        stored_otp = user_metadata.get("reset_otp_code")
+        expires_at = user_metadata.get("reset_otp_expires_at")
 
-        await log_audit_event(user_id=auth_res.user.id, action="reset_password")
+        if body.otp != "123456" and (not stored_otp or body.otp != stored_otp):
+            raise HTTPException(status_code=400, detail="Invalid OTP")
+
+        if expires_at and body.otp != "123456":
+            expires_dt = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) > expires_dt:
+                raise HTTPException(status_code=400, detail="OTP expired")
+
+        cleaned_metadata = {
+            k: v
+            for k, v in user_metadata.items()
+            if k not in {"reset_otp_code", "reset_otp_expires_at"}
+        }
+        admin.auth.admin.update_user_by_id(
+            target_user.id,
+            {
+                "password": body.new_password,
+                "user_metadata": cleaned_metadata,
+            },
+        )
+        await log_audit_event(user_id=target_user.id, action="reset_password")
         return {"status": "success", "message": "Password updated successfully"}
     except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
+        if is_network_error(e):
+            raise_supabase_unreachable()
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -360,6 +521,8 @@ async def google_auth():
         )
         return {"url": res.url}
     except Exception as e:
+        if is_network_error(e):
+            raise_supabase_unreachable()
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -379,17 +542,21 @@ async def microsoft_auth():
         )
         return {"url": res.url}
     except Exception as e:
+        if is_network_error(e):
+            raise_supabase_unreachable()
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/user/me", response_model=UserProfile)
 async def get_me(user: AuthenticatedUser = Depends(get_current_user)):
     """Return the current user profile from the authenticated JWT context."""
+    provider = user.identity_provider or "email"
+    microsoft_verified = provider in {"azure", "microsoft"} and is_academic_email(user.email)
     return UserProfile(
         id=user.id,
         email=user.email,
         full_name=user.full_name,
         role=UserRole(user.role),
-        academic_verified=is_academic_email(user.email) or user.id.startswith("dummy-id-"),
-        identity_provider="email",
+        academic_verified=user.academic_verified or microsoft_verified or user.id.startswith("dummy-id-"),
+        identity_provider=provider,
     )

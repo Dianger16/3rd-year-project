@@ -17,15 +17,6 @@ export default function SmoothScroll({ children }: { children: React.ReactNode }
             wheelMultiplier: 1,
             touchMultiplier: 2,
             infinite: false,
-            allowNestedScroll: true,
-            prevent: (node) => {
-                // Allow native scrolling for nested scroll areas (chat lists, textareas, modals).
-                if (node.closest('[data-lenis-prevent]')) return true;
-                const tag = node.tagName;
-                if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT') return true;
-                if ((node as any).isContentEditable) return true;
-                return false;
-            },
         });
 
         // Sync Lenis scroll with GSAP ScrollTrigger

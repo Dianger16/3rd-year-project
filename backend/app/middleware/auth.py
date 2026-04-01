@@ -14,12 +14,27 @@ from app.services.supabase_client import get_supabase_admin, get_supabase_client
 security = HTTPBearer()
 
 
+def is_dummy_auth_enabled() -> bool:
+    env = (settings.environment or "").strip().lower()
+    return settings.enable_dummy_auth or env in {"dev", "development", "local", "test"}
+
+
 class AuthenticatedUser:
-    def __init__(self, id: str, email: str, role: str, full_name: str = ""):
+    def __init__(
+        self,
+        id: str,
+        email: str,
+        role: str,
+        full_name: str = "",
+        identity_provider: str = "email",
+        academic_verified: bool = False,
+    ):
         self.id = id
         self.email = email
         self.role = role
         self.full_name = full_name
+        self.identity_provider = identity_provider
+        self.academic_verified = academic_verified
 
 
 def is_academic_email(email: str) -> bool:
@@ -42,7 +57,7 @@ async def get_current_user(
     token = credentials.credentials
 
     # Dev Dummy Token Bypass
-    if token.startswith("dev-dummy-token-"):
+    if is_dummy_auth_enabled() and token.startswith("dev-dummy-token-"):
         role = token.replace("dev-dummy-token-", "")
         dummy_data = {
             "admin": {
@@ -64,11 +79,17 @@ async def get_current_user(
         if role in dummy_data:
             d = dummy_data[role]
             return AuthenticatedUser(
-                id=d["id"], email=d["email"], role=role, full_name=d["full_name"]
+                id=d["id"],
+                email=d["email"],
+                role=role,
+                full_name=d["full_name"],
+                identity_provider="email",
+                academic_verified=True,
             )
 
     user_id: Optional[str] = None
     email: str = ""
+    identity_provider: str = "email"
 
     # Prefer local JWT verification when secret is configured.
     if settings.supabase_jwt_secret:
@@ -81,6 +102,11 @@ async def get_current_user(
             )
             user_id = payload.get("sub")
             email = payload.get("email", "")
+            app_metadata = payload.get("app_metadata") or {}
+            providers = app_metadata.get("providers") or []
+            provider = app_metadata.get("provider") or (providers[0] if providers else None)
+            if provider:
+                identity_provider = str(provider)
         except JWTError:
             # Fall back to Supabase validation below (handles key mismatch in dev).
             user_id = None
@@ -93,6 +119,11 @@ async def get_current_user(
             if res and getattr(res, "user", None):
                 user_id = res.user.id
                 email = res.user.email or ""
+                app_metadata = getattr(res.user, "app_metadata", {}) or {}
+                providers = app_metadata.get("providers") or []
+                provider = app_metadata.get("provider") or (providers[0] if providers else None)
+                if provider:
+                    identity_provider = str(provider)
         except Exception:
             pass
 
@@ -102,6 +133,11 @@ async def get_current_user(
             payload = jwt.get_unverified_claims(token)
             user_id = payload.get("sub")
             email = payload.get("email", "")
+            app_metadata = payload.get("app_metadata") or {}
+            providers = app_metadata.get("providers") or []
+            provider = app_metadata.get("provider") or (providers[0] if providers else None)
+            if provider:
+                identity_provider = str(provider)
         except Exception:
             pass
 
@@ -119,18 +155,42 @@ async def get_current_user(
 
         if not result.data:
             # First-time users might not have a profile yet; let's allow extraction if it's there
-            return AuthenticatedUser(id=user_id, email=email, role="student")
+            return AuthenticatedUser(
+                id=user_id,
+                email=email,
+                role="student",
+                identity_provider=identity_provider,
+                academic_verified=is_academic_email(email),
+            )
 
         p = result.data
+        profile_email = p.get("email", "")
+        if not profile_email and email:
+            # Self-heal profile records that were manually edited and lost email.
+            try:
+                supabase.table("profiles").update({"email": email}).eq("id", user_id).execute()
+                profile_email = email
+            except Exception:
+                profile_email = email
+        resolved_email = profile_email or email
+        is_verified = is_academic_email(profile_email) or is_academic_email(email)
         return AuthenticatedUser(
             id=p["id"],
-            email=p["email"],
+            email=resolved_email,
             role=p["role"],
             full_name=p.get("full_name", ""),
+            identity_provider=identity_provider,
+            academic_verified=is_verified,
         )
     except Exception:
         # Fallback to defaults
-        return AuthenticatedUser(id=user_id, email=email, role="student")
+        return AuthenticatedUser(
+            id=user_id,
+            email=email,
+            role="student",
+            identity_provider=identity_provider,
+            academic_verified=is_academic_email(email),
+        )
 
 
 async def get_optional_user(request: Request) -> Optional[AuthenticatedUser]:

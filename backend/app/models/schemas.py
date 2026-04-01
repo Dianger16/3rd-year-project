@@ -38,6 +38,7 @@ class InitiateSignupRequest(BaseModel):
 class VerifySignupRequest(BaseModel):
     email: str
     otp: str
+    password: str
 
 
 class ForgotPasswordRequest(BaseModel):

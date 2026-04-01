@@ -9,14 +9,91 @@ logger = logging.getLogger(__name__)
 
 class EmailService:
     @staticmethod
-    def send_otp_email(receiver_email: str, otp: str, user_name: str = "User"):
-        """Sends a professional OTP email with UniGPT branding."""
-        try:
-            # Email Content with HTML and Professional Styling
-            subject = f"Your UniGPT Verification Code: {otp}"
+    def _resolve_sender() -> tuple[str, str]:
+        smtp_user = (settings.smtp_user or "").strip()
+        smtp_password = (settings.smtp_password or "").replace(" ", "").strip()
+        smtp_host = (settings.smtp_host or "").strip().lower()
+        configured_from = (settings.smtp_from_email or "").strip()
 
-            # Professional HTML Template
-            html_content = f"""
+        if not smtp_user or not smtp_password:
+            raise ValueError("SMTP_USER or SMTP_PASSWORD is missing.")
+
+        # Gmail SMTP typically rejects spoofed From domains. Use the authenticated
+        # mailbox as sender unless from-email is explicitly aligned.
+        if "gmail.com" in smtp_host and configured_from.lower() != smtp_user.lower():
+            sender_email = smtp_user
+        else:
+            sender_email = configured_from or smtp_user
+
+        return sender_email, smtp_password
+
+    @staticmethod
+    def _deliver_message(msg: MIMEMultipart, smtp_password: str) -> None:
+        smtp_host = settings.smtp_host
+        smtp_port = settings.smtp_port
+        timeout = settings.smtp_timeout_seconds
+
+        def send_with_starttls(host: str, port: int) -> None:
+            with smtplib.SMTP(host, port, timeout=timeout) as server:
+                server.starttls()
+                server.login(settings.smtp_user, smtp_password)
+                server.send_message(msg)
+
+        def send_with_ssl(host: str, port: int) -> None:
+            with smtplib.SMTP_SSL(host, port, timeout=timeout) as server:
+                server.login(settings.smtp_user, smtp_password)
+                server.send_message(msg)
+
+        if settings.smtp_use_ssl or smtp_port == 465:
+            send_with_ssl(smtp_host, smtp_port)
+            return
+
+        try:
+            send_with_starttls(smtp_host, smtp_port)
+        except OSError as exc:
+            message = str(exc).lower()
+            blocked = "forbidden by its access permissions" in message or "10013" in message
+            if blocked:
+                logger.warning(
+                    "SMTP STARTTLS failed with socket permission error on port %s. Retrying with SSL on 465.",
+                    smtp_port,
+                )
+                send_with_ssl(smtp_host, 465)
+                return
+            raise
+
+    @staticmethod
+    def send_otp_email(
+        receiver_email: str,
+        otp: str,
+        user_name: str = "User",
+        purpose: str = "verification",
+    ):
+        """Sends an OTP email with UniGPT branding for signup/reset flows."""
+        sender_email, smtp_password = EmailService._resolve_sender()
+        if purpose == "password_reset":
+            subject = f"Your UnivGPT Password Reset Code: {otp}"
+            intro = (
+                "We received a request to reset your UnivGPT password. "
+                "Use the code below to continue."
+            )
+        else:
+            subject = f"Your UniGPT Verification Code: {otp}"
+            intro = (
+                "Welcome to UnivGPT! To complete your registration, please use "
+                "the verification code below."
+            )
+
+        text_content = (
+            f"Hello {user_name},\n\n"
+            f"{intro}\n\n"
+            f"Code: {otp}\n\n"
+            "This code expires in 10 minutes. If you didn't request this, ignore this email.\n\n"
+            "Regards,\nUnivGPT Team"
+        )
+
+        # Professional HTML Template
+        html_content = f"""
             <!DOCTYPE html>
             <html>
             <head>
@@ -60,7 +137,7 @@ class EmailService:
                     </div>
                     <div class="content">
                         <div class="greeting">Hello {user_name},</div>
-                        <p>Welcome to UnivGPT! To complete your registration, please use the verification code below. This code will expire in 10 minutes.</p>
+                        <p>{intro} This code will expire in 10 minutes.</p>
                         <div class="otp-box">
                             <div class="otp-code">{otp}</div>
                         </div>
@@ -76,25 +153,20 @@ class EmailService:
             </html>
             """
 
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = subject
-            msg["From"] = f"{settings.smtp_from_name} <{settings.smtp_from_email}>"
-            msg["To"] = receiver_email
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = f"{settings.smtp_from_name} <{sender_email}>"
+        msg["To"] = receiver_email
+        msg["Reply-To"] = sender_email
 
-            msg.attach(MIMEText(html_content, "html"))
+        msg.attach(MIMEText(text_content, "plain"))
+        msg.attach(MIMEText(html_content, "html"))
 
-            # SMTP Server Configuration
-            with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
-                server.starttls()
-                server.login(settings.smtp_user, settings.smtp_password)
-                server.send_message(msg)
+        # SMTP Server Configuration
+        EmailService._deliver_message(msg, smtp_password)
 
-            logger.info(f"OTP Email sent successfully to {receiver_email}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to send email: {e}")
-            return False
+        logger.info("OTP email sent successfully to %s for %s", receiver_email, purpose)
+        return True
 
     @staticmethod
     def send_flagged_alert_email(
@@ -106,6 +178,7 @@ class EmailService:
     ):
         """Sends an alert to the admin about flagged/inappropriate student behavior."""
         try:
+            sender_email, smtp_password = EmailService._resolve_sender()
             delivery_email = settings.smtp_user
 
             subject = "ACTION REQUIRED: Flagged User Behavior in UnivGPT"
@@ -152,15 +225,12 @@ class EmailService:
 
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
-            msg["From"] = f"{settings.smtp_from_name} <{settings.smtp_from_email}>"
+            msg["From"] = f"{settings.smtp_from_name} <{sender_email}>"
             msg["To"] = delivery_email
 
             msg.attach(MIMEText(html_content, "html"))
 
-            with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
-                server.starttls()
-                server.login(settings.smtp_user, settings.smtp_password)
-                server.send_message(msg)
+            EmailService._deliver_message(msg, smtp_password)
 
             logger.info(f"Flagged alert email successfully sent for user {student_id}")
             return True

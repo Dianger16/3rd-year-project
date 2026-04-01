@@ -25,9 +25,6 @@ import { supabase } from '@/lib/supabase';
 import { authApi } from '@/lib/api';
 import { Loader2 } from 'lucide-react';
 
-const academicDomain = (import.meta.env.VITE_ACADEMIC_EMAIL_DOMAIN || 'krmu.edu.in').toLowerCase();
-const isAcademicEmail = (email?: string) => (email || '').trim().toLowerCase().endsWith(`@${academicDomain}`);
-
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuthStore();
   if (!token) return <Navigate to="/auth/login" replace />;
@@ -60,9 +57,7 @@ export default function App() {
             id: session.user.id,
             email: session.user.email || '',
             full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || 'User',
-            role: (session.user.user_metadata?.role as any) || 'student',
-            academic_verified: isAcademicEmail(session.user.email || ''),
-            identity_provider: session.user.app_metadata?.provider || session.user.app_metadata?.providers?.[0] || 'email',
+            role: (session.user.user_metadata?.role as any) || 'student'
           });
         }
       } else {
@@ -84,9 +79,7 @@ export default function App() {
             id: session.user.id,
             email: session.user.email || '',
             full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || 'Google User',
-            role: (session.user.user_metadata?.role as any) || 'student',
-            academic_verified: isAcademicEmail(session.user.email || ''),
-            identity_provider: session.user.app_metadata?.provider || session.user.app_metadata?.providers?.[0] || 'email',
+            role: (session.user.user_metadata?.role as any) || 'student'
           });
         }
       } else if (event === 'SIGNED_OUT') {

@@ -3,7 +3,7 @@
  * Typed API client for communicating with the Hybrid FastAPI backend.
  */
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 interface RequestOptions {
     method?: string;
@@ -15,7 +15,6 @@ interface RequestOptions {
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
     const { method = 'GET', body, token, isFormData = false } = options;
     const headers: Record<string, string> = {};
-    const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
     if (token) headers['Authorization'] = `Bearer ${token}`;
     if (!isFormData) headers['Content-Type'] = 'application/json';
 
@@ -24,7 +23,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
         config.body = isFormData ? (body as FormData) : JSON.stringify(body);
     }
 
-    const response = await fetch(`${API_BASE}${path}`, config);
+    const response = await fetch(`${API_BASE}${endpoint}`, config);
     if (!response.ok) {
         if (response.status === 401 && options.token) {
             // Auto-logout ONLY if an authenticated request gets rejected (corrupted/expired token).
@@ -54,9 +53,6 @@ export const authApi = {
     googleAuth: () =>
         request<{ url: string }>('/auth/google', { method: 'GET' }),
 
-    microsoftAuth: () =>
-        request<{ url: string }>('/auth/microsoft', { method: 'GET' }),
-
     login: (data: { email: string; password: string }) =>
         request<{ access_token: string; user: UserProfile }>('/auth/login', { method: 'POST', body: data }),
     getMe: (token: string) =>
@@ -68,21 +64,14 @@ export const authApi = {
 };
 
 export const documentsApi = {
-    list: (token: string, params?: { page?: number; per_page?: number; doc_type?: string }) => {
+    list: (token: string, params?: { page?: number; doc_type?: string }) => {
         const query = new URLSearchParams();
         if (params?.page) query.set('page', String(params.page));
-        if (params?.per_page) query.set('per_page', String(params.per_page));
         if (params?.doc_type) query.set('doc_type', params.doc_type);
         return request<DocumentListResponse>(`/documents?${query.toString()}`, { token });
     },
     upload: (token: string, formData: FormData) =>
         request<DocumentResponse>('/admin/documents', { method: 'POST', body: formData, token, isFormData: true }),
-    update: (
-        token: string,
-        id: string,
-        data: Partial<Pick<DocumentResponse, 'doc_type' | 'department' | 'course' | 'tags' | 'visibility'>> & { metadata?: Record<string, unknown> }
-    ) =>
-        request<DocumentResponse>(`/admin/documents/${id}`, { method: 'PATCH', body: data, token }),
     delete: (token: string, id: string) =>
         request<void>(`/admin/documents/${id}`, { method: 'DELETE', token }),
 };
@@ -97,22 +86,8 @@ export const agentApi = {
 };
 
 export const adminApi = {
-    getAuditLogs: (token: string, params?: { page?: number; per_page?: number }) => {
-        const query = new URLSearchParams();
-        if (params?.page) query.set('page', String(params.page));
-        if (params?.per_page) query.set('per_page', String(params.per_page));
-        const suffix = query.toString();
-        return request<AuditLogListResponse>(`/admin/audit${suffix ? `?${suffix}` : ''}`, { token });
-    },
-    getUsers: (token: string, params?: { page?: number; per_page?: number }) => {
-        const query = new URLSearchParams();
-        if (params?.page) query.set('page', String(params.page));
-        if (params?.per_page) query.set('per_page', String(params.per_page));
-        const suffix = query.toString();
-        return request<AdminUserListResponse>(`/admin/users${suffix ? `?${suffix}` : ''}`, { token });
-    },
-    updateUser: (token: string, id: string, data: Partial<Pick<AdminUser, 'full_name' | 'role' | 'department' | 'avatar_url'>>) =>
-        request<AdminUserUpdateResponse>(`/admin/users/${id}`, { method: 'PATCH', body: data, token }),
+    getAuditLogs: (token: string) =>
+        request<AuditLogListResponse>('/admin/audit', { token })
 };
 
 export const systemApi = {
@@ -127,21 +102,6 @@ export interface UserProfile {
     role: 'student' | 'faculty' | 'admin';
     department?: string;
     created_at?: string;
-    profileImage?: string | null;
-    academic_verified?: boolean;
-    identity_provider?: string | null;
-}
-
-export interface AdminUser {
-    id: string;
-    email: string;
-    full_name: string;
-    role: 'student' | 'faculty' | 'admin';
-    department?: string | null;
-    avatar_url?: string | null;
-    created_at?: string | null;
-    academic_verified?: boolean;
-    identity_provider?: string | null;
 }
 
 export interface DocumentResponse {
@@ -192,8 +152,6 @@ export interface AuditLogEntry {
     user?: { email: string; full_name: string };
     target_id?: string;
     payload?: unknown;
-    ip_address?: string | null;
-    status?: string | null;
     timestamp?: string;
     created_at?: string; // Alias for timestamp
 }
@@ -201,17 +159,6 @@ export interface AuditLogEntry {
 export interface AuditLogListResponse {
     logs: AuditLogEntry[];
     total: number;
-}
-
-export interface AdminUserListResponse {
-    users: AdminUser[];
-    total: number;
-    page: number;
-    per_page: number;
-}
-
-export interface AdminUserUpdateResponse {
-    user: AdminUser;
 }
 
 export interface MetricsResponse {
