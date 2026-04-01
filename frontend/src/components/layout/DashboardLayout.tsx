@@ -3,7 +3,7 @@ import { useLocation, useNavigate, Outlet } from 'react-router-dom';
 import {
     LayoutDashboard, LogOut, Bell,
     MessageSquare, FileText, Users, Shield, Settings,
-    BookOpen, ChevronRight
+    BookOpen, ChevronRight, GraduationCap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/store/authStore';
@@ -30,6 +30,7 @@ export default function DashboardLayout() {
             { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard className="w-5 h-5 shrink-0" /> },
             { label: 'AI Chat', href: '/dashboard/chat', icon: <MessageSquare className="w-5 h-5 shrink-0" /> },
             { label: 'My Courses', href: '/dashboard/courses', icon: <BookOpen className="w-5 h-5 shrink-0" /> },
+            { label: 'Faculty', href: '/dashboard/faculty', icon: <GraduationCap className="w-5 h-5 shrink-0" /> },
             { label: 'Notifications', href: '/dashboard/notifications', icon: <Bell className="w-5 h-5 shrink-0" /> },
             { label: 'Settings', href: '/dashboard/settings', icon: <Settings className="w-5 h-5 shrink-0" /> },
         ],
@@ -37,6 +38,8 @@ export default function DashboardLayout() {
             { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard className="w-5 h-5 shrink-0" /> },
             { label: 'AI Chat', href: '/dashboard/chat', icon: <MessageSquare className="w-5 h-5 shrink-0" /> },
             { label: 'Documents', href: '/dashboard/documents', icon: <FileText className="w-5 h-5 shrink-0" /> },
+            { label: 'Courses', href: '/dashboard/courses', icon: <BookOpen className="w-5 h-5 shrink-0" /> },
+            { label: 'Faculty', href: '/dashboard/faculty', icon: <GraduationCap className="w-5 h-5 shrink-0" /> },
             { label: 'Notifications', href: '/dashboard/notifications', icon: <Bell className="w-5 h-5 shrink-0" /> },
             { label: 'Settings', href: '/dashboard/settings', icon: <Settings className="w-5 h-5 shrink-0" /> },
         ],

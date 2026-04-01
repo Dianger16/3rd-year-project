@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { BookOpen, ChevronRight, GraduationCap, Mail, UserRound } from 'lucide-react';
+import { BookOpen, ChevronRight, GraduationCap, Mail } from 'lucide-react';
 import { authApi, type CourseDirectoryItem, type FacultySummary } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,67 @@ const initialsFromName = (name: string) => {
     return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 };
 
+const DEMO_FACULTY: FacultySummary[] = [
+    {
+        id: 'demo-fac-1',
+        full_name: 'Dr. Priya Sharma',
+        email: 'priya.sharma@univgpt.edu',
+        department: 'Computer Science',
+        program: 'BTech CSE Mentor',
+    },
+    {
+        id: 'demo-fac-2',
+        full_name: 'Prof. Rohan Verma',
+        email: 'rohan.verma@univgpt.edu',
+        department: 'Computer Science',
+        program: 'Academic Coordinator',
+    },
+    {
+        id: 'demo-fac-3',
+        full_name: 'Dr. Meera Nair',
+        email: 'meera.nair@univgpt.edu',
+        department: 'Computer Science',
+        program: 'Student Advisor',
+    },
+];
+
+const DEMO_COURSES: CourseDirectoryItem[] = [
+    {
+        id: 'demo-course-1',
+        code: 'CS301',
+        title: 'Data Structures & Algorithms',
+        department: 'Computer Science',
+        next_update_at: new Date().toISOString(),
+        notice_count: 3,
+        faculty_ids: ['demo-fac-1', 'demo-fac-2'],
+    },
+    {
+        id: 'demo-course-2',
+        code: 'CS402',
+        title: 'Database Management Systems',
+        department: 'Computer Science',
+        next_update_at: new Date().toISOString(),
+        notice_count: 2,
+        faculty_ids: ['demo-fac-2'],
+    },
+    {
+        id: 'demo-course-3',
+        code: 'AI405',
+        title: 'Applied Machine Learning',
+        department: 'Computer Science',
+        next_update_at: new Date().toISOString(),
+        notice_count: 4,
+        faculty_ids: ['demo-fac-3', 'demo-fac-1'],
+    },
+];
+
+const ensureAtLeastThree = <T extends { id: string }>(rows: T[], demoRows: T[]) => {
+    if (rows.length >= 3) return rows;
+    const used = new Set(rows.map((row) => row.id));
+    const additions = demoRows.filter((row) => !used.has(row.id));
+    return [...rows, ...additions].slice(0, 3);
+};
+
 export default function FacultyDirectoryPage() {
     const { token } = useAuthStore();
     const { showToast } = useToastStore();
@@ -23,27 +84,46 @@ export default function FacultyDirectoryPage() {
     const [facultyRows, setFacultyRows] = useState<FacultySummary[]>([]);
     const [courseRows, setCourseRows] = useState<CourseDirectoryItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isDemoMode, setIsDemoMode] = useState(false);
 
     const focusName = (location.state as { focusFaculty?: string } | null)?.focusFaculty?.toLowerCase() || '';
 
     useEffect(() => {
         let active = true;
         const load = async () => {
-            if (!token) return;
+            if (!token) {
+                if (active) setIsLoading(false);
+                return;
+            }
             setIsLoading(true);
+            setIsDemoMode(false);
             try {
-                const [facultyRes, coursesRes] = await Promise.all([
+                const [facultyRes, coursesRes] = await Promise.allSettled([
                     authApi.getFacultyDirectory(token, 80),
                     authApi.getCourseDirectory(token, 120),
                 ]);
                 if (!active) return;
-                setFacultyRows(facultyRes.faculty || []);
-                setCourseRows(coursesRes.courses || []);
-            } catch (err: any) {
+
+                const facultyLive = facultyRes.status === 'fulfilled' ? (facultyRes.value.faculty || []) : [];
+                const coursesLive = coursesRes.status === 'fulfilled' ? (coursesRes.value.courses || []) : [];
+                const hasFailure = facultyRes.status === 'rejected' || coursesRes.status === 'rejected';
+
+                if (hasFailure) {
+                    setIsDemoMode(true);
+                    setFacultyRows(ensureAtLeastThree(facultyLive, DEMO_FACULTY));
+                    setCourseRows(ensureAtLeastThree(coursesLive, DEMO_COURSES));
+                    showToast('Live faculty data timed out. Showing demo snapshot.', 'info');
+                    return;
+                }
+
+                setFacultyRows(facultyLive);
+                setCourseRows(coursesLive);
+            } catch {
                 if (!active) return;
-                showToast(err?.message || 'Failed to load faculty directory.', 'error');
-                setFacultyRows([]);
-                setCourseRows([]);
+                setIsDemoMode(true);
+                setFacultyRows(DEMO_FACULTY);
+                setCourseRows(DEMO_COURSES);
+                showToast('Live faculty data unavailable. Showing demo snapshot.', 'info');
             } finally {
                 if (active) setIsLoading(false);
             }
@@ -81,6 +161,11 @@ export default function FacultyDirectoryPage() {
                             <p className="text-zinc-500 text-sm mt-1">
                                 Faculty mapped to your accessible courses and department scope.
                             </p>
+                            {isDemoMode && (
+                                <span className="inline-flex mt-2 rounded-full border border-cyan-400/35 bg-cyan-400/10 px-2.5 py-1 text-[10px] font-semibold text-cyan-200 uppercase tracking-wider">
+                                    Demo snapshot
+                                </span>
+                            )}
                         </div>
                         <Button
                             variant="outline"
@@ -112,7 +197,10 @@ export default function FacultyDirectoryPage() {
                             return (
                                 <button
                                     key={faculty.id}
-                                    onClick={() => navigate(`/dashboard/faculty/${faculty.id}`)}
+                                    onClick={() => {
+                                        if (faculty.id.startsWith('demo-fac-')) return;
+                                        navigate(`/dashboard/faculty/${faculty.id}`);
+                                    }}
                                     className={`rounded-2xl border p-4 text-left transition-all ${
                                         highlighted
                                             ? 'border-cyan-400/45 bg-cyan-400/5'
@@ -142,6 +230,29 @@ export default function FacultyDirectoryPage() {
                                 </button>
                             );
                         })}
+                    </div>
+                )}
+
+                {!isLoading && courseRows.length > 0 && (
+                    <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/35 p-5">
+                        <div className="flex items-center justify-between mb-3">
+                            <h2 className="text-sm font-bold text-white uppercase tracking-wider">Course Snapshot</h2>
+                            <span className="text-[10px] text-zinc-500">
+                                {Math.min(3, courseRows.length)} shown
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            {courseRows.slice(0, 3).map((course) => (
+                                <div
+                                    key={course.id}
+                                    className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3"
+                                >
+                                    <p className="text-[10px] text-zinc-500 uppercase tracking-wider">{course.code || 'Course'}</p>
+                                    <p className="text-sm font-semibold text-white mt-1 line-clamp-2">{course.title || 'Untitled course'}</p>
+                                    <p className="text-[11px] text-zinc-500 mt-2">{course.department || 'General'}</p>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 )}
             </div>
