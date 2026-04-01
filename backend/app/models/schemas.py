@@ -74,6 +74,10 @@ class UserProfile(BaseModel):
     full_name: str
     role: UserRole
     department: Optional[str] = None
+    program: Optional[str] = None
+    semester: Optional[str] = None
+    section: Optional[str] = None
+    roll_number: Optional[str] = None
     avatar_url: Optional[str] = None
     created_at: Optional[str] = None
     academic_verified: bool = False
@@ -94,6 +98,27 @@ class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserProfile
+
+
+class UserExportProfile(BaseModel):
+    name: str
+    email: str
+    role: UserRole
+    department: Optional[str] = None
+    program: Optional[str] = None
+    semester: Optional[str] = None
+    section: Optional[str] = None
+    roll_number: Optional[str] = None
+    academic_verified: bool = False
+    member_since: Optional[str] = None
+
+
+class UserExportDataResponse(BaseModel):
+    exportDate: str
+    profile: UserExportProfile
+    queries: int = 0
+    documents: int = 0
+    notices: int = 0
 
 
 # ─── Document Models ───

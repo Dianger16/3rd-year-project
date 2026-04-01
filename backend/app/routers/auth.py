@@ -13,6 +13,8 @@ from app.models.schemas import (
     LoginRequest,
     AuthResponse,
     UserProfile,
+    UserExportDataResponse,
+    UserExportProfile,
     UserRole,
     InitiateSignupRequest,
     VerifySignupRequest,
@@ -22,6 +24,7 @@ from app.models.schemas import (
     RoleSelectionRequest,
 )
 from app.middleware.auth import AuthenticatedUser, get_current_user, is_academic_email
+from app.middleware.rbac import get_allowed_doc_types
 from app.config import settings
 from app.services.supabase_client import get_supabase_client, get_supabase_admin
 from app.services.audit import log_audit_event
@@ -161,12 +164,22 @@ def ensure_profile_consistency(admin: Any, user_id: str, auth_user: Any) -> dict
 
 def build_user_profile(profile: dict, auth_user: Any = None) -> UserProfile:
     email = profile.get("email", "")
+    metadata = getattr(auth_user, "user_metadata", {}) if auth_user else {}
+    metadata = metadata or {}
     return UserProfile(
         id=profile["id"],
         email=email,
         full_name=profile.get("full_name", "User"),
         role=UserRole(profile.get("role", "student")),
         department=profile.get("department"),
+        program=profile.get("program") or metadata.get("program"),
+        semester=(
+            str(profile.get("semester"))
+            if profile.get("semester") is not None
+            else (str(metadata.get("semester")) if metadata.get("semester") is not None else None)
+        ),
+        section=profile.get("section") or metadata.get("section"),
+        roll_number=profile.get("roll_number") or metadata.get("roll_number"),
         created_at=str(profile.get("created_at")) if profile.get("created_at") else None,
         academic_verified=is_academic_email(email),
         identity_provider=extract_identity_provider(auth_user),
@@ -564,9 +577,118 @@ async def get_me(user: AuthenticatedUser = Depends(get_current_user)):
         email=user.email,
         full_name=user.full_name,
         role=UserRole(user.role),
+        department=user.department,
+        program=user.program,
+        semester=user.semester,
+        section=user.section,
+        roll_number=user.roll_number,
+        created_at=user.created_at,
         academic_verified=user.academic_verified or user.id.startswith("dummy-id-"),
         identity_provider=provider,
     )
+
+
+@router.get("/user/export-data", response_model=UserExportDataResponse)
+async def export_user_data(
+    user: AuthenticatedUser = Depends(get_current_user),
+):
+    """Return dynamic export data for the authenticated user."""
+    try:
+        supabase = get_supabase_admin()
+        try:
+            profile_res = (
+                supabase.table("profiles")
+                .select("id,email,full_name,role,department,program,semester,section,roll_number,created_at")
+                .eq("id", user.id)
+                .limit(1)
+                .execute()
+            )
+        except Exception as profile_exc:
+            if any(
+                marker in str(profile_exc).lower()
+                for marker in ("program", "semester", "section", "roll_number")
+            ):
+                profile_res = (
+                    supabase.table("profiles")
+                    .select("id,email,full_name,role,department,created_at")
+                    .eq("id", user.id)
+                    .limit(1)
+                    .execute()
+                )
+            else:
+                raise
+        profile = profile_res.data[0] if profile_res.data else {}
+
+        query_res = (
+            supabase.table("audit_logs")
+            .select("id", count="exact")
+            .eq("user_id", user.id)
+            .eq("action", "agent_query")
+            .execute()
+        )
+        queries = int(query_res.count or 0)
+
+        allowed_types = get_allowed_doc_types(user.role)
+        doc_res = (
+            supabase.table("documents")
+            .select("id, filename, tags, doc_type, uploaded_at, created_at", count="exact")
+            .in_("doc_type", allowed_types)
+            .execute()
+        )
+        doc_rows = doc_res.data or []
+        documents = int(doc_res.count or len(doc_rows))
+
+        now_utc = datetime.now(timezone.utc)
+        recent_notices = 0
+        for row in doc_rows:
+            filename = str(row.get("filename") or "").lower()
+            tags = [str(tag).lower() for tag in (row.get("tags") or [])]
+            is_notice = any(marker in filename for marker in ("notice", "announcement", "circular")) or any(
+                marker in tags for marker in ("notice", "announcement", "circular")
+            )
+            if not is_notice:
+                continue
+            raw_dt = row.get("uploaded_at") or row.get("created_at")
+            try:
+                dt = datetime.fromisoformat(str(raw_dt).replace("Z", "+00:00"))
+            except Exception:
+                dt = None
+            if not dt:
+                continue
+            if (now_utc - dt.astimezone(timezone.utc)) <= timedelta(days=30):
+                recent_notices += 1
+
+        name = profile.get("full_name") or user.full_name or "User"
+        email = profile.get("email") or user.email
+        role_value = profile.get("role") or user.role or UserRole.STUDENT.value
+        created_at = profile.get("created_at") or user.created_at
+
+        return UserExportDataResponse(
+            exportDate=datetime.now(timezone.utc).isoformat(),
+            profile=UserExportProfile(
+                name=str(name),
+                email=str(email),
+                role=UserRole(str(role_value).lower()),
+                department=profile.get("department") or user.department,
+                program=profile.get("program") or user.program,
+                semester=(
+                    str(profile.get("semester"))
+                    if profile.get("semester") is not None
+                    else user.semester
+                ),
+                section=profile.get("section") or user.section,
+                roll_number=profile.get("roll_number") or user.roll_number,
+                academic_verified=bool(user.academic_verified),
+                member_since=str(created_at) if created_at else None,
+            ),
+            queries=queries,
+            documents=documents,
+            notices=recent_notices,
+        )
+    except Exception as e:
+        if is_network_error(e):
+            raise_supabase_unreachable()
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.put("/user/role", response_model=UserProfile)
@@ -632,6 +754,14 @@ async def set_role(
             full_name=profile.get("full_name", user.full_name or "User"),
             role=UserRole(profile.get("role", UserRole.STUDENT.value)),
             department=profile.get("department"),
+            program=profile.get("program") or user.program,
+            semester=(
+                str(profile.get("semester"))
+                if profile.get("semester") is not None
+                else user.semester
+            ),
+            section=profile.get("section") or user.section,
+            roll_number=profile.get("roll_number") or user.roll_number,
             created_at=str(profile.get("created_at")) if profile.get("created_at") else None,
             academic_verified=is_academic_email(email) or user.id.startswith("dummy-id-"),
             identity_provider=user.identity_provider or "email",

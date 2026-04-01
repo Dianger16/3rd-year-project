@@ -26,6 +26,12 @@ class AuthenticatedUser:
         email: str,
         role: str,
         full_name: str = "",
+        department: Optional[str] = None,
+        program: Optional[str] = None,
+        semester: Optional[str] = None,
+        section: Optional[str] = None,
+        roll_number: Optional[str] = None,
+        created_at: Optional[str] = None,
         identity_provider: str = "email",
         academic_verified: bool = False,
     ):
@@ -33,6 +39,12 @@ class AuthenticatedUser:
         self.email = email
         self.role = role
         self.full_name = full_name
+        self.department = department
+        self.program = program
+        self.semester = semester
+        self.section = section
+        self.roll_number = roll_number
+        self.created_at = created_at
         self.identity_provider = identity_provider
         self.academic_verified = academic_verified
 
@@ -64,16 +76,19 @@ async def get_current_user(
                 "id": "dummy-id-admin",
                 "email": "admin@unigpt.edu",
                 "full_name": "Admin User",
+                "department": "Administration",
             },
             "faculty": {
                 "id": "dummy-id-faculty",
                 "email": "faculty@unigpt.edu",
                 "full_name": "Dr. Priya Sharma",
+                "department": "Computer Science",
             },
             "student": {
                 "id": "dummy-id-student",
                 "email": "student@unigpt.edu",
                 "full_name": "Akash Kumar",
+                "department": "Computer Science",
             },
         }
         if role in dummy_data:
@@ -83,6 +98,7 @@ async def get_current_user(
                 email=d["email"],
                 role=role,
                 full_name=d["full_name"],
+                department=d.get("department"),
                 identity_provider="email",
                 academic_verified=True,
             )
@@ -159,6 +175,7 @@ async def get_current_user(
                 id=user_id,
                 email=email,
                 role="student",
+                department=None,
                 identity_provider=identity_provider,
                 academic_verified=is_academic_email(email),
             )
@@ -179,6 +196,12 @@ async def get_current_user(
             email=resolved_email,
             role=p["role"],
             full_name=p.get("full_name", ""),
+            department=p.get("department"),
+            program=p.get("program"),
+            semester=str(p.get("semester")) if p.get("semester") is not None else None,
+            section=p.get("section"),
+            roll_number=p.get("roll_number"),
+            created_at=str(p.get("created_at")) if p.get("created_at") else None,
             identity_provider=identity_provider,
             academic_verified=is_verified,
         )
@@ -188,6 +211,7 @@ async def get_current_user(
             id=user_id,
             email=email,
             role="student",
+            department=None,
             identity_provider=identity_provider,
             academic_verified=is_academic_email(email),
         )
