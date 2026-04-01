@@ -531,9 +531,10 @@ const AdminDashboard = () => {
                 <motion.div
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-br from-zinc-950 via-zinc-950 to-orange-950/20 p-5 sm:p-6 md:p-10"
+                    className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-r from-zinc-950 via-zinc-950 to-slate-950/90 p-5 sm:p-6 md:p-10"
                 >
-                    <div className="absolute top-0 right-0 w-[40%] h-full bg-gradient-to-l from-orange-500/[0.05] to-transparent pointer-events-none" />
+                    <div className="absolute top-0 right-0 w-[40%] h-full bg-gradient-to-l from-orange-500/[0.06] to-transparent pointer-events-none" />
+                    <div className="absolute -top-16 left-16 w-64 h-64 bg-cyan-500/[0.06] blur-[110px] rounded-full pointer-events-none" />
                     <div className="relative z-10 space-y-4 max-w-xl">
                         <Badge className="bg-orange-500/10 text-orange-400 border border-orange-500/20 px-3 py-1 text-[10px] font-bold tracking-widest uppercase">
                             <Shield className="w-3 h-3 mr-1.5" /> Admin Console
@@ -581,7 +582,7 @@ const AdminDashboard = () => {
                             transition={{ delay: 0.1 + i * 0.08 }}
                         >
                             <div
-                                className="p-5 rounded-2xl bg-zinc-900/50 border border-white/[0.06] hover:border-white/[0.12] transition-all cursor-default group"
+                                className="p-5 rounded-2xl bg-gradient-to-br from-zinc-900/65 to-zinc-950/70 border border-white/[0.06] hover:border-white/[0.14] transition-all cursor-default group"
                                 onMouseEnter={() => setHoveredStat(i)}
                                 onMouseLeave={() => setHoveredStat(null)}
                             >

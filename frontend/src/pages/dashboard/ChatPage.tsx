@@ -86,7 +86,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                         </div>
                     ) : (
                         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/20">
-                            <BrandLogo className="w-6 h-6 text-black -ml-0.5" />
+                            <BrandLogo className="w-6 h-6 text-black" />
                         </div>
                     )}
                 </div>
@@ -96,10 +96,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                         <span className={cn("text-xs font-semibold flex items-center gap-1", isUser ? "text-zinc-400" : "text-orange-400")}>
                             {isUser ? 'You' : (
-                                <>
-                                    <span className="text-zinc-200">Univ</span>
-                                    <span className="text-orange-400">GPT</span>
-                                </>
+                                'UnivGPT'
                             )}
                         </span>
                         {time && <span className="text-[10px] text-zinc-500 font-medium px-2 py-0.5 rounded-full bg-white/5 border border-white/5">{time}</span>}
@@ -235,12 +232,11 @@ export default function ChatPage() {
                             <motion.div className="max-w-3xl mx-auto" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                                 <div className="flex gap-4 py-5">
                                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shrink-0 shadow-lg shadow-orange-500/20">
-                                        <BrandLogo className="w-6 h-6 text-black -ml-0.5" />
+                                        <BrandLogo className="w-6 h-6 text-black" />
                                     </div>
                                     <div className="flex-1">
                                         <span className="text-xs font-semibold text-orange-400 mb-2 flex items-center gap-1">
-                                            <span className="text-zinc-200">Univ</span>
-                                            <span className="text-orange-400">GPT</span>
+                                            UnivGPT
                                         </span>
                                         <div className="flex items-center gap-3 py-3">
                                             <div className="flex gap-1">
@@ -309,9 +305,7 @@ export default function ChatPage() {
                         </div>
                     </div>
                     <p className="text-[10px] text-zinc-700 text-center mt-2.5">
-                        <span className="text-zinc-300">Univ</span>
-                        <span className="text-orange-400">GPT</span>
-                        {' '}can make mistakes. Verify important information with official sources.
+                        <span className="text-zinc-300">UnivGPT</span> can make mistakes. Verify important information with official sources.
                     </p>
                 </form>
             </div>

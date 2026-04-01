@@ -203,18 +203,19 @@ const ProfilePage = () => {
                 <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="rounded-3xl border border-white/[0.08] bg-gradient-to-br from-zinc-950 via-zinc-950 to-black overflow-hidden shadow-[0_24px_60px_-30px_rgba(249,115,22,0.45)]"
+                    className="relative rounded-3xl border border-white/[0.08] bg-gradient-to-r from-slate-900/95 via-zinc-900 to-slate-950 overflow-hidden shadow-[0_24px_60px_-30px_rgba(56,189,248,0.35)]"
                 >
-                    <div className="h-28 bg-[radial-gradient(120%_160%_at_0%_0%,rgba(249,115,22,0.38)_0%,rgba(251,191,36,0.1)_40%,rgba(0,0,0,0)_85%)]" />
+                    <div className="absolute -top-20 left-8 w-64 h-64 bg-cyan-400/10 blur-[90px] rounded-full pointer-events-none" />
+                    <div className="absolute -bottom-24 right-8 w-72 h-72 bg-indigo-400/10 blur-[100px] rounded-full pointer-events-none" />
 
-                    <div className="px-5 sm:px-7 pb-6 -mt-10 flex flex-col md:flex-row md:items-end gap-4">
+                    <div className="relative z-10 px-5 sm:px-7 py-6 flex flex-col md:flex-row md:items-end gap-4">
                         <div className="relative group">
-                            <div className="w-24 h-24 rounded-2xl p-1 bg-gradient-to-br from-orange-500 to-amber-500 shadow-xl">
+                            <div className="w-24 h-24 rounded-2xl p-1 bg-gradient-to-br from-cyan-400 to-blue-500 shadow-xl">
                                 <div className="w-full h-full rounded-[14px] bg-zinc-950 border border-white/[0.08] overflow-hidden flex items-center justify-center">
                                     {profileImage ? (
                                         <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
                                     ) : (
-                                        <span className="text-3xl font-black text-orange-400">
+                                        <span className="text-3xl font-black text-cyan-300">
                                             {user?.full_name?.charAt(0) || 'U'}
                                         </span>
                                     )}

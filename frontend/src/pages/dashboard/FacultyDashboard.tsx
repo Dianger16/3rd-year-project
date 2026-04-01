@@ -135,9 +135,11 @@ export default function FacultyDashboard() {
 
     return (
         <div className="p-6 md:p-8 space-y-8 pb-20 overflow-y-auto h-full max-w-7xl mx-auto w-full">
-            <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 rounded-3xl border border-white/[0.08] bg-gradient-to-br from-zinc-900/90 to-zinc-900/50 p-6">
+            <header className="relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6 rounded-3xl border border-white/[0.08] bg-gradient-to-r from-zinc-900 via-zinc-900/95 to-slate-900/80 p-6">
+                <div className="absolute -top-24 right-8 w-72 h-72 bg-cyan-400/10 blur-[100px] rounded-full pointer-events-none" />
+                <div className="absolute -bottom-20 left-10 w-64 h-64 bg-orange-500/10 blur-[95px] rounded-full pointer-events-none" />
                 <div className="space-y-1">
-                    <h1 className="text-2xl font-extrabold text-white tracking-tight">
+                    <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
                         Faculty Console: <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-400">Dr. {firstName}</span>
                     </h1>
                     <p className="text-zinc-500 text-sm">Live departmental operations, circulars, and faculty assistant actions.</p>
@@ -163,7 +165,7 @@ export default function FacultyDashboard() {
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: i * 0.1 }}
-                        className="bg-gradient-to-br from-zinc-900/80 to-zinc-900/40 border border-white/[0.08] rounded-3xl p-5 hover:border-white/[0.16] transition-all shadow-[0_12px_35px_-20px_rgba(0,0,0,0.8)]"
+                        className="bg-gradient-to-br from-zinc-900/90 via-zinc-900/70 to-zinc-950/70 border border-white/[0.08] rounded-3xl p-5 hover:border-white/[0.18] transition-all shadow-[0_16px_40px_-24px_rgba(0,0,0,0.9)]"
                     >
                         <div className="flex items-start justify-between mb-4">
                             <div className={cn('p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]', m.color)}>
