@@ -6,14 +6,15 @@ import { useAuthStore } from '@/store/authStore';
 import {
     ChevronDown, ChevronUp,
     FileText, Bot, Sparkles, Plus, ExternalLink,
-    Brain, ArrowUp, GraduationCap, BookOpen, HelpCircle, MessageSquare, Search,
-    Wallet, Building2, Calendar, MapPin, Copy, Check
+    ArrowUp,
+    Copy, Check
 } from 'lucide-react';
 import { BrandLogo } from '@/components/ui/BrandLogo';
 import type { SourceCitation } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 function SourceCard({ source }: { source: SourceCitation }) {
     const [expanded, setExpanded] = useState(false);
@@ -154,12 +155,25 @@ export default function ChatPage() {
     const [input, setInput] = useState('');
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
-    const { messages, isQuerying, sendQuery, newConversation } = useChatStore();
+    const { messages, isQuerying, sendQuery, newConversation, error, clearError } = useChatStore();
     const { token, user } = useAuthStore();
+    const location = useLocation();
+    const navigate = useNavigate();
+    const isStudent = user?.role === 'student';
+    const isQueryLocked = Boolean(user) && isStudent && !user.academic_verified;
+    const academicDomain = (import.meta.env.VITE_ACADEMIC_EMAIL_DOMAIN || 'krmu.edu.in').replace(/^@/, '').toLowerCase();
+    const academicVerificationMessage = `Query access is locked for this account. Sign in using your academic email (ending with @${academicDomain}) or verify your Microsoft college account.`;
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
+
+    useEffect(() => {
+        const prefill = (location.state as { prefill?: string } | null)?.prefill;
+        if (!prefill || messages.length > 0) return;
+        setInput(prefill);
+        navigate(location.pathname, { replace: true, state: null });
+    }, [location.pathname, location.state, messages.length, navigate]);
 
     // Auto-resize textarea
     useEffect(() => {
@@ -171,6 +185,7 @@ export default function ChatPage() {
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isQueryLocked) return;
         if (!input.trim() || !token || isQuerying) return;
         const query = input;
         setInput('');
@@ -185,13 +200,6 @@ export default function ChatPage() {
         }
     };
 
-    const suggestions = [
-        { icon: Wallet, text: "What is the fee payment deadline for this semester?", desc: "Fees & Dues" },
-        { icon: Calendar, text: "Show me the official university holiday list", desc: "Campus Schedule" },
-        { icon: MapPin, text: "How do I apply for a campus bus pass?", desc: "Transportation" },
-        { icon: Building2, text: "What are the rules and timings for the boys' hostel?", desc: "Campus Life" },
-    ];
-
     const firstName = user?.full_name?.split(' ')[0] || 'there';
 
     return (
@@ -200,8 +208,8 @@ export default function ChatPage() {
             <div className="flex-1 overflow-y-auto overscroll-contain" data-lenis-prevent="true" style={{ WebkitOverflowScrolling: 'touch' }}>
                 {messages.length === 0 ? (
                     /* ───── Premium Empty State ───── */
-                    <div className="flex flex-col items-center min-h-full px-4 sm:px-6 py-8 text-center">
-                        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="space-y-6 sm:space-y-10 max-w-2xl w-full my-auto">
+                    <div className="flex flex-col items-center min-h-full px-4 sm:px-6 py-10 sm:py-14 text-center">
+                        <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="space-y-6 sm:space-y-8 max-w-2xl w-full">
                             {/* Brand Icon */}
                             <div className="relative mx-auto w-12 h-12 sm:w-16 sm:h-16">
                                 <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-gradient-to-br from-orange-500/20 to-amber-500/20 border border-orange-500/20 flex items-center justify-center">
@@ -218,29 +226,13 @@ export default function ChatPage() {
                                 <p className="text-zinc-500 text-sm leading-relaxed max-w-md mx-auto">
                                     Ask me anything about your university — courses, policies, research, deadlines, and more.
                                 </p>
+                                {isQueryLocked && (
+                                    <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-100 max-w-lg mx-auto">
+                                        {academicVerificationMessage}
+                                    </div>
+                                )}
                             </div>
 
-                            {/* Suggestion Cards */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg mx-auto">
-                                {suggestions.map((s, i) => (
-                                    <motion.button
-                                        key={i}
-                                        initial={{ opacity: 0, y: 10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        transition={{ delay: 0.2 + i * 0.08 }}
-                                        onClick={() => setInput(s.text)}
-                                        className="flex items-start gap-3 p-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] hover:bg-orange-500/[0.04] hover:border-orange-500/20 transition-all text-left group"
-                                    >
-                                        <div className="w-8 h-8 rounded-xl bg-orange-500/10 border border-orange-500/15 flex items-center justify-center shrink-0 group-hover:bg-orange-500/15 transition-colors">
-                                            <s.icon className="w-4 h-4 text-orange-400/80 group-hover:text-orange-400 transition-colors" />
-                                        </div>
-                                        <div className="min-w-0">
-                                            <p className="text-[10px] text-zinc-600 font-medium uppercase tracking-wider mb-0.5">{s.desc}</p>
-                                            <p className="text-xs text-zinc-400 group-hover:text-zinc-200 transition-colors leading-relaxed">{s.text}</p>
-                                        </div>
-                                    </motion.button>
-                                ))}
-                            </div>
                         </motion.div>
                     </div>
                 ) : (
@@ -280,16 +272,35 @@ export default function ChatPage() {
             {/* ───── Input Bar — Premium ───── */}
             <div className="px-2 sm:px-6 pb-2 sm:pb-6 pt-0 shrink-0 bg-transparent">
                 <form onSubmit={handleSend} className="max-w-3xl mx-auto">
+                    {isQueryLocked && (
+                        <div className="mb-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-100">
+                            You can browse the dashboard, but chat queries are disabled until academic verification is completed. Use an academic email ending with @{academicDomain}, or verify your Microsoft college account.
+                        </div>
+                    )}
+                    {error && (
+                        <div className="mb-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] text-red-200 flex items-center justify-between gap-3">
+                            <span>{error}</span>
+                            <button
+                                type="button"
+                                onClick={clearError}
+                                className="text-red-300 hover:text-red-100 transition-colors text-[10px] font-semibold"
+                            >
+                                Dismiss
+                            </button>
+                        </div>
+                    )}
                     <div className="relative flex items-end bg-white/[0.04] border border-white/[0.08] rounded-2xl focus-within:border-orange-500/30 focus-within:bg-white/[0.05] transition-all shadow-xl shadow-black/10">
                         <textarea
                             ref={textareaRef}
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={handleKeyDown}
+                            onWheel={(e) => e.stopPropagation()}
                             placeholder="Ask about courses, policies, research..."
-                            className="flex-1 bg-transparent px-4 py-3 sm:px-5 sm:py-4 text-xs sm:text-sm placeholder:text-zinc-600 outline-none resize-none max-h-40 min-h-[44px] sm:min-h-[52px] text-white"
+                            data-lenis-prevent="true"
+                            className="flex-1 bg-transparent px-4 py-3 sm:px-5 sm:py-4 text-xs sm:text-sm placeholder:text-zinc-600 outline-none resize-none max-h-40 min-h-[44px] sm:min-h-[52px] text-white overflow-y-auto overscroll-contain"
                             rows={1}
-                            disabled={isQuerying}
+                            disabled={isQuerying || isQueryLocked}
                         />
                         <div className="flex items-center gap-1.5 sm:gap-2 p-2 sm:p-2.5 shrink-0">
                             {messages.length > 0 && (
@@ -306,7 +317,7 @@ export default function ChatPage() {
                                 type="submit"
                                 size="icon"
                                 className="h-9 w-9 rounded-xl bg-orange-600 hover:bg-orange-500 text-white shadow-md shadow-orange-500/20 transition-all hover:shadow-lg hover:shadow-orange-500/30 active:scale-90 disabled:opacity-30 disabled:hover:scale-100 disabled:shadow-none"
-                                disabled={!input.trim() || isQuerying}
+                                disabled={!input.trim() || isQuerying || isQueryLocked}
                             >
                                 <ArrowUp className="w-4 h-4" />
                             </Button>

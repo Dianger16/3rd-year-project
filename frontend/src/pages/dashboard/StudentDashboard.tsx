@@ -6,20 +6,19 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { useToastStore } from '@/store/toastStore';
 
 export default function StudentDashboard() {
     const { user } = useAuthStore();
-    const { showToast } = useToastStore();
+    const navigate = useNavigate();
     const firstName = user?.full_name?.split(' ')[0] || 'Student';
 
     const campusMetrics = [
         { label: 'Attendance', value: '94%', change: 'Above 75%', icon: CheckCircle2, color: 'text-green-500' },
         { label: 'Fee Status', value: 'Paid', change: 'Semester 4', icon: Wallet, color: 'text-orange-500' },
         { label: 'Next Holiday', value: 'Oct 28', change: 'Diwali Break', icon: Calendar, color: 'text-blue-500' },
-        { label: 'Library Dues', value: '₹0.00', change: 'Clear', icon: Building2, color: 'text-purple-500' },
+        { label: 'Library Dues', value: 'INR 0.00', change: 'Clear', icon: Building2, color: 'text-cyan-400' },
     ];
 
     const campusNotices = [
@@ -28,14 +27,22 @@ export default function StudentDashboard() {
         { title: 'Hostel WiFi maintenance schedule', tag: 'Services', date: 'Posted Yesterday', priority: 'low' },
     ];
 
-    const handleAction = (name: string) => {
-        showToast(`${name} feature coming soon!`, "info");
+    const openChatWithPrefill = (prefill: string) => {
+        navigate('/dashboard/chat', { state: { prefill } });
+    };
+
+    const openCampusBoard = () => {
+        navigate('/dashboard/documents');
+    };
+
+    const openNotice = (title: string) => {
+        openChatWithPrefill(`Summarize the campus notice: ${title}`);
     };
 
     return (
-        <div className="p-6 md:p-8 space-y-8 pb-20 overflow-y-auto h-full">
+        <div className="p-6 md:p-8 space-y-8 pb-20 overflow-y-auto h-full max-w-7xl mx-auto w-full">
             {/* Header Greeting */}
-            <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-white/[0.04]">
+            <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 rounded-3xl border border-white/[0.08] bg-gradient-to-br from-zinc-900/90 to-zinc-900/50 p-6">
                 <div className="space-y-1">
                     <h1 className="text-2xl font-extrabold text-white tracking-tight">
                         Student Portal: <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-400">{firstName}</span>
@@ -44,7 +51,7 @@ export default function StudentDashboard() {
                 </div>
                 <div className="flex items-center gap-3">
                     <Link to="/dashboard/chat">
-                        <Button className="grow sm:grow-0 bg-orange-600 hover:bg-orange-500 text-white font-bold px-6 h-12 rounded-2xl shadow-lg shadow-orange-500/20 transition-all active:scale-95 flex gap-2 text-sm">
+                        <Button className="grow sm:grow-0 bg-orange-600 hover:bg-orange-500 text-white font-semibold px-6 h-12 rounded-2xl shadow-lg shadow-orange-500/20 transition-all active:scale-95 flex gap-2 text-sm tracking-normal uppercase">
                             <Sparkles className="w-4 h-4" />
                             Ask University Admin
                         </Button>
@@ -60,7 +67,7 @@ export default function StudentDashboard() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: i * 0.1 }}
-                        className="bg-white/[0.02] border border-white/[0.06] rounded-3xl p-5 hover:bg-white/[0.04] transition-all"
+                        className="bg-gradient-to-br from-zinc-900/80 to-zinc-900/40 border border-white/[0.08] rounded-3xl p-5 hover:border-white/[0.16] transition-all shadow-[0_12px_35px_-20px_rgba(0,0,0,0.8)]"
                     >
                         <div className="flex items-start justify-between mb-4">
                             <div className={cn("p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.05]", m.color)}>
@@ -76,10 +83,10 @@ export default function StudentDashboard() {
                 ))}
             </section>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                 {/* Left Column: Notices & Policies */}
-                <div className="lg:col-span-2 flex flex-col gap-8">
-                    <div className="bg-white/[0.02] border border-white/[0.06] rounded-[2rem] p-6 flex flex-col flex-1">
+                <div className="lg:col-span-8 flex flex-col gap-8">
+                    <div className="bg-gradient-to-br from-zinc-900/80 to-zinc-900/40 border border-white/[0.08] rounded-[2rem] p-6 flex flex-col flex-1">
                         <div className="flex items-center justify-between mb-6">
                             <h3 className="text-sm font-bold text-white flex items-center gap-2">
                                 <Bell className="w-4 h-4 text-orange-400" />
@@ -87,7 +94,7 @@ export default function StudentDashboard() {
                             </h3>
                             <Button
                                 variant="ghost"
-                                onClick={() => handleAction("Campus Board")}
+                                onClick={openCampusBoard}
                                 className="text-[10px] font-black tracking-widest uppercase text-zinc-500 hover:text-orange-400 transition-colors h-auto p-0"
                             >
                                 Campus Board
@@ -100,7 +107,7 @@ export default function StudentDashboard() {
                                     initial={{ opacity: 0, x: -20 }}
                                     animate={{ opacity: 1, x: 0 }}
                                     transition={{ delay: 0.4 + (i * 0.1) }}
-                                    className="group flex items-center justify-between p-4 bg-white/[0.03] border border-white/[0.06] rounded-2xl hover:bg-white/[0.05] hover:border-white/[0.1] transition-all"
+                                    className="group flex items-center justify-between p-4 bg-zinc-900/70 border border-white/[0.08] rounded-2xl hover:bg-zinc-900/90 hover:border-white/[0.14] transition-all"
                                 >
                                     <div className="flex items-center gap-4">
                                         <div className={cn(
@@ -123,7 +130,7 @@ export default function StudentDashboard() {
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        onClick={() => handleAction("Notice View")}
+                                        onClick={() => openNotice(n.title)}
                                         className="text-zinc-600 hover:text-white hover:bg-white/5 group-hover:text-orange-400 transition-colors uppercase text-[10px] font-bold tracking-widest shrink-0 ml-2"
                                     >
                                         View <ArrowUpRight className="w-4 h-4 ml-1" />
@@ -134,9 +141,9 @@ export default function StudentDashboard() {
                     </div>
 
                     {/* Policy Expert Card */}
-                    <div className="bg-gradient-to-r from-zinc-900 to-black border border-white/[0.06] rounded-[2rem] p-8 relative overflow-hidden group shadow-2xl shrink-0">
+                    <div className="bg-gradient-to-r from-zinc-900 to-black border border-white/[0.08] rounded-[2rem] p-8 relative overflow-hidden group shadow-2xl shrink-0">
                         <div className="absolute -right-10 -top-10 w-40 h-40 bg-orange-500/5 blur-[80px] rounded-full" />
-                        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+                        <div className="relative z-10 grid gap-6 md:grid-cols-[1fr_auto] md:items-center">
                             <div className="space-y-2 text-center md:text-left">
                                 <div className="flex items-center justify-center md:justify-start gap-2 mb-2">
                                     <Building2 className="w-5 h-5 text-orange-400" />
@@ -145,8 +152,8 @@ export default function StudentDashboard() {
                                 <h3 className="text-2xl font-black text-white leading-tight">Confused about campus rules?</h3>
                                 <p className="text-zinc-400 text-sm max-w-sm">Ask about refund policies, hostel timings, bus passes, and certificate applications.</p>
                             </div>
-                            <Link to="/dashboard/chat" className="shrink-0">
-                                <Button className="bg-white text-black hover:bg-zinc-200 h-14 px-8 rounded-2xl font-extrabold transition-all hover:scale-105 active:scale-95 shadow-xl shadow-black/20 text-sm">
+                            <Link to="/dashboard/chat" state={{ prefill: 'Explain key university policy highlights for students this week.' }} className="shrink-0 md:justify-self-end">
+                                <Button className="bg-white text-black hover:bg-zinc-200 h-14 px-8 rounded-2xl font-semibold transition-all hover:scale-105 active:scale-95 shadow-xl shadow-black/20 text-sm tracking-normal uppercase">
                                     ASK ADMIN AI
                                 </Button>
                             </Link>
@@ -155,8 +162,8 @@ export default function StudentDashboard() {
                 </div>
 
                 {/* Right Column: Schedule */}
-                <div className="flex flex-col gap-8">
-                    <div className="bg-white/[0.02] border border-white/[0.06] rounded-[2rem] p-6 flex flex-col flex-1">
+                <div className="flex flex-col gap-8 lg:col-span-4 lg:max-w-[390px] lg:ml-auto">
+                    <div className="bg-gradient-to-br from-zinc-900/80 to-zinc-900/40 border border-white/[0.08] rounded-[2rem] p-5 flex flex-col flex-1">
                         <div className="flex items-center justify-between mb-2">
                             <h3 className="text-sm font-bold text-white flex items-center gap-2">
                                 <Calendar className="w-4 h-4 text-orange-400" />
@@ -185,13 +192,13 @@ export default function StudentDashboard() {
                         </div>
 
                         <Link to="/dashboard/courses" className="block mt-auto">
-                            <Button variant="outline" className="w-full border-white/[0.06] bg-white/[0.02] text-zinc-400 hover:text-white rounded-xl h-12 font-bold text-xs mt-4 transition-all group/cal">
+                            <Button variant="outline" className="w-full border-white/[0.1] bg-white/[0.03] text-zinc-300 hover:text-white rounded-xl h-12 font-semibold text-xs mt-4 transition-all group/cal">
                                 VIEW FULL CALENDAR <ChevronRight className="w-4 h-4 ml-2 text-zinc-600 group-hover/cal:text-orange-400 transition-colors" />
                             </Button>
                         </Link>
                     </div>
 
-                    <div className="bg-orange-600/[0.03] border border-orange-500/10 rounded-[2rem] p-8 text-center relative overflow-hidden">
+                    <div className="bg-orange-600/[0.06] border border-orange-500/20 rounded-[2rem] p-6 text-center relative overflow-hidden">
                         <div className="absolute -bottom-10 -left-10 w-24 h-24 bg-orange-500/5 blur-3xl rounded-full" />
                         <MapPin className="w-6 h-6 text-orange-500 mx-auto mb-3" />
                         <h4 className="text-[10px] font-bold text-orange-500 uppercase tracking-widest mb-1.5">Campus Explorer</h4>

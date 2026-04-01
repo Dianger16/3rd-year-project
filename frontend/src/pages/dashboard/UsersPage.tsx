@@ -92,9 +92,9 @@ const UsersPage = () => {
     ];
 
     return (
-        <div className="p-5 md:p-8 space-y-6 max-w-7xl mx-auto pb-20">
+        <div className="h-full overflow-y-auto p-5 md:p-8 space-y-6 max-w-7xl mx-auto pb-20">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-2xl border border-white/[0.08] bg-gradient-to-br from-zinc-900/90 to-zinc-900/40 p-5">
                 <div>
                     <h1 className="text-xl font-extrabold tracking-tight text-white flex items-center gap-2">
                         <Users className="w-5 h-5 text-orange-400" /> User Management
@@ -127,7 +127,7 @@ const UsersPage = () => {
             </div>
 
             {/* Table */}
-            <div className="rounded-2xl bg-zinc-900/50 border border-white/[0.06] overflow-hidden">
+            <div className="rounded-2xl bg-gradient-to-br from-zinc-900/80 to-zinc-900/40 border border-white/[0.08] overflow-hidden">
                 <div className="hidden sm:grid grid-cols-[1fr_1fr_80px_80px_90px_70px] gap-3 px-5 py-3 border-b border-white/[0.06] text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
                     <span>User</span><span>Department</span><span>Role</span><span>Status</span><span>Joined</span><span>Actions</span>
                 </div>

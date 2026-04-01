@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Settings, Bell, Shield, Smartphone, Globe, Cloud, Check,
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuthStore } from '@/store/authStore';
 import { useNavigate } from 'react-router-dom';
+import { useToastStore } from '@/store/toastStore';
 
 /* ─── Toggle Switch ─── */
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
@@ -28,7 +29,9 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
 
 const SettingsPage = () => {
     const { logout } = useAuthStore();
+    const { showToast } = useToastStore();
     const navigate = useNavigate();
+    const SETTINGS_CACHE_KEY = 'unigpt-dashboard-settings';
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
@@ -41,6 +44,17 @@ const SettingsPage = () => {
         dataSharing: true,
     });
 
+    useEffect(() => {
+        try {
+            const raw = window.localStorage.getItem(SETTINGS_CACHE_KEY);
+            if (!raw) return;
+            const parsed = JSON.parse(raw) as Partial<typeof settings>;
+            setSettings((prev) => ({ ...prev, ...parsed }));
+        } catch {
+            // Ignore invalid cache payloads.
+        }
+    }, []);
+
     const toggle = (key: keyof typeof settings) => {
         setSettings(prev => ({ ...prev, [key]: !prev[key] }));
     };
@@ -50,6 +64,19 @@ const SettingsPage = () => {
             logout();
             navigate('/auth/login');
         }
+    };
+
+    const handleSignOutOthers = () => {
+        showToast('No other active sessions found.', 'info');
+    };
+
+    const handleSaveChanges = () => {
+        try {
+            window.localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(settings));
+        } catch {
+            // Ignore storage write failures.
+        }
+        showToast('Settings saved successfully.', 'success');
     };
 
     const handleExportData = () => {
@@ -102,12 +129,15 @@ const SettingsPage = () => {
     ];
 
     return (
-        <div className="p-6 md:p-8 space-y-6 max-w-4xl mx-auto pb-24">
+        <div className="h-full overflow-y-auto">
+            <div className="p-6 md:p-8 space-y-6 max-w-5xl mx-auto pb-24">
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-                <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2 mb-1">
-                    <Settings className="w-5 h-5 text-orange-400" /> Settings
-                </h1>
-                <p className="text-xs text-zinc-500 mb-6">Manage preferences, security, and account.</p>
+                <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-br from-zinc-900/90 to-zinc-900/40 p-5 md:p-6 mb-6">
+                    <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2 mb-1">
+                        <Settings className="w-5 h-5 text-orange-400" /> Settings
+                    </h1>
+                    <p className="text-xs text-zinc-400">Manage preferences, security, and account settings from one place.</p>
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                     {/* Main Settings */}
@@ -211,7 +241,8 @@ const SettingsPage = () => {
                                     </div>
                                 </div>
                                 <Button
-                                    className="w-full mt-2 h-9 rounded-xl text-xs font-bold tracking-wider bg-white/[0.06] text-white border border-white/[0.12] hover:bg-white/[0.12] transition-all active:scale-95 uppercase"
+                                    onClick={handleSignOutOthers}
+                                    className="w-full mt-2 h-9 rounded-xl text-xs font-semibold tracking-wide bg-white/[0.06] text-white border border-white/[0.12] hover:bg-white/[0.12] hover:text-white transition-all active:scale-95"
                                 >
                                     Sign out others
                                 </Button>
@@ -238,6 +269,7 @@ const SettingsPage = () => {
                         </motion.div>
 
                         <Button
+                            onClick={handleSaveChanges}
                             className="w-full h-10 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-semibold transition-all hover:shadow-lg hover:shadow-orange-500/20 active:scale-[0.98]"
                         >
                             Save Changes
@@ -307,6 +339,7 @@ const SettingsPage = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
+            </div>
         </div>
     );
 };

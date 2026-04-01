@@ -3,7 +3,7 @@
  * Typed API client for communicating with the Hybrid FastAPI backend.
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
 
 interface RequestOptions {
     method?: string;
@@ -15,6 +15,7 @@ interface RequestOptions {
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
     const { method = 'GET', body, token, isFormData = false } = options;
     const headers: Record<string, string> = {};
+    const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
     if (token) headers['Authorization'] = `Bearer ${token}`;
     if (!isFormData) headers['Content-Type'] = 'application/json';
 
@@ -23,7 +24,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
         config.body = isFormData ? (body as FormData) : JSON.stringify(body);
     }
 
-    const response = await fetch(`${API_BASE}${endpoint}`, config);
+    const response = await fetch(`${API_BASE}${path}`, config);
     if (!response.ok) {
         if (response.status === 401 && options.token) {
             // Auto-logout ONLY if an authenticated request gets rejected (corrupted/expired token).
@@ -41,7 +42,7 @@ export const authApi = {
     signup: (data: { email: string; password: string; full_name: string; department?: string; role?: string }) =>
         request<{ message: string; email: string }>('/auth/signup', { method: 'POST', body: data }),
 
-    verifySignup: (data: { email: string; otp: string }) =>
+    verifySignup: (data: { email: string; otp: string; password: string }) =>
         request<{ access_token: string; user: UserProfile }>('/auth/verify', { method: 'POST', body: data }),
 
     forgotPassword: (data: { email: string }) =>
@@ -52,6 +53,9 @@ export const authApi = {
 
     googleAuth: () =>
         request<{ url: string }>('/auth/google', { method: 'GET' }),
+
+    microsoftAuth: () =>
+        request<{ url: string }>('/auth/microsoft', { method: 'GET' }),
 
     login: (data: { email: string; password: string }) =>
         request<{ access_token: string; user: UserProfile }>('/auth/login', { method: 'POST', body: data }),
@@ -64,14 +68,21 @@ export const authApi = {
 };
 
 export const documentsApi = {
-    list: (token: string, params?: { page?: number; doc_type?: string }) => {
+    list: (token: string, params?: { page?: number; per_page?: number; doc_type?: string }) => {
         const query = new URLSearchParams();
         if (params?.page) query.set('page', String(params.page));
+        if (params?.per_page) query.set('per_page', String(params.per_page));
         if (params?.doc_type) query.set('doc_type', params.doc_type);
         return request<DocumentListResponse>(`/documents?${query.toString()}`, { token });
     },
     upload: (token: string, formData: FormData) =>
         request<DocumentResponse>('/admin/documents', { method: 'POST', body: formData, token, isFormData: true }),
+    update: (
+        token: string,
+        id: string,
+        data: Partial<Pick<DocumentResponse, 'doc_type' | 'department' | 'course' | 'tags' | 'visibility'>> & { metadata?: Record<string, unknown> }
+    ) =>
+        request<DocumentResponse>(`/admin/documents/${id}`, { method: 'PATCH', body: data, token }),
     delete: (token: string, id: string) =>
         request<void>(`/admin/documents/${id}`, { method: 'DELETE', token }),
 };
@@ -102,6 +113,9 @@ export interface UserProfile {
     role: 'student' | 'faculty' | 'admin';
     department?: string;
     created_at?: string;
+    profileImage?: string | null;
+    academic_verified?: boolean;
+    identity_provider?: string | null;
 }
 
 export interface DocumentResponse {
@@ -168,6 +182,23 @@ export interface MetricsResponse {
         total_conversations: number;
         total_users: number;
         total_chats: number;
+    };
+    breakdowns?: {
+        users_by_role?: {
+            student?: number;
+            faculty?: number;
+            admin?: number;
+        };
+        documents_by_type?: Record<string, number>;
+    };
+    timeseries?: {
+        last_7_days?: Array<{
+            date: string;
+            queries: number;
+            uploads: number;
+            admin: number;
+            auth: number;
+        }>;
     };
 }
 

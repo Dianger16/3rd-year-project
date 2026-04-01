@@ -37,6 +37,7 @@ export default function DashboardLayout() {
         ],
         admin: [
             { label: 'Overview', href: '/dashboard', icon: <LayoutDashboard className="w-5 h-5 shrink-0" /> },
+            { label: 'AI Chat', href: '/dashboard/chat', icon: <MessageSquare className="w-5 h-5 shrink-0" /> },
             { label: 'Users', href: '/dashboard/users', icon: <Users className="w-5 h-5 shrink-0" /> },
             { label: 'Documents', href: '/dashboard/documents', icon: <FileText className="w-5 h-5 shrink-0" /> },
             { label: 'Audit Logs', href: '/dashboard/audit', icon: <Shield className="w-5 h-5 shrink-0" /> },
@@ -50,6 +51,18 @@ export default function DashboardLayout() {
     const currentPage = currentNav.find(item => location.pathname === item.href);
     let pageTitle = currentPage?.label || 'Dashboard';
     if (location.pathname === '/dashboard/profile') pageTitle = 'Profile';
+    const pageDescriptions: Record<string, string> = {
+        '/dashboard': role === 'admin' ? 'Control center and operational insights' : role === 'faculty' ? 'Department operations and circulars' : 'Your university workspace',
+        '/dashboard/chat': 'Ask questions and get role-aware assistance',
+        '/dashboard/courses': 'Browse courses, calendars, and syllabus',
+        '/dashboard/documents': 'Upload, route, and manage document access',
+        '/dashboard/upload': 'Upload, route, and manage document access',
+        '/dashboard/users': 'Manage accounts, roles, and status',
+        '/dashboard/audit': 'Track platform activity and events',
+        '/dashboard/settings': 'Preferences, security, and account controls',
+        '/dashboard/profile': 'Personal details and identity settings',
+    };
+    const pageSubtitle = pageDescriptions[location.pathname] || 'Workspace';
 
     const handleLogout = () => {
         logout();
@@ -83,7 +96,7 @@ export default function DashboardLayout() {
     };
 
     return (
-        <div className="flex min-h-screen w-full bg-black text-white">
+        <div className="flex min-h-screen w-full bg-[#050507] text-white">
             {/* Sticky Sidebar */}
             <div className="sticky top-0 h-screen shrink-0 z-50">
                 <Sidebar open={sidebarOpen} setOpen={setSidebarOpen}>
@@ -141,11 +154,10 @@ export default function DashboardLayout() {
                 </Sidebar>
             </div>
 
-            {/* Content Area — with curved top-left corner */}
+            {/* Content Area */}
             <div className="flex-1 flex flex-col min-w-0 pt-2 lg:pt-0">
-                <div className="flex-1 flex flex-col min-w-0 bg-zinc-950 rounded-tl-[32px] overflow-hidden">
-                    {/* Header — NOT sticky, NO blur, as requested */}
-                    <header className="h-20 flex items-center justify-between px-6 md:px-8 shrink-0 relative z-40">
+                <div className="flex-1 flex flex-col min-w-0 bg-zinc-950 rounded-tl-[32px] overflow-hidden border-l border-t border-white/[0.07] relative">
+                    <header className="h-20 flex items-center justify-between px-6 md:px-8 shrink-0 relative z-40 border-b border-white/[0.06] bg-transparent">
                         <div className="flex items-center gap-4">
                             {/* Mobile Brand Toggle */}
                             <button
@@ -165,12 +177,15 @@ export default function DashboardLayout() {
 
                             {/* Page Title - Desktop Only */}
                             <div className="hidden md:flex items-center">
-                                <h2
-                                    className="text-xl font-extrabold text-white tracking-tight ml-4"
-                                    style={{ fontFamily: '"Bricolage Grotesque", sans-serif' }}
-                                >
-                                    {pageTitle}
-                                </h2>
+                                <div className="ml-4">
+                                    <h2
+                                        className="text-xl font-extrabold text-white tracking-tight"
+                                        style={{ fontFamily: '"Bricolage Grotesque", sans-serif' }}
+                                    >
+                                        {pageTitle}
+                                    </h2>
+                                    <p className="text-[11px] text-zinc-500 mt-0.5">{pageSubtitle}</p>
+                                </div>
                             </div>
                         </div>
 
@@ -232,7 +247,7 @@ export default function DashboardLayout() {
                     </header>
 
                     {/* Native Scrollable Content */}
-                    <div className="flex-1 w-full mx-auto">
+                    <div className="flex-1 w-full mx-auto relative z-10">
                         <AnimatePresence mode="wait">
                             <motion.div
                                 key={location.pathname}

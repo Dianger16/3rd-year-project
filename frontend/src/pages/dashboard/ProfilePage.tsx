@@ -16,6 +16,11 @@ const ProfilePage = () => {
 
     const [formName, setFormName] = useState(user?.full_name || '');
     const [formDept, setFormDept] = useState(user?.department || '');
+    const profileStats = [
+        { label: 'Role', value: (user?.role || 'student').toUpperCase() },
+        { label: 'Department', value: user?.department || 'Unassigned' },
+        { label: 'Verification', value: user?.academic_verified ? 'Verified' : 'Pending' },
+    ];
 
     const roleColors: Record<string, string> = {
         student: 'bg-blue-500/15 text-blue-400 border-blue-500/20',
@@ -90,7 +95,8 @@ const ProfilePage = () => {
     ];
 
     return (
-        <div className="p-6 md:p-8 space-y-5 max-w-3xl mx-auto pb-24">
+        <div className="h-full overflow-y-auto">
+            <div className="p-6 md:p-8 space-y-5 max-w-5xl mx-auto pb-24">
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
                 {/* Profile Header */}
                 <div className="relative rounded-2xl bg-zinc-900/40 border border-white/[0.06] overflow-hidden mb-5">
@@ -203,21 +209,18 @@ const ProfilePage = () => {
 
                 {/* Activity Summary */}
                 <div className="rounded-2xl bg-zinc-900/40 border border-white/[0.06] p-5 mt-5">
-                    <span className="text-xs font-semibold text-white block mb-4">Activity Summary</span>
+                    <span className="text-xs font-semibold text-white block mb-4">Account Snapshot</span>
                     <div className="grid grid-cols-2 xs:grid-cols-3 gap-3">
-                        {[
-                            { label: 'Total Queries', value: '124' },
-                            { label: 'Documents', value: '38' },
-                            { label: 'Sessions', value: '67' },
-                        ].map(item => (
+                        {profileStats.map(item => (
                             <div key={item.label} className="p-3 sm:p-4 rounded-xl bg-white/[0.02] border border-white/[0.04] text-center hover:bg-white/[0.04] hover:border-white/[0.08] transition-all">
-                                <div className="text-lg font-bold text-white">{item.value}</div>
+                                <div className="text-sm sm:text-base font-bold text-white">{item.value}</div>
                                 <div className="text-[9px] text-zinc-500 uppercase tracking-wider mt-1">{item.label}</div>
                             </div>
                         ))}
                     </div>
                 </div>
             </motion.div>
+            </div>
         </div>
     );
 };

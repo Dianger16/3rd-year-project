@@ -51,8 +51,8 @@
   --input: 240 5.9% 90%;
   --ring: 240 5.9% 10%;
   --radius: 1rem;
-  --gradient-color: #8350e8;
-  --sparkles-color: #8350e8;
+  --gradient-color: #f97316;
+  --sparkles-color: #f97316;
 }
 
 .dark {
@@ -75,7 +75,7 @@
   --border: 0 0% 14.9%;
   --input: 0 0% 14.9%;
   --ring: 0 0% 83.1%;
-  --gradient-color: #8350e8;
+  --gradient-color: #f97316;
   --sparkles-color: #ffffff;
 }
 
@@ -92,10 +92,18 @@
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-family: 'Inter', 'Outfit', system-ui, -apple-system, sans-serif;
+    font-family: 'Outfit', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: 'Bricolage Grotesque', 'Outfit', system-ui, sans-serif;
+    letter-spacing: -0.01em;
   }
 }
 

@@ -2,13 +2,13 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
     BookOpen, Search, Filter,
-    Building2, Users, Calendar, Clock,
+    Building2, Clock,
     ChevronRight, LayoutGrid, List,
     Download, UserCircle, MapPin
 } from 'lucide-react';
-import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useNavigate } from 'react-router-dom';
 
 interface CourseAdmin {
     id: string;
@@ -23,9 +23,9 @@ interface CourseAdmin {
 }
 
 export default function CoursesPage() {
-    const { user } = useAuthStore();
     const [view, setView] = useState<'grid' | 'list'>('grid');
     const [searchQuery, setSearchQuery] = useState('');
+    const navigate = useNavigate();
 
     const courses: CourseAdmin[] = [
         {
@@ -68,10 +68,19 @@ export default function CoursesPage() {
         c.code.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
+    const openInChat = (course: CourseAdmin, mode: 'syllabus' | 'details') => {
+        const prefill =
+            mode === 'syllabus'
+                ? `Share the latest syllabus highlights for ${course.code} ${course.title}.`
+                : `Give me full academic details for ${course.code} ${course.title}, including schedule and faculty.`;
+        navigate('/dashboard/chat', { state: { prefill } });
+    };
+
     return (
-        <div className="p-6 md:p-8 space-y-8 pb-20 overflow-y-auto h-full">
+        <div className="h-full overflow-y-auto">
+            <div className="p-6 md:p-8 space-y-8 pb-20 max-w-7xl mx-auto">
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-gradient-to-br from-zinc-900/90 to-zinc-900/40 p-5 md:p-6">
                 <div>
                     <h1 className="text-2xl font-black text-white tracking-tight">
                         Curriculum Directory
@@ -116,10 +125,14 @@ export default function CoursesPage() {
                         className="w-full bg-white/[0.03] border border-white/[0.06] rounded-2xl py-3.5 pl-11 pr-4 text-sm text-white placeholder:text-zinc-700 focus:outline-none focus:border-orange-500/30 focus:bg-white/[0.05] transition-all"
                     />
                 </div>
-                <Button variant="outline" className="h-12 px-6 border-white/[0.06] bg-white/[0.02] text-zinc-500 hover:text-white rounded-2xl flex items-center gap-2 font-bold text-xs">
-                    <Filter className="w-4 h-4" />
-                    ALL SEMESTERS
-                </Button>
+                    <Button
+                        variant="outline"
+                        onClick={() => setSearchQuery('')}
+                        className="h-12 px-6 border-white/[0.08] bg-white/[0.03] text-zinc-300 hover:text-white rounded-2xl flex items-center gap-2 font-semibold text-xs"
+                    >
+                        <Filter className="w-4 h-4" />
+                        ALL SEMESTERS
+                    </Button>
             </div>
 
             {/* Courses View */}
@@ -173,11 +186,18 @@ export default function CoursesPage() {
                             </div>
 
                             <div className="mt-auto flex gap-2">
-                                <Button className="flex-1 bg-white/[0.04] hover:bg-white/[0.08] text-white border border-white/[0.06] h-12 rounded-xl text-xs font-bold transition-all group/btn">
+                                <Button
+                                    onClick={() => openInChat(course, 'syllabus')}
+                                    className="flex-1 bg-white/[0.04] hover:bg-white/[0.08] text-white border border-white/[0.06] h-12 rounded-xl text-xs font-semibold transition-all group/btn"
+                                >
                                     <Download className="w-4 h-4 mr-2 text-zinc-500 group-hover/btn:text-orange-400 transition-colors" />
                                     SYLLABUS
                                 </Button>
-                                <Button size="icon" className="w-12 h-12 bg-orange-600 hover:bg-orange-500 text-white rounded-xl shadow-lg shadow-orange-500/20">
+                                <Button
+                                    size="icon"
+                                    onClick={() => openInChat(course, 'details')}
+                                    className="w-12 h-12 bg-orange-600 hover:bg-orange-500 text-white rounded-xl shadow-lg shadow-orange-500/20"
+                                >
                                     <ChevronRight className="w-5 h-5" />
                                 </Button>
                             </div>
@@ -201,13 +221,18 @@ export default function CoursesPage() {
                                     </div>
                                 </div>
                             </div>
-                            <Button variant="ghost" className="text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 font-black text-[10px] uppercase tracking-widest">
+                            <Button
+                                variant="ghost"
+                                onClick={() => openInChat(course, 'details')}
+                                className="text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 font-semibold text-[10px] uppercase tracking-widest"
+                            >
                                 Details
                             </Button>
                         </div>
                     ))}
                 </div>
             )}
+            </div>
         </div>
     );
 }

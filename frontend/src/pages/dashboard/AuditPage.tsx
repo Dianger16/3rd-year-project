@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, Search, Filter, Clock, Activity, Download, ChevronRight } from 'lucide-react';
+import { Shield, Search, Filter, Clock, Download, ChevronRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
@@ -41,6 +41,13 @@ const AuditPage = () => {
         query: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
         system: 'bg-red-500/10 text-red-400 border-red-500/20',
     };
+    const typeDotColors: Record<string, string> = {
+        auth: 'bg-emerald-400',
+        upload: 'bg-blue-400',
+        admin: 'bg-orange-400',
+        query: 'bg-indigo-400',
+        system: 'bg-red-400',
+    };
 
     const statusIcons: Record<string, React.ReactNode> = {
         success: <div className="w-2 h-2 rounded-full bg-emerald-500" />,
@@ -71,9 +78,10 @@ const AuditPage = () => {
     };
 
     return (
-        <div className="p-5 md:p-8 space-y-5 max-w-7xl mx-auto pb-20">
+        <div className="h-full overflow-y-auto">
+            <div className="p-5 md:p-8 space-y-5 max-w-7xl mx-auto pb-20">
             {/* Header */}
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-gradient-to-br from-zinc-900/90 to-zinc-900/40 px-5 py-4">
                 <div>
                     <h1 className="text-xl font-extrabold tracking-tight text-white flex items-center gap-2">
                         <Shield className="w-5 h-5 text-orange-400" /> System Audit Logs
@@ -98,7 +106,7 @@ const AuditPage = () => {
             </motion.div>
 
             {/* Filters */}
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="flex flex-wrap items-center gap-3 bg-zinc-900/40 border border-white/[0.06] p-4 rounded-xl">
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="flex flex-wrap items-center gap-3 bg-zinc-900/60 border border-white/[0.08] p-4 rounded-xl">
                 <div className="relative flex-1 min-w-[200px]">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                     <input
@@ -114,7 +122,7 @@ const AuditPage = () => {
                             key={t} onClick={() => setFilterType(t)}
                             className={`h-8 px-3 rounded-lg text-[11px] font-semibold capitalize transition-all flex items-center gap-1.5 border active:scale-95 ${filterType === t ? 'bg-orange-500/15 text-orange-400 border-orange-500/20' : 'bg-white/[0.03] text-zinc-400 border-white/[0.08] hover:bg-white/[0.06] hover:text-white hover:border-white/[0.15]'}`}
                         >
-                            {t !== 'all' && <div className={`w-1.5 h-1.5 rounded-full ${typeColors[t]?.split(' ')[0] || ''}`} />}
+                            {t !== 'all' && <div className={`w-1.5 h-1.5 rounded-full ${typeDotColors[t] || 'bg-zinc-500'}`} />}
                             {t}
                         </button>
                     ))}
@@ -181,7 +189,7 @@ const AuditPage = () => {
                         Showing{' '}
                         <span className="text-zinc-300">
                             {(currentPage - 1) * ITEMS_PER_PAGE + 1}
-                            {'–'}
+                            {'-'}
                             {Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)}
                         </span>{' '}
                         of <span className="text-zinc-300">{filtered.length}</span> events
@@ -221,8 +229,10 @@ const AuditPage = () => {
                     </div>
                 </div>
             )}
+            </div>
         </div>
     );
 };
 
 export default AuditPage;
+
