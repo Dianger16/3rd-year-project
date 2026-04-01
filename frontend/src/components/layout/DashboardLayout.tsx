@@ -57,6 +57,8 @@ export default function DashboardLayout() {
     const currentPage = currentNav.find(item => location.pathname === item.href);
     let pageTitle = currentPage?.label || 'Dashboard';
     if (location.pathname === '/dashboard/profile') pageTitle = 'Profile';
+    if (location.pathname === '/dashboard/faculty') pageTitle = 'Faculty';
+    if (location.pathname.startsWith('/dashboard/faculty/')) pageTitle = 'Faculty Profile';
     const pageDescriptions: Record<string, string> = {
         '/dashboard': role === 'admin' ? 'Control center and operational insights' : role === 'faculty' ? 'Department operations and circulars' : 'Your university workspace',
         '/dashboard/chat': 'Ask questions and get role-aware assistance',
@@ -68,8 +70,12 @@ export default function DashboardLayout() {
         '/dashboard/settings': 'Preferences, security, and account controls',
         '/dashboard/profile': 'Personal details and identity settings',
         '/dashboard/notifications': 'Live updates for your role, department, and courses',
+        '/dashboard/faculty': 'Faculty mapped to your courses and department',
+        '/dashboard/faculty/:id': 'Faculty member details and mapped courses',
     };
-    const pageSubtitle = pageDescriptions[location.pathname] || 'Workspace';
+    const pageSubtitle = location.pathname.startsWith('/dashboard/faculty/')
+        ? pageDescriptions['/dashboard/faculty/:id']
+        : (pageDescriptions[location.pathname] || 'Workspace');
 
     const handleLogout = () => {
         logout();
