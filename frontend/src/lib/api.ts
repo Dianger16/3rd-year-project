@@ -4,6 +4,8 @@
  */
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
+const responseCache = new Map<string, { expiresAt: number; data: unknown }>();
+const inflightCache = new Map<string, Promise<unknown>>();
 
 interface RequestOptions {
     method?: string;
@@ -38,6 +40,51 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     return response.json();
 }
 
+function tokenSuffix(token?: string) {
+    if (!token) return 'anon';
+    return token.slice(-12);
+}
+
+function buildCacheKey(namespace: string, token?: string, params?: string) {
+    return `${namespace}:${tokenSuffix(token)}:${params || ''}`;
+}
+
+async function cachedGet<T>(
+    key: string,
+    ttlMs: number,
+    loader: () => Promise<T>,
+): Promise<T> {
+    const now = Date.now();
+    const cached = responseCache.get(key);
+    if (cached && cached.expiresAt > now) {
+        return cached.data as T;
+    }
+
+    const inflight = inflightCache.get(key);
+    if (inflight) {
+        return inflight as Promise<T>;
+    }
+
+    const promise = loader()
+        .then((data) => {
+            responseCache.set(key, { expiresAt: now + ttlMs, data });
+            return data;
+        })
+        .finally(() => {
+            inflightCache.delete(key);
+        });
+    inflightCache.set(key, promise);
+    return promise;
+}
+
+function invalidateCacheByPrefix(prefix: string) {
+    for (const key of responseCache.keys()) {
+        if (key.startsWith(prefix)) {
+            responseCache.delete(key);
+        }
+    }
+}
+
 export const authApi = {
     signup: (data: { email: string; password: string; full_name: string; department?: string; role?: string }) =>
         request<{ message: string; email: string }>('/auth/signup', { method: 'POST', body: data }),
@@ -58,6 +105,56 @@ export const authApi = {
         request<{ access_token: string; user: UserProfile }>('/auth/login', { method: 'POST', body: data }),
     getMe: (token: string) =>
         request<UserProfile>('/user/me', { token }),
+    updateProfile: (token: string, data: Partial<Pick<UserProfile, 'full_name' | 'department' | 'program' | 'semester' | 'section' | 'roll_number'>>) =>
+        request<UserProfile>('/user/profile', { method: 'PATCH', token, body: data }),
+    getSettings: (token: string) =>
+        cachedGet(
+            buildCacheKey('user-settings', token),
+            30_000,
+            () => request<UserSettingsResponse>('/user/settings', { token }),
+        ),
+    saveSettings: (token: string, settings: UserSettingsPayload) =>
+        request<UserSettingsResponse>('/user/settings', { method: 'PUT', token, body: settings }).then((res) => {
+            invalidateCacheByPrefix(`user-settings:${tokenSuffix(token)}`);
+            return res;
+        }),
+    getNotifications: (token: string, limit = 20, options?: { force?: boolean }) => {
+        const endpoint = `/user/notifications?limit=${encodeURIComponent(String(limit))}`;
+        if (options?.force) {
+            invalidateCacheByPrefix(`user-notifications:${tokenSuffix(token)}`);
+            return request<UserNotificationListResponse>(endpoint, { token });
+        }
+        return cachedGet(
+            buildCacheKey('user-notifications', token, String(limit)),
+            10_000,
+            () => request<UserNotificationListResponse>(endpoint, { token }),
+        );
+    },
+    markNotificationsRead: (token: string) =>
+        request<UserSettingsResponse>('/user/notifications/read', { method: 'PUT', token }).then((res) => {
+            invalidateCacheByPrefix(`user-notifications:${tokenSuffix(token)}`);
+            return res;
+        }),
+    getFacultyDirectory: (token: string, limit = 20) =>
+        cachedGet(
+            buildCacheKey('user-faculty', token, String(limit)),
+            20_000,
+            () =>
+                request<FacultyListResponse>(
+                    `/user/faculty?limit=${encodeURIComponent(String(limit))}`,
+                    { token },
+                ),
+        ),
+    getCourseDirectory: (token: string, limit = 50) =>
+        cachedGet(
+            buildCacheKey('user-courses', token, String(limit)),
+            20_000,
+            () =>
+                request<CourseDirectoryResponse>(
+                    `/user/courses?limit=${encodeURIComponent(String(limit))}`,
+                    { token },
+                ),
+        ),
     setRole: (token: string, role: UserProfile['role']) =>
         request<UserProfile>('/user/role', { method: 'PUT', token, body: { role } }),
     exportUserData: (token: string) =>
@@ -140,6 +237,60 @@ export interface UserExportData {
     queries: number;
     documents: number;
     notices: number;
+}
+
+export interface UserSettingsPayload {
+    emailNotifications: boolean;
+    pushNotifications: boolean;
+    reducedMotion: boolean;
+}
+
+export interface UserSettingsResponse {
+    settings: UserSettingsPayload;
+}
+
+export interface UserNotificationItem {
+    id: string;
+    title: string;
+    message: string;
+    course?: string | null;
+    department?: string | null;
+    uploaded_at?: string | null;
+    unread: boolean;
+}
+
+export interface UserNotificationListResponse {
+    notifications: UserNotificationItem[];
+    total: number;
+    unread: number;
+}
+
+export interface FacultySummary {
+    id: string;
+    full_name: string;
+    email: string;
+    department?: string | null;
+    program?: string | null;
+}
+
+export interface FacultyListResponse {
+    faculty: FacultySummary[];
+    total: number;
+}
+
+export interface CourseDirectoryItem {
+    id: string;
+    code: string;
+    title: string;
+    department?: string | null;
+    next_update_at?: string | null;
+    notice_count: number;
+    faculty_ids: string[];
+}
+
+export interface CourseDirectoryResponse {
+    courses: CourseDirectoryItem[];
+    total: number;
 }
 
 export interface DocumentResponse {
