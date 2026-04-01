@@ -84,6 +84,69 @@ class UserProfile(BaseModel):
     identity_provider: Optional[str] = None
 
 
+class UserProfileUpdateRequest(BaseModel):
+    full_name: Optional[str] = None
+    department: Optional[str] = None
+    program: Optional[str] = None
+    semester: Optional[str] = None
+    section: Optional[str] = None
+    roll_number: Optional[str] = None
+
+
+class UserSettingsPayload(BaseModel):
+    emailNotifications: bool = True
+    pushNotifications: bool = False
+    reducedMotion: bool = False
+
+
+class UserSettingsResponse(BaseModel):
+    settings: UserSettingsPayload
+
+
+class UserNotificationItem(BaseModel):
+    id: str
+    title: str
+    message: str
+    course: Optional[str] = None
+    department: Optional[str] = None
+    uploaded_at: Optional[str] = None
+    unread: bool = False
+
+
+class UserNotificationListResponse(BaseModel):
+    notifications: list[UserNotificationItem] = Field(default_factory=list)
+    total: int = 0
+    unread: int = 0
+
+
+class FacultySummary(BaseModel):
+    id: str
+    full_name: str
+    email: str
+    department: Optional[str] = None
+    program: Optional[str] = None
+
+
+class FacultyListResponse(BaseModel):
+    faculty: list[FacultySummary] = Field(default_factory=list)
+    total: int = 0
+
+
+class CourseDirectoryItem(BaseModel):
+    id: str
+    code: str
+    title: str
+    department: Optional[str] = None
+    next_update_at: Optional[str] = None
+    notice_count: int = 0
+    faculty_ids: list[str] = Field(default_factory=list)
+
+
+class CourseDirectoryResponse(BaseModel):
+    courses: list[CourseDirectoryItem] = Field(default_factory=list)
+    total: int = 0
+
+
 class SignupResponse(BaseModel):
     message: str
     email: str

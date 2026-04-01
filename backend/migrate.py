@@ -133,7 +133,8 @@ def ensure_runtime_columns_and_indexes(cur) -> None:
           ADD COLUMN IF NOT EXISTS section TEXT,
           ADD COLUMN IF NOT EXISTS roll_number TEXT,
           ADD COLUMN IF NOT EXISTS academic_verified BOOLEAN DEFAULT FALSE,
-          ADD COLUMN IF NOT EXISTS identity_provider TEXT;
+          ADD COLUMN IF NOT EXISTS identity_provider TEXT,
+          ADD COLUMN IF NOT EXISTS preferences JSONB DEFAULT '{}'::jsonb;
         """
     )
 
