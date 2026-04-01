@@ -17,10 +17,12 @@ import AuditPage from '@/pages/dashboard/AuditPage';
 import SettingsPage from '@/pages/dashboard/SettingsPage';
 import ProfilePage from '@/pages/dashboard/ProfilePage';
 import UploadPage from '@/pages/dashboard/UploadPage';
+import NotificationsPage from '@/pages/dashboard/NotificationsPage';
+import FacultyProfilePage from '@/pages/dashboard/FacultyProfilePage';
 import AuthLayout from '@/components/layout/AuthLayout';
 import SmoothScroll from '@/components/layout/SmoothScroll';
 import { ToastProvider } from '@/components/ui/ToastProvider';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { authApi } from '@/lib/api';
 import { Loader2 } from 'lucide-react';
@@ -46,50 +48,49 @@ function DashboardHome() {
 
 export default function App() {
   const { setSession, logout, isInitializing, finishInitializing } = useAuthStore();
+  const lastSyncedTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
+    const syncSessionToBackend = async (session: any, fallbackName: string) => {
+      if (!session?.access_token) return;
+      if (lastSyncedTokenRef.current === session.access_token) return;
+
+      try {
+        const user = await authApi.getMe(session.access_token);
+        setSession(session.access_token, user);
+      } catch (err) {
+        console.warn('Session sync failed, using metadata fallback:', err);
+        setSession(session.access_token, {
+          id: session.user.id,
+          email: session.user.email || '',
+          full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || fallbackName,
+          role: (session.user.user_metadata?.role as any) || 'student',
+          academic_verified: isAcademicEmail(session.user.email || ''),
+          identity_provider: session.user.app_metadata?.provider || session.user.app_metadata?.providers?.[0] || 'email',
+        });
+      } finally {
+        lastSyncedTokenRef.current = session.access_token;
+      }
+    };
+
     const initAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        try {
-          const user = await authApi.getMe(session.access_token);
-          setSession(session.access_token, user);
-        } catch (err) {
-          console.warn('Syncing existing session failed:', err);
-          setSession(session.access_token, {
-            id: session.user.id,
-            email: session.user.email || '',
-            full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || 'User',
-            role: (session.user.user_metadata?.role as any) || 'student',
-            academic_verified: isAcademicEmail(session.user.email || ''),
-            identity_provider: session.user.app_metadata?.provider || session.user.app_metadata?.providers?.[0] || 'email',
-          });
-        }
+        await syncSessionToBackend(session, 'User');
       } else {
-        finishInitializing();
+        lastSyncedTokenRef.current = null;
       }
+      finishInitializing();
     };
 
     initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('🔥 Auth Event:', event);
+      console.log('Auth Event:', event);
       if (session?.access_token) {
-        try {
-          const user = await authApi.getMe(session.access_token);
-          setSession(session.access_token, user);
-        } catch (err) {
-          console.warn('Backend sync failed:', err);
-          setSession(session.access_token, {
-            id: session.user.id,
-            email: session.user.email || '',
-            full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || 'Google User',
-            role: (session.user.user_metadata?.role as any) || 'student',
-            academic_verified: isAcademicEmail(session.user.email || ''),
-            identity_provider: session.user.app_metadata?.provider || session.user.app_metadata?.providers?.[0] || 'email',
-          });
-        }
+        await syncSessionToBackend(session, 'Google User');
       } else if (event === 'SIGNED_OUT') {
+        lastSyncedTokenRef.current = null;
         logout();
       }
       finishInitializing();
@@ -149,6 +150,8 @@ export default function App() {
               <Route path="audit" element={<AuditPage />} />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="profile" element={<ProfilePage />} />
+              <Route path="notifications" element={<NotificationsPage />} />
+              <Route path="faculty/:id" element={<FacultyProfilePage />} />
             </Route>
 
             {/* Fallback */}
