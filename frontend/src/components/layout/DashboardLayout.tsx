@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, Outlet, Link } from 'react-router-dom';
 import {
     LayoutDashboard, LogOut, Bell,
-    MessageSquare, FileText, Users, Shield, Settings, Upload,
-    BookOpen, UserCircle
+    MessageSquare, FileText, Users, Shield, Settings,
+    BookOpen, ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/store/authStore';
@@ -11,11 +11,14 @@ import { cn } from '@/lib/utils';
 import { BrandLogo } from '@/components/ui/BrandLogo';
 import { Sidebar, SidebarBody, SidebarLink } from '@/components/ui/sidebar';
 import { useToastStore } from '@/store/toastStore';
+import { authApi, type UserNotificationItem } from '@/lib/api';
 
 export default function DashboardLayout() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [showNotifications, setShowNotifications] = useState(false);
-    const { user, logout } = useAuthStore();
+    const [notifications, setNotifications] = useState<UserNotificationItem[]>([]);
+    const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
+    const { user, logout, token } = useAuthStore();
     const { showToast } = useToastStore();
     const location = useLocation();
     const navigate = useNavigate();
@@ -27,12 +30,14 @@ export default function DashboardLayout() {
             { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard className="w-5 h-5 shrink-0" /> },
             { label: 'AI Chat', href: '/dashboard/chat', icon: <MessageSquare className="w-5 h-5 shrink-0" /> },
             { label: 'My Courses', href: '/dashboard/courses', icon: <BookOpen className="w-5 h-5 shrink-0" /> },
+            { label: 'Notifications', href: '/dashboard/notifications', icon: <Bell className="w-5 h-5 shrink-0" /> },
             { label: 'Settings', href: '/dashboard/settings', icon: <Settings className="w-5 h-5 shrink-0" /> },
         ],
         faculty: [
             { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard className="w-5 h-5 shrink-0" /> },
             { label: 'AI Chat', href: '/dashboard/chat', icon: <MessageSquare className="w-5 h-5 shrink-0" /> },
             { label: 'Documents', href: '/dashboard/documents', icon: <FileText className="w-5 h-5 shrink-0" /> },
+            { label: 'Notifications', href: '/dashboard/notifications', icon: <Bell className="w-5 h-5 shrink-0" /> },
             { label: 'Settings', href: '/dashboard/settings', icon: <Settings className="w-5 h-5 shrink-0" /> },
         ],
         admin: [
@@ -41,6 +46,7 @@ export default function DashboardLayout() {
             { label: 'Users', href: '/dashboard/users', icon: <Users className="w-5 h-5 shrink-0" /> },
             { label: 'Documents', href: '/dashboard/documents', icon: <FileText className="w-5 h-5 shrink-0" /> },
             { label: 'Audit Logs', href: '/dashboard/audit', icon: <Shield className="w-5 h-5 shrink-0" /> },
+            { label: 'Notifications', href: '/dashboard/notifications', icon: <Bell className="w-5 h-5 shrink-0" /> },
             { label: 'Settings', href: '/dashboard/settings', icon: <Settings className="w-5 h-5 shrink-0" /> },
         ],
     };
@@ -61,6 +67,7 @@ export default function DashboardLayout() {
         '/dashboard/audit': 'Track platform activity and events',
         '/dashboard/settings': 'Preferences, security, and account controls',
         '/dashboard/profile': 'Personal details and identity settings',
+        '/dashboard/notifications': 'Live updates for your role, department, and courses',
     };
     const pageSubtitle = pageDescriptions[location.pathname] || 'Workspace';
 
@@ -70,12 +77,43 @@ export default function DashboardLayout() {
         navigate('/auth/login');
     };
 
-    const notifications = [
-        { id: 1, text: 'New syllabus uploaded for CS301', time: '5m ago', unread: true },
-        { id: 2, text: 'Campus policy update: Library hours', time: '1h ago', unread: true },
-        { id: 3, text: 'Assignment deadline reminder', time: '3h ago', unread: false },
-    ];
-    const unreadCount = notifications.filter(n => n.unread).length;
+    const unreadCount = useMemo(() => notifications.filter((n) => n.unread).length, [notifications]);
+
+    const formatTimeAgo = (iso?: string | null) => {
+        if (!iso) return 'Just now';
+        const ms = Date.now() - new Date(iso).getTime();
+        const mins = Math.max(1, Math.floor(ms / 60000));
+        if (mins < 60) return `${mins}m ago`;
+        const hrs = Math.floor(mins / 60);
+        if (hrs < 24) return `${hrs}h ago`;
+        const days = Math.floor(hrs / 24);
+        return `${days}d ago`;
+    };
+
+    useEffect(() => {
+        let active = true;
+        const loadTopbarData = async () => {
+            if (!token) return;
+            try {
+                const notificationRes = await authApi.getNotifications(token, 6);
+                if (!active) return;
+                setNotifications(notificationRes.notifications || []);
+            } catch {
+                if (!active) return;
+                setNotifications([]);
+            }
+        };
+        loadTopbarData();
+        return () => {
+            active = false;
+        };
+    }, [token]);
+
+    useEffect(() => {
+        if (!showNotifications || !token || unreadCount <= 0) return;
+        authApi.markNotificationsRead(token).catch(() => undefined);
+        setNotifications((prev) => prev.map((item) => ({ ...item, unread: false })));
+    }, [showNotifications, unreadCount, token]);
 
     // Get profile image from store (would be set by ProfilePage)
     const profileImage = (user as any)?.profileImage || null;
@@ -98,7 +136,7 @@ export default function DashboardLayout() {
     return (
         <div className="flex min-h-screen w-full bg-[#050507] text-white">
             {/* Sticky Sidebar */}
-            <div className="sticky top-0 h-screen shrink-0 z-50">
+            <div className="sticky top-0 h-screen shrink-0 z-50 bg-black">
                 <Sidebar open={sidebarOpen} setOpen={setSidebarOpen}>
                     <SidebarBody className="justify-between gap-6 py-2">
                         {/* Top: Logo + Nav */}
@@ -128,6 +166,7 @@ export default function DashboardLayout() {
                                     />
                                 ))}
                             </div>
+
                         </div>
 
                         {/* Bottom: User + Logout */}
@@ -155,9 +194,9 @@ export default function DashboardLayout() {
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 flex flex-col min-w-0 pt-2 lg:pt-0">
-                <div className="flex-1 flex flex-col min-w-0 bg-zinc-950 rounded-tl-[32px] overflow-hidden border-l border-t border-white/[0.07] relative">
-                    <header className="h-20 flex items-center justify-between px-6 md:px-8 shrink-0 relative z-40 border-b border-white/[0.06] bg-transparent">
+            <div className="flex-1 flex flex-col min-w-0 pt-2 lg:pt-0 bg-black">
+                <div className="flex-1 flex flex-col min-w-0 bg-black rounded-tl-[32px] overflow-hidden border-l border-t border-white/[0.07] relative">
+                    <header className="h-20 flex items-center justify-between px-6 md:px-8 shrink-0 relative z-40 border-b border-white/[0.06] bg-black">
                         <div className="flex items-center gap-4">
                             {/* Mobile Brand Toggle */}
                             <button
@@ -193,7 +232,11 @@ export default function DashboardLayout() {
                             {/* Notification Bell */}
                             <div className="relative">
                                 <button
-                                    onClick={() => setShowNotifications(!showNotifications)}
+                                    onClick={() => {
+                                        setIsLoadingNotifications(true);
+                                        setShowNotifications((prev) => !prev);
+                                        setTimeout(() => setIsLoadingNotifications(false), 150);
+                                    }}
                                     className="w-9 h-9 flex items-center justify-center text-zinc-500 hover:text-white transition-colors rounded-full hover:bg-white/[0.06] relative"
                                 >
                                     <Bell className="w-[18px] h-[18px]" />
@@ -215,7 +258,12 @@ export default function DashboardLayout() {
                                                 <span className="text-[10px] text-orange-400 font-semibold">{unreadCount} new</span>
                                             </div>
                                             <div className="max-h-64 overflow-y-auto">
-                                                {notifications.map(n => (
+                                                {!isLoadingNotifications && notifications.length === 0 && (
+                                                    <div className="px-4 py-6 text-xs text-zinc-500">
+                                                        No notifications yet.
+                                                    </div>
+                                                )}
+                                                {notifications.map((n) => (
                                                     <div key={n.id} className={cn("px-4 py-3 hover:bg-white/[0.03] cursor-pointer border-b border-white/[0.04] last:border-0 transition-colors", n.unread && "bg-orange-500/[0.03]")}>
                                                         <div className="flex items-start gap-3">
                                                             {n.unread ? (
@@ -224,13 +272,23 @@ export default function DashboardLayout() {
                                                                 <div className="w-1.5 h-1.5 opacity-0 shrink-0" />
                                                             )}
                                                             <div className="flex-1 min-w-0">
-                                                                <p className="text-xs text-zinc-300 leading-relaxed">{n.text}</p>
-                                                                <p className="text-[10px] text-zinc-600 mt-1">{n.time}</p>
+                                                                <p className="text-xs text-zinc-300 leading-relaxed font-medium">{n.title}</p>
+                                                                <p className="text-[11px] text-zinc-500 mt-1">{n.message}</p>
+                                                                <p className="text-[10px] text-zinc-600 mt-1">{formatTimeAgo(n.uploaded_at)}</p>
                                                             </div>
                                                         </div>
                                                     </div>
                                                 ))}
                                             </div>
+                                            <Link
+                                                to="/dashboard/notifications"
+                                                onClick={() => {
+                                                    setShowNotifications(false);
+                                                }}
+                                                className="w-full px-4 py-3 text-xs text-orange-300 hover:text-orange-200 border-t border-white/[0.06] flex items-center justify-center gap-1.5 bg-black/40 hover:bg-white/[0.03]"
+                                            >
+                                                View all notifications <ChevronRight className="w-3.5 h-3.5" />
+                                            </Link>
                                         </motion.div>
                                     )}
                                 </AnimatePresence>
