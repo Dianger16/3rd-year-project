@@ -361,21 +361,45 @@ def is_fast_smalltalk_query(query: str) -> bool:
     return starts_with_greeting or asks_help
 
 
-def build_fast_smalltalk_answer(user_role: str) -> str:
-    if user_role == "admin":
-        return (
-            "Hi. I can help with admin operations: user counts, document status, upload logs, audit activity, "
-            "notice lookups, and date-based document checks."
-        )
-    if user_role == "faculty":
-        return (
-            "Hi. I can help with faculty workflows: circular summaries, course/department notices, "
-            "policy lookups, and document Q&A from your allowed scope."
-        )
-    return (
-        "Hi. I can help with student tasks: notices, course information, policy Q&A, deadlines, "
-        "and answers grounded in your accessible documents."
+async def build_fast_smalltalk_answer(query: str, user_role: str, user_profile: Optional[dict[str, Any]] = None) -> str:
+    profile = user_profile or {}
+    raw_name = str(profile.get("full_name") or "").strip()
+    first_name = raw_name.split(" ")[0] if raw_name else ""
+
+    role_capabilities = {
+        "admin": "system ops, user/document stats, audit activity, and date-based notice checks",
+        "faculty": "course notices, circular summaries, department updates, and policy Q&A",
+        "student": "course notices, deadlines, policy guidance, and role-scoped document answers",
+    }
+    role_focus = role_capabilities.get(user_role, role_capabilities["student"])
+
+    system_prompt = (
+        "You are UnivGPT, a professional university assistant. "
+        f"The user role is `{user_role}`. "
+        "Respond naturally to greetings/help prompts in 1-2 short sentences, friendly but professional. "
+        f"Mention relevant support scope ({role_focus}) without sounding templated. "
+        "Do not use bullet points. Do not mention technical internals."
     )
+
+    llm_text = await call_llm(
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": query},
+        ],
+        max_tokens=90,
+        temperature=0.35,
+    )
+    if isinstance(llm_text, str):
+        cleaned = llm_text.strip()
+        if cleaned and cleaned != "I'm sorry, I'm having trouble connecting to my brain right now.":
+            return cleaned
+
+    greeting = f"Hi {first_name}," if first_name else "Hi,"
+    if user_role == "admin":
+        return f"{greeting} I can help with admin dashboards, user/document counts, audit activity, and notice lookups."
+    if user_role == "faculty":
+        return f"{greeting} I can help with faculty workflows like circular summaries, course notices, and policy questions."
+    return f"{greeting} I can help with course updates, deadlines, notices, and policy Q&A from your allowed documents."
 
 
 def should_filter_recent_documents(query: str, intent: dict[str, Any]) -> bool:
@@ -700,7 +724,7 @@ async def run_agent_pipeline(
 
     # Fast path for basic greeting/help prompts to avoid unnecessary LLM + embedding latency.
     if is_fast_smalltalk_query(query):
-        answer = build_fast_smalltalk_answer(user_role)
+        answer = await build_fast_smalltalk_answer(query, user_role, user_profile)
         await log_audit_event(
             user_id=audit_user_id,
             action="agent_query",
