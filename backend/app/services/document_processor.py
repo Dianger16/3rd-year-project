@@ -7,6 +7,7 @@ Stores chunks in Pinecone for vector search.
 import io
 import logging
 import re
+import threading
 
 from app.config import settings
 from app.services.pinecone_client import pinecone_client
@@ -147,13 +148,20 @@ def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> list[st
 
 # ─── Embedding Model Singleton ───
 _embeddings_model = None
+_embeddings_model_lock = threading.Lock()
 
 
 def get_embeddings_model():
     global _embeddings_model
-    if _embeddings_model is None:
-        if settings.mock_llm:
-            return None
+    if _embeddings_model is not None:
+        return _embeddings_model
+    if settings.mock_llm:
+        return None
+
+    with _embeddings_model_lock:
+        if _embeddings_model is not None:
+            return _embeddings_model
+
         from langchain_huggingface import HuggingFaceEmbeddings
         import torch
 

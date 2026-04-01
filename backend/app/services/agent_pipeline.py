@@ -28,6 +28,14 @@ logger = logging.getLogger(__name__)
 
 # Capability flags to avoid repeated failing schema probes on every request.
 _DOCUMENTS_HAS_UPLOADED_AT: Optional[bool] = None
+_OPENROUTER_CLIENT: Optional[httpx.AsyncClient] = None
+
+
+def get_openrouter_client() -> httpx.AsyncClient:
+    global _OPENROUTER_CLIENT
+    if _OPENROUTER_CLIENT is None:
+        _OPENROUTER_CLIENT = httpx.AsyncClient(timeout=8.0)
+    return _OPENROUTER_CLIENT
 
 def is_network_error(exc: Exception) -> bool:
     message = str(exc).lower()
@@ -320,6 +328,56 @@ def _matches_filter(value: Any, expected: str) -> bool:
     return expected in _normalize(value)
 
 
+def is_fast_smalltalk_query(query: str) -> bool:
+    text = _normalize(re.sub(r"[^a-z0-9\s?]", " ", query))
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text or len(text) > 120:
+        return False
+
+    domain_markers = (
+        "document",
+        "documents",
+        "notice",
+        "announcement",
+        "circular",
+        "course",
+        "semester",
+        "department",
+        "holiday",
+        "policy",
+        "deadline",
+        "student",
+        "faculty",
+        "admin",
+    )
+    if any(marker in text for marker in domain_markers):
+        return False
+
+    greeting_markers = ("hi", "hii", "hello", "hey", "good morning", "good afternoon", "good evening")
+    help_markers = ("how can you help me", "how can u help me", "what can you do", "what can u do", "help me")
+
+    starts_with_greeting = any(text.startswith(marker) for marker in greeting_markers)
+    asks_help = any(marker in text for marker in help_markers)
+    return starts_with_greeting or asks_help
+
+
+def build_fast_smalltalk_answer(user_role: str) -> str:
+    if user_role == "admin":
+        return (
+            "Hi. I can help with admin operations: user counts, document status, upload logs, audit activity, "
+            "notice lookups, and date-based document checks."
+        )
+    if user_role == "faculty":
+        return (
+            "Hi. I can help with faculty workflows: circular summaries, course/department notices, "
+            "policy lookups, and document Q&A from your allowed scope."
+        )
+    return (
+        "Hi. I can help with student tasks: notices, course information, policy Q&A, deadlines, "
+        "and answers grounded in your accessible documents."
+    )
+
+
 def should_filter_recent_documents(query: str, intent: dict[str, Any]) -> bool:
     if intent.get("date_reference") in {"today", "tomorrow", "yesterday"}:
         return True
@@ -528,23 +586,43 @@ async def call_llm(
     if temperature is not None:
         payload["temperature"] = float(temperature)
 
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                f"{settings.openrouter_base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.openrouter_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-                timeout=8.0,
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data["choices"][0]["message"]["content"]
-        except Exception as e:
-            logger.error(f"LLM Call failed: {e}")
+    client = get_openrouter_client()
+    try:
+        response = await client.post(
+            f"{settings.openrouter_base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {settings.openrouter_api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        message = ((data.get("choices") or [{}])[0].get("message") or {})
+        content = message.get("content")
+
+        if isinstance(content, list):
+            # Some providers return segmented blocks for content.
+            text_parts: list[str] = []
+            for block in content:
+                if isinstance(block, dict):
+                    block_text = block.get("text")
+                    if isinstance(block_text, str):
+                        text_parts.append(block_text)
+            content = "\n".join(text_parts).strip()
+
+        if not isinstance(content, str) or not content.strip():
+            if response_format == "json":
+                return "{}"
             return "I'm sorry, I'm having trouble connecting to my brain right now."
+
+        return content
+    except Exception as e:
+        logger.error(f"LLM Call failed: {e}")
+        if response_format == "json":
+            return "{}"
+        return "I'm sorry, I'm having trouble connecting to my brain right now."
 
 
 async def extract_query_intent(query: str, history_context: str = "") -> Dict[str, Any]:
@@ -574,6 +652,9 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
     Example 3: {{"is_flagged": true, "reason": "Severe hate speech"}}
     """
 
+    if is_fast_smalltalk_query(query):
+        return {"is_flagged": False, "intent_type": "general", "target_entity": "general"}
+
     try:
         content = await call_llm(
             [
@@ -586,7 +667,12 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
             temperature=0.0,
         )
 
-        raw = json.loads(content)
+        if isinstance(content, (dict, list)):
+            raw = content
+        elif isinstance(content, (bytes, bytearray)):
+            raw = json.loads(content.decode("utf-8", errors="replace"))
+        else:
+            raw = json.loads(str(content))
         if not isinstance(raw, dict):
             return {}
         try:
@@ -605,12 +691,29 @@ async def run_agent_pipeline(
     user_role: str,
     conversation_id: Optional[str] = None,
     context: Optional[dict] = None,
+    user_profile: Optional[dict[str, Any]] = None,
 ) -> AgentQueryResponse:
 
     conversation_id = conversation_id or str(uuid.uuid4())
-    supabase = None if settings.supabase_offline_mode else get_supabase_admin()
-    now_iso = utc_now_iso()
     audit_user_id = None if str(user_id).startswith("dummy-id-") else user_id
+    now_iso = utc_now_iso()
+
+    # Fast path for basic greeting/help prompts to avoid unnecessary LLM + embedding latency.
+    if is_fast_smalltalk_query(query):
+        answer = build_fast_smalltalk_answer(user_role)
+        await log_audit_event(
+            user_id=audit_user_id,
+            action="agent_query",
+            payload={"conv_id": conversation_id, "intent": {"intent_type": "general", "fast_path": "smalltalk"}},
+        )
+        return AgentQueryResponse(
+            answer=answer,
+            sources=[],
+            conversation_id=conversation_id,
+            role_badge="Admin Assistant" if user_role == "admin" else f"{user_role.title()} Agent",
+        )
+
+    supabase = None if settings.supabase_offline_mode else get_supabase_admin()
 
     # Get previous messages for history window early for moderation
     messages = []
@@ -635,9 +738,9 @@ async def run_agent_pipeline(
 
     # 1. Intent extraction + deterministic intent hydration.
     raw_intent = await extract_query_intent(query, history_context=history_text)
-    user_profile = fetch_user_profile_context(supabase, user_id)
+    effective_user_profile = user_profile or fetch_user_profile_context(supabase, user_id)
     intent = infer_intent_from_query(query, raw_intent)
-    intent = enrich_intent_with_profile(intent, user_profile)
+    intent = enrich_intent_with_profile(intent, effective_user_profile)
     logger.info(f"Extracted dynamic intent: {intent}")
 
     # Moderation Intercept
