@@ -5,7 +5,7 @@ import { useAuthStore } from '@/store/authStore';
 import { authApi } from '@/lib/api';
 import { Loader2 } from 'lucide-react';
 
-const academicDomain = (import.meta.env.VITE_ACADEMIC_EMAIL_DOMAIN || 'krmu.edu.in').toLowerCase();
+const academicDomain = (import.meta.env.VITE_ACADEMIC_EMAIL_DOMAIN || '').toLowerCase();
 const isAcademicEmail = (email?: string) => (email || '').trim().toLowerCase().endsWith(`@${academicDomain}`);
 const ROLE_STORAGE_KEY = 'unigpt:pending-role';
 const VALID_ROLES = new Set(['student', 'faculty', 'admin']);
