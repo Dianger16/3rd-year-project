@@ -1438,9 +1438,12 @@ async def run_agent_pipeline(
     else:
         answer = await call_llm(llm_messages)
 
-        # If the LLM failed (e.g. 401 Unauthorized because of bad API keys)
+        # Keep provider/debug details in server logs, not user-facing chat.
         if answer == "I'm sorry, I'm having trouble connecting to my brain right now.":
-            answer = "I'm currently unable to connect to my AI provider (Invalid API Key or out of credits). Please update the `OPENROUTER_API_KEY` in the `.env` file to restore my functionality."
+            logger.error(
+                "LLM provider unavailable for user query. Check OPENROUTER_API_KEY, credits, or provider/network health."
+            )
+            answer = "I’m unable to answer right now due to a temporary service issue. Please try again in a moment."
 
     answer = append_intent_navigation_links(answer, user_role, intent)
 
