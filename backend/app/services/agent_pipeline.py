@@ -53,6 +53,16 @@ def _is_embedding_runtime_error(exc: Exception) -> bool:
     return "fbgemm.dll" in message or "winerror 126" in message or "error loading" in message
 
 
+def _is_pinecone_timeout_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return (
+        "timed out" in message
+        or "connecttimeout" in message
+        or "readtimeout" in message
+        or "connection to" in message and "timeout" in message
+    )
+
+
 def _load_offense_state(supabase, user_id: str) -> dict[str, Any]:
     cached = _OFFENSE_STATE_CACHE.get(user_id)
     if cached:
@@ -437,6 +447,48 @@ _LOCAL_PROFANITY_PATTERNS = [
     re.compile(r"\bmf+\b", re.IGNORECASE),
 ]
 
+_IDENTITY_TERMS = (
+    "gay",
+    "lesbian",
+    "homo",
+    "homosexual",
+    "trans",
+    "transgender",
+    "bisexual",
+)
+
+_PERSON_REFERENCE_TERMS = (
+    "sir",
+    "maam",
+    "madam",
+    "teacher",
+    "professor",
+    "faculty",
+    "he",
+    "she",
+    "him",
+    "her",
+    "dr",
+    "mr",
+    "mrs",
+    "ms",
+)
+
+_TARGETED_IDENTITY_PATTERNS = [
+    re.compile(
+        r"\b(?:why|how)\s+[a-z]{2,24}(?:\s+[a-z]{2,24}){0,2}\s+(?:sir|maam|madam|dr|mr|mrs|ms)?\s*(?:is|are|was|were)\s+(?:a\s+)?(?:gay|lesbian|homo|homosexual|trans|transgender|bisexual)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:sir|maam|madam|teacher|professor|faculty|dr|mr|mrs|ms|he|she|him|her)\b.{0,50}\b(?:gay|lesbian|homo|homosexual|trans|transgender|bisexual)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:gay|lesbian|homo|homosexual|trans|transgender|bisexual)\b.{0,50}\b(?:sir|maam|madam|teacher|professor|faculty|dr|mr|mrs|ms|he|she|him|her)\b",
+        re.IGNORECASE,
+    ),
+]
+
 
 def _normalize_for_moderation(raw: str) -> str:
     text = (raw or "").lower()
@@ -463,8 +515,30 @@ def _contains_profanity(text: str) -> bool:
     return any(pattern.search(text) for pattern in _LOCAL_PROFANITY_PATTERNS)
 
 
+def _contains_targeted_identity_harassment(text: str) -> bool:
+    if not text:
+        return False
+    if any(pattern.search(text) for pattern in _TARGETED_IDENTITY_PATTERNS):
+        return True
+
+    has_identity_term = any(re.search(rf"\b{re.escape(term)}\b", text) for term in _IDENTITY_TERMS)
+    if not has_identity_term:
+        return False
+
+    has_person_reference = any(re.search(rf"\b{re.escape(term)}\b", text) for term in _PERSON_REFERENCE_TERMS)
+    has_targeting_verb = bool(re.search(r"\b(why|how|is|are|was|were)\b", text))
+    return has_person_reference and has_targeting_verb
+
+
 def detect_local_moderation(query: str) -> dict[str, Any]:
     normalized = _normalize_for_moderation(query or "")
+    if _contains_targeted_identity_harassment(normalized):
+        return {
+            "is_flagged": True,
+            "reason": "Targeted personal/identity harassment detected.",
+            "intent_type": "general",
+            "target_entity": "general",
+        }
     if _contains_profanity(normalized):
         return {
             "is_flagged": True,
@@ -1550,9 +1624,13 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
             return raw
     except asyncio.TimeoutError:
         logger.warning("Intent extraction timed out; falling back to deterministic routing.")
+        if is_fast_smalltalk_query(query):
+            return {"is_flagged": False, "conversation_mode": "casual", "intent_type": "general", "target_entity": "general"}
         return {}
     except Exception as e:
         logger.warning(f"Intent extraction/moderation failed: {e}")
+        if is_fast_smalltalk_query(query):
+            return {"is_flagged": False, "conversation_mode": "casual", "intent_type": "general", "target_entity": "general"}
         return {}
 
 
@@ -1604,6 +1682,15 @@ async def run_agent_pipeline(
     effective_user_profile = user_profile or fetch_user_profile_context(supabase, user_id)
     intent = infer_intent_from_query(query, raw_intent)
     intent = enrich_intent_with_profile(intent, effective_user_profile)
+    if (
+        not intent.get("intent_type")
+        and not intent.get("target_entity")
+        and is_fast_smalltalk_query(query)
+    ):
+        intent["conversation_mode"] = "casual"
+        intent["intent_type"] = "general"
+        intent["target_entity"] = "general"
+        intent["is_flagged"] = False
     logger.info(f"Extracted dynamic intent: {intent}")
 
     if (
@@ -1819,6 +1906,12 @@ async def run_agent_pipeline(
         or doc_keyword_request
         or (count_request and any(marker in target_entity for marker in ("document", "notice", "announcement", "circular", "holiday")))
     )
+    non_retrieval_intent = (
+        intent_type in {"", "general"}
+        and target_entity in {"", "general"}
+        and not doc_keyword_request
+        and not should_use_course_faculty_snapshot(query, intent)
+    )
     structured_directory_query = (
         should_use_course_faculty_snapshot(query, intent)
         and not doc_keyword_request
@@ -1920,13 +2013,22 @@ async def run_agent_pipeline(
         and forced_answer is None
         and not _PINECONE_EMBEDDING_DISABLED
         and not structured_directory_query
+        and not non_retrieval_intent
     )
 
     if should_run_vector_search:
         try:
             query_vector = get_single_embedding(query)
-            search_res = pinecone_client.index.query(
-                vector=query_vector, filter=base_filter, top_k=5, include_metadata=True
+            pinecone_timeout = max(2.0, float(getattr(settings, "pinecone_query_timeout_seconds", 6) or 6))
+            search_res = await asyncio.wait_for(
+                asyncio.to_thread(
+                    pinecone_client.index.query,
+                    vector=query_vector,
+                    filter=base_filter,
+                    top_k=5,
+                    include_metadata=True,
+                ),
+                timeout=pinecone_timeout,
             )
 
             for m in search_res.get("matches", []):
@@ -1954,11 +2056,26 @@ async def run_agent_pipeline(
                     meta_str = f" [{meta_str}]"
 
                 context_text += f"\n---\nSource: {meta.get('filename')}{meta_str}\n{chunk_content}\n"
+        except asyncio.TimeoutError:
+            _PINECONE_EMBEDDING_DISABLED = True
+            logger.warning(
+                "Disabling Pinecone vector search for this runtime due to query timeout > %ss.",
+                pinecone_timeout,
+            )
+            context_text += (
+                "\n[System Note: Vector database query timed out and was skipped]\n"
+            )
         except Exception as e:
             if _is_embedding_runtime_error(e):
                 _PINECONE_EMBEDDING_DISABLED = True
                 logger.warning(
                     "Disabling Pinecone embedding search for this runtime due to local embedding dependency error: %s",
+                    e,
+                )
+            elif _is_pinecone_timeout_error(e):
+                _PINECONE_EMBEDDING_DISABLED = True
+                logger.warning(
+                    "Disabling Pinecone vector search for this runtime due to timeout/connectivity error: %s",
                     e,
                 )
             else:
