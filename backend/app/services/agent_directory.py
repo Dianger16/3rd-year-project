@@ -2,6 +2,8 @@ import datetime
 import re
 from typing import Any, Optional
 
+from app.services.demo_directory_seed import DEMO_COURSES, DEMO_FACULTY
+
 
 def _normalize(value: Any) -> str:
     return str(value or "").strip().lower()
@@ -105,6 +107,72 @@ def _is_directory_doc_relevant(doc: dict[str, Any], user_role: str, user_profile
     if user_program and doc_course and (user_program in doc_course or doc_course in user_program):
         return True
     return False
+
+
+def _normalize_email(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _append_demo_faculty_if_missing(faculty_by_id: dict[str, dict[str, Any]]) -> None:
+    existing_emails = {_normalize_email(row.get("email")) for row in faculty_by_id.values() if _normalize_email(row.get("email"))}
+    for row in DEMO_FACULTY:
+        email = _normalize_email(row.get("email"))
+        if email and email in existing_emails:
+            continue
+        demo_id = str(row.get("id") or "")
+        if not demo_id:
+            continue
+        if demo_id in faculty_by_id:
+            continue
+        faculty_by_id[demo_id] = {
+            "id": demo_id,
+            "full_name": str(row.get("full_name") or "Faculty"),
+            "email": str(row.get("email") or ""),
+            "department": row.get("department"),
+            "program": row.get("program"),
+        }
+
+
+def _inject_demo_courses_if_empty(
+    courses_map: dict[str, dict[str, Any]],
+    faculty_by_id: dict[str, dict[str, Any]],
+    limit: int,
+) -> None:
+    if courses_map:
+        return
+
+    _append_demo_faculty_if_missing(faculty_by_id)
+    email_to_faculty_id: dict[str, str] = {
+        _normalize_email(row.get("email")): fid
+        for fid, row in faculty_by_id.items()
+        if _normalize_email(row.get("email"))
+    }
+
+    for row in DEMO_COURSES[: max(3, limit)]:
+        title = str(row.get("title") or "").strip()
+        if not title:
+            continue
+        key = _slugify_course(title)
+        uploader_email = _normalize_email(row.get("uploader"))
+        mapped_faculty_ids: list[str] = []
+        mapped_id = email_to_faculty_id.get(uploader_email)
+        if mapped_id:
+            mapped_faculty_ids.append(mapped_id)
+        else:
+            for fid in row.get("faculty_ids", []) or []:
+                fid_str = str(fid)
+                if fid_str in faculty_by_id and fid_str not in mapped_faculty_ids:
+                    mapped_faculty_ids.append(fid_str)
+
+        courses_map[key] = {
+            "id": key,
+            "code": str(row.get("code") or title.upper().replace(" ", "-")),
+            "title": title,
+            "department": str(row.get("department") or "").strip() or None,
+            "next_update_at": None,
+            "notice_count": int(row.get("notice_count", 0) or 0),
+            "faculty_ids": mapped_faculty_ids[:5],
+        }
 
 
 def fetch_course_faculty_snapshot(
@@ -217,6 +285,8 @@ def fetch_course_faculty_snapshot(
         if dept and dept in faculty_by_department:
             course_item["faculty_ids"] = faculty_by_department[dept][:5]
 
+    _inject_demo_courses_if_empty(courses_map, faculty_by_id, limit=limit)
+
     if not courses_map and user_profile.get("program"):
         user_program = str(user_profile.get("program"))
         key = _slugify_course(user_program)
@@ -261,29 +331,18 @@ def fetch_course_faculty_snapshot(
 
 
 def should_use_course_faculty_snapshot(query: str, intent: dict[str, Any]) -> bool:
-    text = _normalize(query)
     target = _normalize(intent.get("target_entity"))
-    course_markers = ("course", "courses", "curriculum", "subject", "subjects", "syllabus")
-    faculty_markers = (
-        "faculty",
-        "teacher",
-        "teachers",
-        "professor",
-        "professors",
-        "mentor",
-        "mentors",
-        "instructor",
-        "instructors",
-        "teach",
-        "teaches",
-        "teaching",
-        "advisor",
-        "adviser",
-        "who is",
-    )
+    intent_type = _normalize(intent.get("intent_type"))
+    faculty_intents = {"count_faculty", "list_faculty", "faculty_profile", "course_faculty_map"}
+    course_intents = {"count_courses", "list_courses", "course_faculty_map"}
+    faculty_targets = {"faculty", "faculties", "teachers", "professors", "mentors", "instructors"}
+    course_targets = {"courses", "course", "subjects", "curriculum", "syllabus"}
     return (
-        any(marker in text for marker in course_markers + faculty_markers)
-        or target in {"courses", "faculty", "teachers", "professors", "mentors"}
+        intent_type in faculty_intents
+        or intent_type in course_intents
+        or target in faculty_targets
+        or target in course_targets
+        or bool(str(intent.get("course") or "").strip())
     )
 
 
@@ -400,7 +459,7 @@ def append_intent_navigation_links(answer: str, user_role: str, intent: dict[str
     course_intents = {"count_courses", "list_courses", "course_faculty_map"}
     document_intents = {"count_documents", "list_documents", "document_date_lookup", "holiday_check"}
 
-    if intent_type in faculty_intents or target_entity in {"faculty", "teachers", "professors", "mentors"}:
+    if intent_type in faculty_intents or target_entity in {"faculty", "faculties", "teachers", "professors", "mentors"}:
         links.append(("Open Faculty Directory", "/dashboard/faculty"))
     if intent_type in course_intents or target_entity == "courses":
         links.append(("Open Courses", "/dashboard/courses"))
@@ -428,33 +487,12 @@ def build_course_faculty_answer(
     target_entity = _normalize(intent.get("target_entity"))
     intent_type = _normalize(intent.get("intent_type"))
     count_request = bool(re.search(r"\b(how many|count|number of|total)\b", text))
-
-    course_code_mentioned = bool(re.search(r"\b[a-z]{2,6}[\s-]?\d{2,4}\b", text))
-    course_related = (
-        any(marker in text for marker in ("course", "courses", "curriculum", "subject", "subjects"))
-        or target_entity == "courses"
-        or course_code_mentioned
-    )
-    faculty_related = any(
-        marker in text
-        for marker in (
-            "faculty",
-            "teacher",
-            "teachers",
-            "professor",
-            "professors",
-            "mentor",
-            "mentors",
-            "instructor",
-            "instructors",
-            "teach",
-            "teaches",
-            "teaching",
-            "advisor",
-            "adviser",
-            "who is",
-        )
-    ) or target_entity == "faculty"
+    faculty_intents = {"count_faculty", "list_faculty", "faculty_profile", "course_faculty_map"}
+    course_intents = {"count_courses", "list_courses", "course_faculty_map"}
+    faculty_targets = {"faculty", "faculties", "teachers", "professors", "mentors", "instructors"}
+    course_targets = {"courses", "course", "subjects", "curriculum", "syllabus"}
+    course_related = intent_type in course_intents or target_entity in course_targets
+    faculty_related = intent_type in faculty_intents or target_entity in faculty_targets
     requested_course = _normalize(intent.get("course"))
 
     scoped_courses = courses
@@ -473,20 +511,8 @@ def build_course_faculty_answer(
             scoped_courses = query_matched_courses
 
     requested_faculty = _find_requested_faculty(text, faculty_by_id, [str(fid) for fid in visible_faculty_ids])
-    faculty_profile_requested = any(
-        marker in text
-        for marker in (
-            "who is",
-            "about",
-            "tell me",
-            "profile",
-            "teach",
-            "teaches",
-            "teaching",
-            "what she",
-            "what he",
-            "what they",
-        )
+    faculty_profile_requested = intent_type == "faculty_profile" or (
+        bool(requested_faculty) and (target_entity in faculty_targets or intent_type in {"general", "list_faculty", "course_faculty_map"})
     )
     if requested_faculty and faculty_profile_requested:
         faculty_id, faculty_row = requested_faculty
@@ -590,7 +616,7 @@ def build_course_faculty_answer(
             title="Quick links",
         )
 
-    if intent_type == "list_courses" or (course_related and any(marker in text for marker in ("list", "show", "which", "available", "my"))):
+    if intent_type == "list_courses" or (course_related and not faculty_related and not count_request):
         if not scoped_courses:
             answer = "I checked your live course directory and found **0 courses** in your current access scope."
             return answer + "\n\n" + _navigation_block(
@@ -609,7 +635,7 @@ def build_course_faculty_answer(
             title="Quick links",
         )
 
-    if intent_type == "list_faculty" or (faculty_related and any(marker in text for marker in ("list", "show", "which", "available", "my"))):
+    if intent_type == "list_faculty" or (faculty_related and not course_related and not count_request):
         visible_ids = [str(fid) for fid in visible_faculty_ids if str(fid)]
         if not visible_ids:
             answer = "I checked your live faculty directory and found **0 faculty records** in your current scope."
@@ -667,4 +693,3 @@ def build_course_faculty_answer(
         )
 
     return None
-
