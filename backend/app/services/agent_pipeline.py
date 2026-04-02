@@ -426,28 +426,38 @@ async def build_fast_smalltalk_answer(
     profile = user_profile or {}
     raw_name = str(profile.get("full_name") or "").strip()
     first_name = raw_name.split(" ")[0] if raw_name else ""
-
-    role_capabilities = {
-        "admin": "system ops, user/document stats, audit activity, and date-based notice checks",
-        "faculty": "course notices, circular summaries, department updates, and policy Q&A",
-        "student": "course notices, deadlines, policy guidance, and role-scoped document answers",
-    }
-    role_focus = role_capabilities.get(user_role, role_capabilities["student"])
+    role_norm = str(user_role or "student").strip().lower()
+    role_guidance = {
+        "admin": "administrative and operational scope",
+        "faculty": "teaching and academic coordination scope",
+        "student": "student academic support scope",
+    }.get(role_norm, "role-scoped university support")
 
     mode_instruction = (
         "The user is in casual conversation or light venting mode. Reply naturally in 1-2 short lines. "
-        "Match the user's tone, sound human and friendly, and avoid robotic phrasing."
+        "Match the user's tone, sound human and friendly, and avoid robotic phrasing. "
+        "Do not jump into long capability lists unless the user explicitly asks."
         if conversation_mode == "casual"
-        else "The user asked what you can do. Reply naturally in 1-2 short lines with practical capability summary."
+        else "The user asked what you can do. Reply naturally in 1-2 short lines with a concise capability summary."
     )
+
+    profile_hints: list[str] = []
+    if profile.get("department"):
+        profile_hints.append(f"department={profile.get('department')}")
+    if profile.get("program"):
+        profile_hints.append(f"program={profile.get('program')}")
+    if profile.get("semester"):
+        profile_hints.append(f"semester={profile.get('semester')}")
+    profile_hint_text = ", ".join(profile_hints) if profile_hints else "not available"
 
     system_prompt = (
         "You are UnivGPT, a friendly university assistant. "
-        f"The user role is `{user_role}`. "
-        f"Capability scope: {role_focus}. "
+        f"The user role is `{role_norm}` with {role_guidance}. "
+        f"Profile hints: {profile_hint_text}. "
         f"{mode_instruction} "
         "Do not use bullet points. Keep it warm, concise, and non-repetitive. "
-        "If the user message is just a greeting, greet back first, then offer help."
+        "If the user message is just a greeting, greet back first, then offer help. "
+        "Vary wording across turns and avoid repeating the same sentence template."
     )
 
     user_prompt = query
@@ -462,7 +472,7 @@ async def build_fast_smalltalk_answer(
                     {"role": "user", "content": user_prompt},
                 ],
                 max_tokens=120,
-                temperature=0.6,
+                temperature=0.72,
                 allow_fallback_models=True,
                 max_retries_override=1,
             ),
