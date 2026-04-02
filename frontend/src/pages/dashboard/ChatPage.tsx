@@ -154,6 +154,9 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                                 >
                                     {message.content}
                                 </ReactMarkdown>
+                                {message.isStreaming && (
+                                    <span className="inline-block ml-1 h-[1em] align-[-0.15em] w-[2px] bg-orange-300 animate-pulse" />
+                                )}
                             </div>
                         )}
 
@@ -262,6 +265,7 @@ export default function ChatPage() {
     const firstName = user?.full_name?.split(' ')[0] || 'there';
     const isChatBlocked = Boolean(moderationState?.blocked);
     const appealPending = String(moderationState?.appeal_status || '').toLowerCase() === 'pending';
+    const hasStreamingAssistant = messages.some((m) => m.role === 'assistant' && m.isStreaming);
 
     const handleSubmitAppeal = async () => {
         if (!token || !appealMessage.trim() || isSubmittingAppeal || !isChatBlocked) return;
@@ -313,7 +317,7 @@ export default function ChatPage() {
                         {messages.map((msg, i) => (
                             <MessageBubble key={i} message={msg} />
                         ))}
-                        {isQuerying && (
+                        {isQuerying && !hasStreamingAssistant && (
                             <motion.div className="max-w-3xl mx-auto" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                                 <div className="flex gap-4 py-5">
                                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shrink-0 shadow-lg shadow-orange-500/20">

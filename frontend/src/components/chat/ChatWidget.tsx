@@ -110,6 +110,9 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                             <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                 {message.content}
                             </ReactMarkdown>
+                            {message.isStreaming && (
+                                <span className="inline-block ml-1 h-[1em] align-[-0.15em] w-[2px] bg-white/80 animate-pulse" />
+                            )}
                         </div>
                     )}
                 </div>
@@ -146,6 +149,7 @@ export default function ChatWidget({ className = '', fullHeight = false }: ChatW
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const { messages, isQuerying, sendQuery, newConversation } = useChatStore();
     const { token } = useAuthStore();
+    const hasStreamingAssistant = messages.some((m) => m.role === 'assistant' && m.isStreaming);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -240,7 +244,7 @@ export default function ChatWidget({ className = '', fullHeight = false }: ChatW
                         {messages.map((msg, i) => (
                             <MessageBubble key={i} message={msg} />
                         ))}
-                        {isQuerying && (
+                        {isQuerying && !hasStreamingAssistant && (
                             <motion.div
                                 className="flex justify-start mb-12"
                                 initial={{ opacity: 0 }}

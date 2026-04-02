@@ -236,6 +236,7 @@ function AdminChatBubble() {
     const endRef = useRef<HTMLDivElement>(null);
     const { messages, isQuerying, sendQuery, newConversation, error, clearError } = useChatStore();
     const { token } = useAuthStore();
+    const hasStreamingAssistant = messages.some((m) => m.role === 'assistant' && m.isStreaming);
 
     useEffect(() => {
         endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -327,12 +328,15 @@ function AdminChatBubble() {
                                         ) : (
                                             <div className="prose prose-xs prose-zinc dark:prose-invert max-w-none prose-p:leading-relaxed prose-p:my-1 prose-a:text-orange-400">
                                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                                                {msg.isStreaming && (
+                                                    <span className="inline-block ml-1 h-[1em] align-[-0.15em] w-[2px] bg-orange-300 animate-pulse" />
+                                                )}
                                             </div>
                                         )}
                                     </div>
                                 </div>
                             ))}
-                            {isQuerying && (
+                            {isQuerying && !hasStreamingAssistant && (
                                 <div className="flex gap-2">
                                     <div className="w-6 h-6 rounded-md bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shrink-0">
                                         <Bot className="w-3 h-3 text-white" />
