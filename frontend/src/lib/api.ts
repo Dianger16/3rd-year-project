@@ -104,6 +104,8 @@ export const authApi = {
 
     verifySignup: (data: { email: string; otp: string; password: string }) =>
         request<{ access_token: string; user: UserProfile }>('/auth/verify', { method: 'POST', body: data }),
+    resendSignupOtp: (data: { email: string }) =>
+        request<{ status: string; message: string }>('/auth/resend-otp', { method: 'POST', body: data }),
 
     forgotPassword: (data: { email: string }) =>
         request<{ status: string; message: string }>('/auth/forgot-password', { method: 'POST', body: data }),

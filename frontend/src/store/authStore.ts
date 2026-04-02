@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { authApi, type UserProfile } from '@/lib/api';
+import { supabase } from '@/lib/supabase';
 
 const PROFILE_IMAGE_CACHE_KEY = 'unigpt-profile-images';
 
@@ -81,6 +82,7 @@ interface AuthState {
         department?: string
     ) => Promise<void>;
     verifySignup: (email: string, otp: string, password: string) => Promise<void>;
+    resendSignupOtp: (email: string) => Promise<string>;
     forgotPassword: (email: string) => Promise<string>;
     resetPassword: (email: string, otp: string, newPassword: string) => Promise<string>;
     googleAuth: (role: UserProfile['role']) => Promise<void>;
@@ -134,6 +136,18 @@ export const useAuthStore = create<AuthState>()(
                 }
             },
 
+            resendSignupOtp: async (email) => {
+                set({ isLoading: true, error: null });
+                try {
+                    const res = await authApi.resendSignupOtp({ email });
+                    set({ isLoading: false });
+                    return res.message;
+                } catch (err: unknown) {
+                    set({ error: (err as Error).message || 'Failed to resend OTP', isLoading: false });
+                    throw err;
+                }
+            },
+
             forgotPassword: async (email) => {
                 set({ isLoading: true, error: null });
                 try {
@@ -172,6 +186,10 @@ export const useAuthStore = create<AuthState>()(
             },
 
             logout: () => {
+                supabase.auth.signOut().catch(() => undefined);
+                if (typeof window !== 'undefined') {
+                    window.localStorage.removeItem('unigpt:pending-role');
+                }
                 set({ user: null, token: null, error: null });
             },
 

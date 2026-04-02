@@ -16,8 +16,9 @@ export default function Signup() {
     const [selectedRole, setSelectedRole] = useState<RoleOption | ''>('');
     const [otp, setOtp] = useState('');
     const [view, setView] = useState<'signup' | 'otp' | 'welcome'>('signup');
+    const [resendCountdown, setResendCountdown] = useState(0);
     const { showToast } = useToastStore();
-    const { signup, verifySignup, googleAuth, isLoading, error, token } = useAuthStore();
+    const { signup, verifySignup, resendSignupOtp, googleAuth, isLoading, error, token } = useAuthStore();
     const navigate = useNavigate();
 
     React.useEffect(() => {
@@ -47,6 +48,26 @@ export default function Signup() {
             setView('welcome');
         } catch (err: any) {
             showToast(err.message || "Invalid OTP code.");
+        }
+    };
+
+    React.useEffect(() => {
+        if (resendCountdown <= 0) return;
+        const timer = window.setTimeout(() => setResendCountdown((prev) => prev - 1), 1000);
+        return () => window.clearTimeout(timer);
+    }, [resendCountdown]);
+
+    const handleResendOtp = async () => {
+        if (!email) {
+            showToast('Email missing for OTP resend.');
+            return;
+        }
+        try {
+            const message = await resendSignupOtp(email);
+            showToast(message || 'OTP resent successfully.', 'success');
+            setResendCountdown(30);
+        } catch (err: any) {
+            showToast(err.message || 'Failed to resend OTP.');
         }
     };
 
@@ -128,6 +149,16 @@ export default function Signup() {
                             {isLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2 inline" /> : null}
                             Verify & Proceed
                         </Button>
+                        <div className="text-center">
+                            <button
+                                type="button"
+                                onClick={handleResendOtp}
+                                disabled={isLoading || resendCountdown > 0}
+                                className="text-xs text-orange-300 hover:text-orange-200 disabled:text-zinc-600 disabled:cursor-not-allowed transition-colors"
+                            >
+                                {resendCountdown > 0 ? `Resend OTP in ${resendCountdown}s` : 'Resend OTP'}
+                            </button>
+                        </div>
                     </div>
                 </form>
             </AuthUI>
