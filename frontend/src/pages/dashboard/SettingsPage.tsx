@@ -31,6 +31,9 @@ const SettingsPage = () => {
     const { logout, user, token } = useAuthStore();
     const { showToast } = useToastStore();
     const navigate = useNavigate();
+    const role = user?.role || 'student';
+    const isStudent = role === 'student';
+    const isFaculty = role === 'faculty';
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [isExporting, setIsExporting] = useState(false);
@@ -143,6 +146,26 @@ const SettingsPage = () => {
         },
     ];
 
+    const accountRows = [
+        { label: 'Name', value: user?.full_name || 'User' },
+        { label: 'Role', value: role.charAt(0).toUpperCase() + role.slice(1) },
+        { label: 'Department', value: user?.department || 'Not set' },
+        { label: 'Verification', value: user?.academic_verified ? 'Verified' : 'Pending' },
+        ...(isStudent
+            ? [
+                  { label: 'Program', value: user?.program || 'Not set' },
+                  { label: 'Semester', value: user?.semester || 'Not set' },
+                  { label: 'Section', value: user?.section || 'Not set' },
+                  { label: 'Roll Number', value: user?.roll_number || 'Not set' },
+              ]
+            : []),
+        ...(isFaculty
+            ? [
+                  { label: 'Teaching Area', value: user?.program || 'Not set' },
+              ]
+            : []),
+    ];
+
     return (
         <div className="h-full overflow-y-auto">
             <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto pb-24">
@@ -250,34 +273,12 @@ const SettingsPage = () => {
                                 <span className="text-sm font-semibold text-white">Account</span>
                             </div>
                             <div className="p-4 space-y-2.5">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[11px] text-zinc-500">Name</span>
-                                    <span className="text-[11px] font-medium text-white">{user?.full_name || 'User'}</span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[11px] text-zinc-500">Role</span>
-                                    <span className="text-[11px] font-medium text-white capitalize">{user?.role || 'student'}</span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[11px] text-zinc-500">Department</span>
-                                    <span className="text-[11px] font-medium text-white">{user?.department || 'Not set'}</span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[11px] text-zinc-500">Verification</span>
-                                    <span className="text-[11px] font-medium text-white">{user?.academic_verified ? 'Verified' : 'Pending'}</span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[11px] text-zinc-500">Program</span>
-                                    <span className="text-[11px] font-medium text-white">{user?.program || 'Not set'}</span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[11px] text-zinc-500">Semester</span>
-                                    <span className="text-[11px] font-medium text-white">{user?.semester || 'Not set'}</span>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[11px] text-zinc-500">Section</span>
-                                    <span className="text-[11px] font-medium text-white">{user?.section || 'Not set'}</span>
-                                </div>
+                                {accountRows.map((row) => (
+                                    <div key={row.label} className="flex items-center justify-between">
+                                        <span className="text-[11px] text-zinc-500">{row.label}</span>
+                                        <span className="text-[11px] font-medium text-white">{row.value}</span>
+                                    </div>
+                                ))}
                             </div>
                         </motion.div>
 

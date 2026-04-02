@@ -69,6 +69,10 @@ function ProviderBadge({ provider }: { provider?: string | null }) {
 const ProfilePage = () => {
     const { user, token, updateUser } = useAuthStore();
     const { showToast } = useToastStore();
+    const role = user?.role || 'student';
+    const isStudent = role === 'student';
+    const isFaculty = role === 'faculty';
+    const isAdmin = role === 'admin';
 
     const [isEditing, setIsEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -137,18 +141,18 @@ const ProfilePage = () => {
             const payload = await authApi.updateProfile(token, {
                 full_name: formName.trim() || user?.full_name || 'User',
                 department: formDepartment.trim(),
-                program: formProgram.trim(),
-                semester: formSemester.trim(),
-                section: formSection.trim(),
-                roll_number: formRollNumber.trim(),
+                program: isStudent || isFaculty ? formProgram.trim() : '',
+                semester: isStudent ? formSemester.trim() : '',
+                section: isStudent ? formSection.trim() : '',
+                roll_number: isStudent ? formRollNumber.trim() : '',
             });
             updateUser({
                 full_name: payload.full_name,
                 department: payload.department || '',
-                program: payload.program || '',
-                semester: payload.semester || '',
-                section: payload.section || '',
-                roll_number: payload.roll_number || '',
+                program: isStudent || isFaculty ? payload.program || '' : '',
+                semester: isStudent ? payload.semester || '' : '',
+                section: isStudent ? payload.section || '' : '',
+                roll_number: isStudent ? payload.roll_number || '' : '',
             });
             setIsEditing(false);
             showToast('Profile details saved.', 'success');
@@ -191,11 +195,33 @@ const ProfilePage = () => {
     ];
 
     const academicRows = [
-        { icon: GraduationCap, label: 'Program', value: user?.program || 'Not specified' },
-        { icon: Layers, label: 'Semester', value: user?.semester || 'Not specified' },
-        { icon: BookOpen, label: 'Section', value: user?.section || 'Not specified' },
-        { icon: Hash, label: 'Roll Number', value: user?.roll_number || 'Not specified' },
+        ...(isStudent
+            ? [
+                  { icon: GraduationCap, label: 'Program', value: user?.program || 'Not specified' },
+                  { icon: Layers, label: 'Semester', value: user?.semester || 'Not specified' },
+                  { icon: BookOpen, label: 'Section', value: user?.section || 'Not specified' },
+                  { icon: Hash, label: 'Roll Number', value: user?.roll_number || 'Not specified' },
+              ]
+            : []),
+        ...(isFaculty
+            ? [
+                  { icon: GraduationCap, label: 'Teaching Area', value: user?.program || 'Not specified' },
+                  { icon: Building, label: 'Department', value: user?.department || 'Not specified' },
+              ]
+            : []),
+        ...(isAdmin
+            ? [
+                  { icon: Shield, label: 'Access Level', value: 'Administrator' },
+                  { icon: Building, label: 'Admin Unit', value: user?.department || 'Not specified' },
+              ]
+            : []),
     ];
+
+    const detailPanelTitle = isStudent
+        ? 'Academic Details'
+        : isFaculty
+          ? 'Faculty Details'
+          : 'Admin Details';
 
     return (
         <div className="h-full overflow-y-auto">
@@ -339,70 +365,78 @@ const ProfilePage = () => {
                                 )}
                             </div>
 
-                            <div className="grid grid-cols-1 gap-1.5">
-                                <label className="text-[11px] text-zinc-500">Program</label>
-                                {isEditing ? (
-                                    <input
-                                        value={formProgram}
-                                        onChange={(e) => setFormProgram(e.target.value)}
-                                        className="h-10 rounded-xl border border-white/[0.1] bg-black/40 px-3 text-sm text-white outline-none focus:border-orange-500/35"
-                                        placeholder="BTech CSE"
-                                    />
-                                ) : (
-                                    <div className="h-10 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 flex items-center text-sm text-white">
-                                        {user?.program || 'Not specified'}
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-2">
+                            {(isStudent || isFaculty) && (
                                 <div className="grid grid-cols-1 gap-1.5">
-                                    <label className="text-[11px] text-zinc-500">Semester</label>
+                                    <label className="text-[11px] text-zinc-500">
+                                        {isFaculty ? 'Teaching Area' : 'Program'}
+                                    </label>
                                     {isEditing ? (
                                         <input
-                                            value={formSemester}
-                                            onChange={(e) => setFormSemester(e.target.value)}
+                                            value={formProgram}
+                                            onChange={(e) => setFormProgram(e.target.value)}
                                             className="h-10 rounded-xl border border-white/[0.1] bg-black/40 px-3 text-sm text-white outline-none focus:border-orange-500/35"
-                                            placeholder="4"
+                                            placeholder={isFaculty ? 'Computer Science / AI' : 'BTech CSE'}
                                         />
                                     ) : (
                                         <div className="h-10 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 flex items-center text-sm text-white">
-                                            {user?.semester || 'Not specified'}
+                                            {user?.program || 'Not specified'}
                                         </div>
                                     )}
                                 </div>
-                                <div className="grid grid-cols-1 gap-1.5">
-                                    <label className="text-[11px] text-zinc-500">Section</label>
-                                    {isEditing ? (
-                                        <input
-                                            value={formSection}
-                                            onChange={(e) => setFormSection(e.target.value)}
-                                            className="h-10 rounded-xl border border-white/[0.1] bg-black/40 px-3 text-sm text-white outline-none focus:border-orange-500/35"
-                                            placeholder="A"
-                                        />
-                                    ) : (
-                                        <div className="h-10 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 flex items-center text-sm text-white">
-                                            {user?.section || 'Not specified'}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+                            )}
 
-                            <div className="grid grid-cols-1 gap-1.5">
-                                <label className="text-[11px] text-zinc-500">Roll Number</label>
-                                {isEditing ? (
-                                    <input
-                                        value={formRollNumber}
-                                        onChange={(e) => setFormRollNumber(e.target.value)}
-                                        className="h-10 rounded-xl border border-white/[0.1] bg-black/40 px-3 text-sm text-white outline-none focus:border-orange-500/35"
-                                        placeholder="230101029"
-                                    />
-                                ) : (
-                                    <div className="h-10 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 flex items-center text-sm text-white">
-                                        {user?.roll_number || 'Not specified'}
+                            {isStudent && (
+                                <>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="grid grid-cols-1 gap-1.5">
+                                            <label className="text-[11px] text-zinc-500">Semester</label>
+                                            {isEditing ? (
+                                                <input
+                                                    value={formSemester}
+                                                    onChange={(e) => setFormSemester(e.target.value)}
+                                                    className="h-10 rounded-xl border border-white/[0.1] bg-black/40 px-3 text-sm text-white outline-none focus:border-orange-500/35"
+                                                    placeholder="4"
+                                                />
+                                            ) : (
+                                                <div className="h-10 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 flex items-center text-sm text-white">
+                                                    {user?.semester || 'Not specified'}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-1.5">
+                                            <label className="text-[11px] text-zinc-500">Section</label>
+                                            {isEditing ? (
+                                                <input
+                                                    value={formSection}
+                                                    onChange={(e) => setFormSection(e.target.value)}
+                                                    className="h-10 rounded-xl border border-white/[0.1] bg-black/40 px-3 text-sm text-white outline-none focus:border-orange-500/35"
+                                                    placeholder="A"
+                                                />
+                                            ) : (
+                                                <div className="h-10 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 flex items-center text-sm text-white">
+                                                    {user?.section || 'Not specified'}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
-                                )}
-                            </div>
+
+                                    <div className="grid grid-cols-1 gap-1.5">
+                                        <label className="text-[11px] text-zinc-500">Roll Number</label>
+                                        {isEditing ? (
+                                            <input
+                                                value={formRollNumber}
+                                                onChange={(e) => setFormRollNumber(e.target.value)}
+                                                className="h-10 rounded-xl border border-white/[0.1] bg-black/40 px-3 text-sm text-white outline-none focus:border-orange-500/35"
+                                                placeholder="230101029"
+                                            />
+                                        ) : (
+                                            <div className="h-10 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 flex items-center text-sm text-white">
+                                                {user?.roll_number || 'Not specified'}
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
 
                             {profileRows.map((row) => (
                                 <div
@@ -424,7 +458,7 @@ const ProfilePage = () => {
                         transition={{ delay: 0.1 }}
                         className="rounded-2xl border border-white/[0.08] bg-zinc-900/50 p-5"
                     >
-                        <h2 className="text-sm font-semibold text-white mb-4">Academic Details</h2>
+                        <h2 className="text-sm font-semibold text-white mb-4">{detailPanelTitle}</h2>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             {academicRows.map((row) => (
                                 <div
