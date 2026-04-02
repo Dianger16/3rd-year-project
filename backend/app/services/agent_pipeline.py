@@ -679,6 +679,70 @@ async def call_llm(
     return "I'm sorry, I'm having trouble connecting to my brain right now."
 
 
+def _safe_json_dict(content: Any) -> dict[str, Any]:
+    if isinstance(content, dict):
+        return content
+    if isinstance(content, (bytes, bytearray)):
+        parsed = json.loads(content.decode("utf-8", errors="replace"))
+        return parsed if isinstance(parsed, dict) else {}
+    parsed = json.loads(str(content))
+    return parsed if isinstance(parsed, dict) else {}
+
+
+async def run_backup_moderation_check(query: str, history_context: str = "") -> Dict[str, Any]:
+    """
+    Secondary model-only moderation check.
+    Used when the main intent+moderation extraction fails or returns invalid JSON.
+    """
+    backup_prompt = f"""
+    You are a strict safety classifier for UnivGPT.
+    Recent conversation history:
+    {history_context}
+
+    Classify only the latest user query.
+    Set "is_flagged": true when the query contains hate speech, harassment, abusive/disrespectful personal attacks,
+    threats, or demeaning comments about a person (including teacher/faculty/staff/student).
+    Set "is_flagged": false for normal academic questions, neutral policy questions, and mild non-targeted frustration.
+
+    Return ONLY valid JSON:
+    {{
+      "is_flagged": boolean,
+      "reason": "short reason when flagged, else empty string"
+    }}
+    """
+
+    try:
+        timeout_seconds = max(3, min(8, int(settings.openrouter_timeout_seconds or 20) // 2 or 4))
+        model_name = settings.openrouter_model
+        content = await asyncio.wait_for(
+            call_llm(
+                [
+                    {"role": "system", "content": backup_prompt},
+                    {"role": "user", "content": f"Query: {query}"},
+                ],
+                response_format="json",
+                model=model_name,
+                max_tokens=120,
+                temperature=0.0,
+                allow_fallback_models=True,
+                max_retries_override=1,
+            ),
+            timeout=float(timeout_seconds),
+        )
+        raw = _safe_json_dict(content)
+        if raw.get("is_flagged") is True:
+            return {
+                "is_flagged": True,
+                "reason": str(raw.get("reason") or "Abusive or unsafe content detected."),
+                "intent_type": "general",
+                "target_entity": "general",
+            }
+    except Exception as exc:
+        logger.warning("Backup moderation check failed: %s", exc)
+
+    return {"is_flagged": False}
+
+
 async def extract_query_intent(query: str, history_context: str = "") -> Dict[str, Any]:
     """
     Extract dynamic filtering metadata from the user's query.
@@ -740,26 +804,38 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
             timeout=float(intent_timeout),
         )
 
-        if isinstance(content, (dict, list)):
-            raw = content
-        elif isinstance(content, (bytes, bytearray)):
-            raw = json.loads(content.decode("utf-8", errors="replace"))
-        else:
-            raw = json.loads(str(content))
+        raw = _safe_json_dict(content)
         if not isinstance(raw, dict):
+            backup_flag = await run_backup_moderation_check(query, history_context=history_context)
+            if backup_flag.get("is_flagged"):
+                return backup_flag
             return {}
         try:
             validated = IntentPayload.model_validate(raw)
-            return validated.model_dump(exclude_none=True)
+            result = validated.model_dump(exclude_none=True)
+            if "is_flagged" not in result:
+                backup_flag = await run_backup_moderation_check(query, history_context=history_context)
+                if backup_flag.get("is_flagged"):
+                    return backup_flag
+            return result
         except Exception:
+            backup_flag = await run_backup_moderation_check(query, history_context=history_context)
+            if backup_flag.get("is_flagged"):
+                return backup_flag
             return raw
     except asyncio.TimeoutError:
         logger.warning("Intent extraction timed out; falling back to deterministic routing.")
+        backup_flag = await run_backup_moderation_check(query, history_context=history_context)
+        if backup_flag.get("is_flagged"):
+            return backup_flag
         if is_fast_smalltalk_query(query):
             return {"is_flagged": False, "conversation_mode": "casual", "intent_type": "general", "target_entity": "general"}
         return {}
     except Exception as e:
         logger.warning(f"Intent extraction/moderation failed: {e}")
+        backup_flag = await run_backup_moderation_check(query, history_context=history_context)
+        if backup_flag.get("is_flagged"):
+            return backup_flag
         if is_fast_smalltalk_query(query):
             return {"is_flagged": False, "conversation_mode": "casual", "intent_type": "general", "target_entity": "general"}
         return {}
