@@ -14,7 +14,7 @@ import type { SourceCitation } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 function SourceCard({ source }: { source: SourceCitation }) {
     const [expanded, setExpanded] = useState(false);
@@ -126,7 +126,34 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                             <p className="whitespace-pre-wrap">{message.content}</p>
                         ) : (
                             <div className="prose prose-sm prose-zinc dark:prose-invert prose-p:leading-relaxed prose-a:text-orange-400 prose-headings:font-bold prose-headings:tracking-tight max-w-none">
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                                <ReactMarkdown
+                                    remarkPlugins={[remarkGfm]}
+                                    components={{
+                                        a: ({ href = '', children, ...props }) => {
+                                            const isInternal = href.startsWith('/');
+                                            if (isInternal) {
+                                                return (
+                                                    <Link to={href} className="text-orange-300 hover:text-orange-200 underline underline-offset-2" {...props}>
+                                                        {children}
+                                                    </Link>
+                                                );
+                                            }
+                                            return (
+                                                <a
+                                                    href={href}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-orange-300 hover:text-orange-200 underline underline-offset-2"
+                                                    {...props}
+                                                >
+                                                    {children}
+                                                </a>
+                                            );
+                                        },
+                                    }}
+                                >
+                                    {message.content}
+                                </ReactMarkdown>
                             </div>
                         )}
 
