@@ -80,10 +80,11 @@ export default function DashboardLayout() {
         ? pageDescriptions['/dashboard/faculty/:id']
         : (pageDescriptions[location.pathname] || 'Workspace');
 
-    const handleLogout = () => {
-        logout();
+    const handleLogout = async () => {
+        await logout();
+        setShowNotifications(false);
         showToast("Signed out successfully", "success");
-        navigate('/auth/login');
+        navigate('/auth/login', { replace: true });
     };
 
     const unreadCount = useMemo(() => notifications.filter((n) => n.unread).length, [notifications]);

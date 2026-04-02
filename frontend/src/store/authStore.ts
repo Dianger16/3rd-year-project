@@ -86,7 +86,8 @@ interface AuthState {
     forgotPassword: (email: string) => Promise<string>;
     resetPassword: (email: string, otp: string, newPassword: string) => Promise<string>;
     googleAuth: (role: UserProfile['role']) => Promise<void>;
-    logout: () => void;
+    logout: () => Promise<void>;
+    clearSession: () => void;
     clearError: () => void;
     fetchProfile: () => Promise<void>;
     setSession: (token: string, user: UserProfile) => void;
@@ -185,12 +186,22 @@ export const useAuthStore = create<AuthState>()(
                 }
             },
 
-            logout: () => {
-                supabase.auth.signOut().catch(() => undefined);
+            clearSession: () => {
                 if (typeof window !== 'undefined') {
                     window.localStorage.removeItem('unigpt:pending-role');
+                    window.localStorage.removeItem('unigpt-auth');
                 }
-                set({ user: null, token: null, error: null });
+                set({ user: null, token: null, error: null, isLoading: false });
+            },
+
+            logout: async () => {
+                try {
+                    await supabase.auth.signOut({ scope: 'local' });
+                } catch {
+                    // Ignore Supabase sign-out transport errors and still clear local app session.
+                } finally {
+                    get().clearSession();
+                }
             },
 
             clearError: () => set({ error: null }),

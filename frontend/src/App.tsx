@@ -48,7 +48,7 @@ function DashboardHome() {
 }
 
 export default function App() {
-  const { setSession, logout, isInitializing, finishInitializing } = useAuthStore();
+  const { setSession, clearSession, isInitializing, finishInitializing } = useAuthStore();
   const lastSyncedTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -92,13 +92,13 @@ export default function App() {
         await syncSessionToBackend(session, 'Google User');
       } else if (event === 'SIGNED_OUT') {
         lastSyncedTokenRef.current = null;
-        logout();
+        clearSession();
       }
       finishInitializing();
     });
 
     return () => subscription.unsubscribe();
-  }, [setSession, logout, finishInitializing]);
+  }, [setSession, clearSession, finishInitializing]);
 
   if (isInitializing) {
     return (

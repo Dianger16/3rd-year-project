@@ -75,10 +75,10 @@ const SettingsPage = () => {
         setSettings(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
-    const handleDeleteAccount = () => {
+    const handleDeleteAccount = async () => {
         if (deleteConfirmText === 'DELETE') {
-            logout();
-            navigate('/auth/login');
+            await logout();
+            navigate('/auth/login', { replace: true });
         }
     };
 
