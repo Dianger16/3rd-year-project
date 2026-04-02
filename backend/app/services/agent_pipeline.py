@@ -536,7 +536,23 @@ def infer_intent_from_query(query: str, intent: dict[str, Any]) -> dict[str, Any
         marker in text for marker in ("course", "courses", "curriculum", "subject", "subjects", "syllabus")
     )
     faculty_requested = any(
-        marker in text for marker in ("faculty", "teacher", "teachers", "professor", "professors", "mentor", "mentors")
+        marker in text
+        for marker in (
+            "faculty",
+            "teacher",
+            "teachers",
+            "professor",
+            "professors",
+            "mentor",
+            "mentors",
+            "instructor",
+            "instructors",
+            "teach",
+            "teaches",
+            "teaching",
+            "advisor",
+            "adviser",
+        )
     )
     notices_requested = any(
         marker in text for marker in ("notice", "notices", "announcement", "announcements", "circular", "circulars")
@@ -552,7 +568,13 @@ def infer_intent_from_query(query: str, intent: dict[str, Any]) -> dict[str, Any
                 break
 
     if not hydrated.get("intent_type"):
-        if count_requested and any(marker in text for marker in ("student", "students")):
+        if faculty_requested and any(marker in text for marker in ("who is", "about", "profile", "tell me about")):
+            hydrated["intent_type"] = "faculty_profile"
+            hydrated["target_entity"] = "faculty"
+        elif faculty_requested and courses_requested and any(marker in text for marker in ("teach", "teaches", "teaching", "mapped")):
+            hydrated["intent_type"] = "course_faculty_map"
+            hydrated["target_entity"] = "faculty"
+        elif count_requested and any(marker in text for marker in ("student", "students")):
             hydrated["intent_type"] = "count_users"
             hydrated["target_entity"] = "students"
         elif count_requested and any(marker in text for marker in ("faculty", "professor", "teachers")):
@@ -817,13 +839,11 @@ def fetch_course_faculty_snapshot(
             for fid in (item.get("faculty_ids") or [])
             if str(fid)
         }
-        if from_courses:
-            visible_faculty_ids = list(from_courses)
-        else:
-            visible_faculty_ids = [
-                fid for fid, row in faculty_by_id.items()
-                if not user_dept_norm or _normalize(row.get("department")) == user_dept_norm
-            ]
+        dept_scoped = {
+            fid for fid, row in faculty_by_id.items()
+            if not user_dept_norm or _normalize(row.get("department")) == user_dept_norm
+        }
+        visible_faculty_ids = list(from_courses.union(dept_scoped)) if (from_courses or dept_scoped) else list(faculty_by_id.keys())
 
     snapshot["courses"] = courses
     snapshot["faculty_by_id"] = faculty_by_id
@@ -835,11 +855,112 @@ def should_use_course_faculty_snapshot(query: str, intent: dict[str, Any]) -> bo
     text = _normalize(query)
     target = _normalize(intent.get("target_entity"))
     course_markers = ("course", "courses", "curriculum", "subject", "subjects", "syllabus")
-    faculty_markers = ("faculty", "teacher", "teachers", "professor", "professors", "mentor", "mentors")
+    faculty_markers = (
+        "faculty",
+        "teacher",
+        "teachers",
+        "professor",
+        "professors",
+        "mentor",
+        "mentors",
+        "instructor",
+        "instructors",
+        "teach",
+        "teaches",
+        "teaching",
+        "advisor",
+        "adviser",
+        "who is",
+    )
     return (
         any(marker in text for marker in course_markers + faculty_markers)
         or target in {"courses", "faculty", "teachers", "professors", "mentors"}
     )
+
+
+def _name_tokens(value: str) -> list[str]:
+    ignore = {"dr", "prof", "mr", "mrs", "ms", "sir", "madam"}
+    return [
+        token
+        for token in re.findall(r"[a-z]{2,}", _normalize(value))
+        if token not in ignore
+    ]
+
+
+def _find_requested_faculty(
+    query_text: str,
+    faculty_by_id: dict[str, dict[str, Any]],
+    visible_faculty_ids: list[str],
+) -> Optional[tuple[str, dict[str, Any]]]:
+    if not faculty_by_id:
+        return None
+
+    visible_set = {str(fid) for fid in visible_faculty_ids if str(fid)}
+    candidates: list[tuple[int, str, dict[str, Any]]] = []
+
+    for fid, row in faculty_by_id.items():
+        fid_str = str(fid)
+        if visible_set and fid_str not in visible_set:
+            continue
+
+        full_name = str(row.get("full_name") or "")
+        normalized_full_name = _normalize(full_name)
+        if not normalized_full_name:
+            continue
+
+        score = 0
+        if normalized_full_name in query_text:
+            score += 100
+
+        tokens = _name_tokens(full_name)
+        if tokens:
+            token_hits = sum(1 for token in tokens if token in query_text)
+            if token_hits >= 2:
+                score += 50 + token_hits
+            elif token_hits == 1 and len(tokens) == 1:
+                score += 20
+
+        if score > 0:
+            candidates.append((score, fid_str, row))
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    _, match_id, match_row = candidates[0]
+    return match_id, match_row
+
+
+def _find_requested_courses(
+    query_text: str,
+    courses: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    for item in courses:
+        title = _normalize(item.get("title"))
+        code = _normalize(item.get("code"))
+        if not title and not code:
+            continue
+        if title and title in query_text:
+            matches.append(item)
+            continue
+        if code and code in query_text:
+            matches.append(item)
+            continue
+
+        title_tokens = [token for token in re.findall(r"[a-z0-9]{3,}", title) if token not in {"btech", "course"}]
+        hits = sum(1 for token in title_tokens if token in query_text)
+        if hits >= 2:
+            matches.append(item)
+
+    dedup: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in matches:
+        key = str(item.get("id") or item.get("title") or "")
+        if key and key not in seen:
+            seen.add(key)
+            dedup.append(item)
+    return dedup
 
 
 def build_course_faculty_answer(
@@ -855,8 +976,32 @@ def build_course_faculty_answer(
     intent_type = _normalize(intent.get("intent_type"))
     count_request = bool(re.search(r"\b(how many|count|number of|total)\b", text))
 
-    course_related = any(marker in text for marker in ("course", "courses", "curriculum", "subject", "subjects")) or target_entity == "courses"
-    faculty_related = any(marker in text for marker in ("faculty", "teacher", "teachers", "professor", "professors", "mentor", "mentors")) or target_entity == "faculty"
+    course_code_mentioned = bool(re.search(r"\b[a-z]{2,6}[\s-]?\d{2,4}\b", text))
+    course_related = (
+        any(marker in text for marker in ("course", "courses", "curriculum", "subject", "subjects"))
+        or target_entity == "courses"
+        or course_code_mentioned
+    )
+    faculty_related = any(
+        marker in text
+        for marker in (
+            "faculty",
+            "teacher",
+            "teachers",
+            "professor",
+            "professors",
+            "mentor",
+            "mentors",
+            "instructor",
+            "instructors",
+            "teach",
+            "teaches",
+            "teaching",
+            "advisor",
+            "adviser",
+            "who is",
+        )
+    ) or target_entity == "faculty"
     requested_course = _normalize(intent.get("course"))
 
     scoped_courses = courses
@@ -869,6 +1014,58 @@ def build_course_faculty_answer(
         ]
         if requested_filtered:
             scoped_courses = requested_filtered
+    else:
+        query_matched_courses = _find_requested_courses(text, courses)
+        if query_matched_courses:
+            scoped_courses = query_matched_courses
+
+    requested_faculty = _find_requested_faculty(text, faculty_by_id, [str(fid) for fid in visible_faculty_ids])
+    faculty_profile_requested = any(
+        marker in text
+        for marker in (
+            "who is",
+            "about",
+            "tell me",
+            "profile",
+            "teach",
+            "teaches",
+            "teaching",
+            "what she",
+            "what he",
+            "what they",
+        )
+    )
+    if requested_faculty and faculty_profile_requested:
+        faculty_id, faculty_row = requested_faculty
+        mapped_courses = [
+            item
+            for item in scoped_courses
+            if faculty_id in {str(fid) for fid in (item.get("faculty_ids") or [])}
+        ]
+        name = str(faculty_row.get("full_name") or "Faculty")
+        department = str(faculty_row.get("department") or "Department not set")
+        email = str(faculty_row.get("email") or "")
+        email_line = f"- Email: {email}\n" if email else ""
+        if mapped_courses:
+            courses_lines = "\n".join(
+                f"- {item.get('title')} ({int(item.get('notice_count', 0))} notices)"
+                for item in mapped_courses[:8]
+            )
+            return (
+                f"Here is the live profile match:\n"
+                f"- Name: {name}\n"
+                f"- Department: {department}\n"
+                f"{email_line}"
+                f"- Courses taught in your accessible scope: {len(mapped_courses)}\n"
+                f"{courses_lines}"
+            )
+        return (
+            f"Here is the live profile match:\n"
+            f"- Name: {name}\n"
+            f"- Department: {department}\n"
+            f"{email_line}"
+            f"- Courses taught in your accessible scope: 0"
+        )
 
     if (count_request and course_related) or intent_type == "count_courses":
         if not scoped_courses:
@@ -922,6 +1119,24 @@ def build_course_faculty_answer(
             row = faculty_by_id.get(fid) or {}
             lines.append(f"- {row.get('full_name') or 'Faculty'} ({row.get('department') or 'Department not set'})")
         return "Here are faculty members from your live directory:\n" + "\n".join(lines)
+
+    if faculty_related:
+        visible_ids = [str(fid) for fid in visible_faculty_ids if str(fid)]
+        if not visible_ids:
+            return "I checked your live faculty directory and found **0 faculty records** in your current scope."
+        lines = []
+        for fid in visible_ids[:8]:
+            row = faculty_by_id.get(fid) or {}
+            lines.append(f"- {row.get('full_name') or 'Faculty'} ({row.get('department') or 'Department not set'})")
+        return "I checked the live faculty directory. Here are relevant faculty profiles:\n" + "\n".join(lines)
+
+    if course_related:
+        if not scoped_courses:
+            return "I checked your live course directory and found **0 courses** in your current access scope."
+        lines = []
+        for item in scoped_courses[:8]:
+            lines.append(f"- {item.get('title')} ({int(item.get('notice_count', 0))} notices)")
+        return "I checked the live course directory. Here are relevant courses:\n" + "\n".join(lines)
 
     return None
 
@@ -1141,7 +1356,7 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
     Return ONLY a valid JSON object with these fields when applicable:
     - is_flagged: boolean
     - reason: string (if flagged)
-    - intent_type: one of ["count_users","count_documents","list_documents","document_date_lookup","holiday_check","count_courses","list_courses","count_faculty","list_faculty","general"]
+    - intent_type: one of ["count_users","count_documents","list_documents","document_date_lookup","holiday_check","count_courses","list_courses","count_faculty","list_faculty","faculty_profile","course_faculty_map","general"]
     - target_entity: string (e.g., "students", "faculty", "admins", "users", "documents", "notices", "courses")
     - document_date: "YYYY-MM-DD" if asking for uploads on a date (use today/tomorrow/yesterday if referenced)
     - date_reference: one of ["today","tomorrow","yesterday"] if explicitly used
@@ -1452,6 +1667,11 @@ async def run_agent_pipeline(
         or doc_keyword_request
         or (count_request and any(marker in target_entity for marker in ("document", "notice", "announcement", "circular", "holiday")))
     )
+    structured_directory_query = (
+        should_use_course_faculty_snapshot(query, intent)
+        and not doc_keyword_request
+        and intent_type not in {"count_documents", "list_documents", "document_date_lookup", "holiday_check"}
+    )
 
     if supabase and doc_lookup_requested and forced_answer is None:
         filtered_docs = fetch_filtered_documents(
@@ -1544,7 +1764,10 @@ async def run_agent_pipeline(
                 )
 
     should_run_vector_search = (
-        pinecone_client.index is not None and forced_answer is None and not _PINECONE_EMBEDDING_DISABLED
+        pinecone_client.index is not None
+        and forced_answer is None
+        and not _PINECONE_EMBEDDING_DISABLED
+        and not structured_directory_query
     )
 
     if should_run_vector_search:
