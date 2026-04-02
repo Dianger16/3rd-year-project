@@ -501,6 +501,12 @@ def infer_intent_from_query(query: str, intent: dict[str, Any]) -> dict[str, Any
     count_requested = bool(
         re.search(r"\b(how many|count|number of|total)\b", text)
     )
+    courses_requested = any(
+        marker in text for marker in ("course", "courses", "curriculum", "subject", "subjects", "syllabus")
+    )
+    faculty_requested = any(
+        marker in text for marker in ("faculty", "teacher", "teachers", "professor", "professors", "mentor", "mentors")
+    )
     notices_requested = any(
         marker in text for marker in ("notice", "notices", "announcement", "announcements", "circular", "circulars")
     )
@@ -530,13 +536,29 @@ def infer_intent_from_query(query: str, intent: dict[str, Any]) -> dict[str, Any
         elif count_requested and documents_requested:
             hydrated["intent_type"] = "count_documents"
             hydrated["target_entity"] = "notices" if notices_requested else "documents"
+        elif count_requested and courses_requested:
+            hydrated["intent_type"] = "count_courses"
+            hydrated["target_entity"] = "courses"
+        elif count_requested and faculty_requested:
+            hydrated["intent_type"] = "count_faculty"
+            hydrated["target_entity"] = "faculty"
         elif notices_requested:
             hydrated["intent_type"] = "list_documents"
             hydrated["target_entity"] = "notices"
+        elif courses_requested:
+            hydrated["intent_type"] = "list_courses"
+            hydrated["target_entity"] = "courses"
+        elif faculty_requested:
+            hydrated["intent_type"] = "list_faculty"
+            hydrated["target_entity"] = "faculty"
 
     if not hydrated.get("target_entity"):
         if notices_requested:
             hydrated["target_entity"] = "notices"
+        elif courses_requested:
+            hydrated["target_entity"] = "courses"
+        elif faculty_requested:
+            hydrated["target_entity"] = "faculty"
         elif documents_requested:
             hydrated["target_entity"] = "documents"
 
@@ -566,6 +588,311 @@ def enrich_intent_with_profile(intent: dict[str, Any], user_profile: dict[str, A
         if profile_program:
             hydrated["course"] = str(profile_program)
     return hydrated
+
+
+def _slugify_course(value: str) -> str:
+    text = re.sub(r"[^a-z0-9]+", "-", value.strip().lower())
+    return text.strip("-") or "general"
+
+
+def _fetch_documents_for_directory(
+    supabase,
+    allowed_types: list[str],
+    limit: int = 320,
+) -> list[dict[str, Any]]:
+    if not supabase or not allowed_types:
+        return []
+
+    query_attempts = [
+        ("id,filename,doc_type,department,course,tags,uploader_id,uploaded_at,created_at", "created_at"),
+        ("id,filename,doc_type,department,course,tags,uploader_id,uploaded_at", "uploaded_at"),
+        ("id,filename,doc_type,department,course,tags,uploader_id,created_at", "created_at"),
+        ("id,filename,doc_type,department,course,tags,uploaded_at,created_at", "created_at"),
+    ]
+
+    for select_columns, order_column in query_attempts:
+        try:
+            res = (
+                supabase.table("documents")
+                .select(select_columns)
+                .in_("doc_type", allowed_types)
+                .order(order_column, desc=True)
+                .limit(limit)
+                .execute()
+            )
+            return res.data or []
+        except Exception:
+            continue
+    return []
+
+
+def _is_directory_doc_relevant(doc: dict[str, Any], user_role: str, user_profile: dict[str, Any]) -> bool:
+    role = _normalize(user_role)
+    if role == "admin":
+        return True
+
+    user_dept = _normalize(user_profile.get("department"))
+    user_program = _normalize(user_profile.get("program"))
+    doc_dept = _normalize(doc.get("department"))
+    doc_course = _normalize(doc.get("course"))
+
+    if not doc_dept and not doc_course:
+        return True
+    if user_dept and doc_dept and user_dept == doc_dept:
+        return True
+    if user_program and doc_course and (user_program in doc_course or doc_course in user_program):
+        return True
+    return False
+
+
+def fetch_course_faculty_snapshot(
+    supabase,
+    user_role: str,
+    user_profile: dict[str, Any],
+    allowed_types: list[str],
+    limit: int = 120,
+) -> dict[str, Any]:
+    snapshot: dict[str, Any] = {"courses": [], "faculty_by_id": {}, "visible_faculty_ids": []}
+    if not supabase:
+        return snapshot
+
+    docs = _fetch_documents_for_directory(supabase, allowed_types, limit=max(180, limit * 3))
+    relevant_docs = [doc for doc in docs if _is_directory_doc_relevant(doc, user_role, user_profile)]
+
+    faculty_rows: list[dict[str, Any]] = []
+    try:
+        faculty_res = (
+            supabase.table("profiles")
+            .select("id,full_name,email,department,program,role")
+            .eq("role", "faculty")
+            .limit(350)
+            .execute()
+        )
+        faculty_rows = faculty_res.data or []
+    except Exception:
+        try:
+            faculty_res = (
+                supabase.table("profiles")
+                .select("id,full_name,email,department,role")
+                .eq("role", "faculty")
+                .limit(350)
+                .execute()
+            )
+            faculty_rows = faculty_res.data or []
+        except Exception:
+            faculty_rows = []
+
+    faculty_by_id: dict[str, dict[str, Any]] = {
+        str(row.get("id")): {
+            "id": str(row.get("id")),
+            "full_name": str(row.get("full_name") or "Faculty"),
+            "email": str(row.get("email") or ""),
+            "department": row.get("department"),
+            "program": row.get("program"),
+        }
+        for row in faculty_rows
+        if row.get("id")
+    }
+    faculty_by_department: dict[str, list[str]] = {}
+    faculty_program_map: dict[str, str] = {}
+    for row in faculty_rows:
+        fid = str(row.get("id") or "").strip()
+        if not fid:
+            continue
+        dept = _normalize(row.get("department"))
+        if dept:
+            faculty_by_department.setdefault(dept, []).append(fid)
+        faculty_program_map[fid] = _normalize(row.get("program"))
+
+    courses_map: dict[str, dict[str, Any]] = {}
+    for doc in relevant_docs:
+        course_name = str(doc.get("course") or "").strip()
+        if not course_name:
+            continue
+        key = _slugify_course(course_name)
+        uploader_id = str(doc.get("uploader_id") or "").strip()
+        uploaded_at = _safe_iso(doc.get("uploaded_at") or doc.get("created_at"))
+        existing = courses_map.get(key)
+        if not existing:
+            faculty_ids: list[str] = []
+            if uploader_id and uploader_id in faculty_by_id:
+                faculty_ids.append(uploader_id)
+            courses_map[key] = {
+                "id": key,
+                "code": course_name.upper().replace(" ", "-"),
+                "title": course_name,
+                "department": str(doc.get("department") or "").strip() or None,
+                "next_update_at": uploaded_at or None,
+                "notice_count": 1,
+                "faculty_ids": faculty_ids[:5],
+            }
+            continue
+
+        existing["notice_count"] = int(existing.get("notice_count", 0)) + 1
+        if uploader_id and uploader_id in faculty_by_id:
+            current_ids = list(existing.get("faculty_ids", []))
+            if uploader_id not in current_ids:
+                current_ids.append(uploader_id)
+                existing["faculty_ids"] = current_ids[:5]
+        current_dt = parse_date_string(str(existing.get("next_update_at") or ""))
+        incoming_dt = parse_date_string(str(uploaded_at or ""))
+        if incoming_dt and (not current_dt or incoming_dt > current_dt):
+            existing["next_update_at"] = uploaded_at
+
+    for course_item in courses_map.values():
+        if course_item.get("faculty_ids"):
+            continue
+        course_title = _normalize(course_item.get("title"))
+        program_matches = [
+            faculty_id
+            for faculty_id, program in faculty_program_map.items()
+            if program and (program in course_title or course_title in program)
+        ]
+        if program_matches:
+            course_item["faculty_ids"] = program_matches[:5]
+            continue
+        dept = _normalize(course_item.get("department"))
+        if dept and dept in faculty_by_department:
+            course_item["faculty_ids"] = faculty_by_department[dept][:5]
+
+    if not courses_map and user_profile.get("program"):
+        user_program = str(user_profile.get("program"))
+        key = _slugify_course(user_program)
+        default_faculty_ids = faculty_by_department.get(_normalize(user_profile.get("department")), [])[:5]
+        courses_map[key] = {
+            "id": key,
+            "code": user_program.upper().replace(" ", "-"),
+            "title": user_program,
+            "department": user_profile.get("department"),
+            "next_update_at": None,
+            "notice_count": 0,
+            "faculty_ids": default_faculty_ids,
+        }
+
+    courses = sorted(
+        list(courses_map.values()),
+        key=lambda item: str(item.get("next_update_at") or ""),
+        reverse=True,
+    )[:limit]
+
+    user_role_norm = _normalize(user_role)
+    user_dept_norm = _normalize(user_profile.get("department"))
+    if user_role_norm == "admin":
+        visible_faculty_ids = list(faculty_by_id.keys())
+    else:
+        from_courses = {
+            str(fid)
+            for item in courses
+            for fid in (item.get("faculty_ids") or [])
+            if str(fid)
+        }
+        if from_courses:
+            visible_faculty_ids = list(from_courses)
+        else:
+            visible_faculty_ids = [
+                fid for fid, row in faculty_by_id.items()
+                if not user_dept_norm or _normalize(row.get("department")) == user_dept_norm
+            ]
+
+    snapshot["courses"] = courses
+    snapshot["faculty_by_id"] = faculty_by_id
+    snapshot["visible_faculty_ids"] = visible_faculty_ids
+    return snapshot
+
+
+def should_use_course_faculty_snapshot(query: str, intent: dict[str, Any]) -> bool:
+    text = _normalize(query)
+    target = _normalize(intent.get("target_entity"))
+    course_markers = ("course", "courses", "curriculum", "subject", "subjects", "syllabus")
+    faculty_markers = ("faculty", "teacher", "teachers", "professor", "professors", "mentor", "mentors")
+    return (
+        any(marker in text for marker in course_markers + faculty_markers)
+        or target in {"courses", "faculty", "teachers", "professors", "mentors"}
+    )
+
+
+def build_course_faculty_answer(
+    query: str,
+    intent: dict[str, Any],
+    snapshot: dict[str, Any],
+) -> Optional[str]:
+    courses = snapshot.get("courses") or []
+    faculty_by_id = snapshot.get("faculty_by_id") or {}
+    visible_faculty_ids = snapshot.get("visible_faculty_ids") or []
+    text = _normalize(query)
+    target_entity = _normalize(intent.get("target_entity"))
+    intent_type = _normalize(intent.get("intent_type"))
+    count_request = bool(re.search(r"\b(how many|count|number of|total)\b", text))
+
+    course_related = any(marker in text for marker in ("course", "courses", "curriculum", "subject", "subjects")) or target_entity == "courses"
+    faculty_related = any(marker in text for marker in ("faculty", "teacher", "teachers", "professor", "professors", "mentor", "mentors")) or target_entity == "faculty"
+    requested_course = _normalize(intent.get("course"))
+
+    scoped_courses = courses
+    if requested_course:
+        requested_filtered = [
+            item
+            for item in courses
+            if requested_course in _normalize(item.get("title"))
+            or requested_course in _normalize(item.get("code"))
+        ]
+        if requested_filtered:
+            scoped_courses = requested_filtered
+
+    if (count_request and course_related) or intent_type == "count_courses":
+        if not scoped_courses:
+            scope_label = f" for `{intent.get('course')}`" if intent.get("course") else ""
+            return f"I checked the live course directory and found **0 courses{scope_label}** in your current access scope."
+        preview = "\n".join(f"- {item.get('title')} ({item.get('notice_count', 0)} notices)" for item in scoped_courses[:6])
+        return (
+            f"I found **{len(scoped_courses)} courses** in your live directory.\n\n"
+            f"Top matches:\n{preview}"
+        )
+
+    if (count_request and faculty_related) or intent_type == "count_faculty":
+        faculty_ids = {
+            str(fid)
+            for item in scoped_courses
+            for fid in (item.get("faculty_ids") or [])
+            if str(fid)
+        } or {str(fid) for fid in visible_faculty_ids if str(fid)}
+        return f"I found **{len(faculty_ids)} faculty members** mapped to your accessible courses/scope."
+
+    if course_related and faculty_related:
+        if not scoped_courses:
+            return "I checked your live course directory and found **0 matching courses**, so there are no mapped faculty yet."
+        lines: list[str] = []
+        for item in scoped_courses[:8]:
+            faculty_names = [
+                str((faculty_by_id.get(str(fid)) or {}).get("full_name") or "Unassigned")
+                for fid in (item.get("faculty_ids") or [])
+            ]
+            faculty_text = ", ".join(faculty_names) if faculty_names else "No faculty mapped yet"
+            lines.append(f"- {item.get('title')}: {faculty_text}")
+        return "Here are the faculty mappings from your live course directory:\n" + "\n".join(lines)
+
+    if intent_type == "list_courses" or (course_related and any(marker in text for marker in ("list", "show", "which", "available", "my"))):
+        if not scoped_courses:
+            return "I checked your live course directory and found **0 courses** in your current access scope."
+        lines = []
+        for item in scoped_courses[:10]:
+            lines.append(
+                f"- {item.get('title')} | notices: {int(item.get('notice_count', 0))}"
+                f"{f' | latest: {_format_short_date(item.get('next_update_at'))}' if item.get('next_update_at') else ''}"
+            )
+        return "Here are your live courses from the database:\n" + "\n".join(lines)
+
+    if intent_type == "list_faculty" or (faculty_related and any(marker in text for marker in ("list", "show", "which", "available", "my"))):
+        visible_ids = [str(fid) for fid in visible_faculty_ids if str(fid)]
+        if not visible_ids:
+            return "I checked your live faculty directory and found **0 faculty records** in your current scope."
+        lines = []
+        for fid in visible_ids[:12]:
+            row = faculty_by_id.get(fid) or {}
+            lines.append(f"- {row.get('full_name') or 'Faculty'} ({row.get('department') or 'Department not set'})")
+        return "Here are faculty members from your live directory:\n" + "\n".join(lines)
+
+    return None
 
 
 def fetch_filtered_documents(
@@ -783,8 +1110,8 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
     Return ONLY a valid JSON object with these fields when applicable:
     - is_flagged: boolean
     - reason: string (if flagged)
-    - intent_type: one of ["count_users","count_documents","list_documents","document_date_lookup","holiday_check","general"]
-    - target_entity: string (e.g., "students", "faculty", "admins", "users", "documents", "notices")
+    - intent_type: one of ["count_users","count_documents","list_documents","document_date_lookup","holiday_check","count_courses","list_courses","count_faculty","list_faculty","general"]
+    - target_entity: string (e.g., "students", "faculty", "admins", "users", "documents", "notices", "courses")
     - document_date: "YYYY-MM-DD" if asking for uploads on a date (use today/tomorrow/yesterday if referenced)
     - date_reference: one of ["today","tomorrow","yesterday"] if explicitly used
     - doc_type, role, department, course, tags (if relevant)
@@ -1020,14 +1347,15 @@ async def run_agent_pipeline(
 
     # 2. Search Pinecone for context
     allowed_types = get_allowed_doc_types(user_role)
+    profile_ctx = effective_user_profile or {}
     user_profile_lines = [
-        f"- Name: {user_profile.get('full_name') or 'Unknown'}",
-        f"- Email: {user_profile.get('email') or 'Unknown'}",
-        f"- Role: {user_profile.get('role') or user_role}",
-        f"- Department: {user_profile.get('department') or '-'}",
-        f"- Program: {user_profile.get('program') or '-'}",
-        f"- Semester: {user_profile.get('semester') or '-'}",
-        f"- Section: {user_profile.get('section') or '-'}",
+        f"- Name: {profile_ctx.get('full_name') or 'Unknown'}",
+        f"- Email: {profile_ctx.get('email') or 'Unknown'}",
+        f"- Role: {profile_ctx.get('role') or user_role}",
+        f"- Department: {profile_ctx.get('department') or '-'}",
+        f"- Program: {profile_ctx.get('program') or '-'}",
+        f"- Semester: {profile_ctx.get('semester') or '-'}",
+        f"- Section: {profile_ctx.get('section') or '-'}",
     ]
     user_profile_text = "USER PROFILE CONTEXT:\n" + "\n".join(user_profile_lines)
 
@@ -1060,6 +1388,28 @@ async def run_agent_pipeline(
     target_entity = _normalize(intent.get("target_entity"))
     query_text = _normalize(query)
     count_request = bool(re.search(r"\b(how many|count|number of|total)\b", query_text))
+
+    if supabase and should_use_course_faculty_snapshot(query, intent):
+        course_faculty_snapshot = fetch_course_faculty_snapshot(
+            supabase=supabase,
+            user_role=user_role,
+            user_profile=profile_ctx,
+            allowed_types=allowed_types,
+            limit=140,
+        )
+        course_answer = build_course_faculty_answer(
+            query=query,
+            intent=intent,
+            snapshot=course_faculty_snapshot,
+        )
+        if course_answer:
+            forced_answer = course_answer
+            courses = course_faculty_snapshot.get("courses") or []
+            faculty_by_id = course_faculty_snapshot.get("faculty_by_id") or {}
+            context_text += (
+                f"\n[Structured Directory Lookup: courses={len(courses)}, faculty={len(faculty_by_id)}]\n"
+            )
+
     doc_keyword_request = any(
         marker in query_text for marker in ("document", "documents", "doc", "docs", "notice", "announcement", "circular", "holiday")
     )
@@ -1072,7 +1422,7 @@ async def run_agent_pipeline(
         or (count_request and any(marker in target_entity for marker in ("document", "notice", "announcement", "circular", "holiday")))
     )
 
-    if supabase and doc_lookup_requested:
+    if supabase and doc_lookup_requested and forced_answer is None:
         filtered_docs = fetch_filtered_documents(
             supabase=supabase,
             allowed_types=allowed_types,
@@ -1299,7 +1649,29 @@ async def run_agent_pipeline(
         """
     else:
         if intent_type == "count_users" and not forced_answer:
-            forced_answer = "I can provide user counts only to admin accounts. For your role, I can still help with documents and course notices in your allowed scope."
+            forced_answer = "I can provide user counts only to admin accounts. For your role, I can still help with documents, courses, and notices in your allowed scope."
+
+        common_guardrails = """
+        1. Never invent internal data. Use only provided context and structured lookup results.
+        2. If no matching records exist, clearly state the count as 0 for the requested scope.
+        3. Keep responses focused on university and campus topics.
+        4. Stay professional and polite.
+        """
+
+        if user_role == "faculty":
+            role_directive = """
+            ROLE MODE: FACULTY
+            - Prioritize faculty workflows: course updates, notices, department circulars, and student-facing policy clarifications.
+            - When asked about courses/faculty mappings, use structured directory data first.
+            - If a query is outside faculty-visible scope, state the limitation briefly and offer the closest available data.
+            """
+        else:
+            role_directive = """
+            ROLE MODE: STUDENT
+            - Prioritize student workflows: course notices, deadlines, policy guidance, and faculty/course mapping in student scope.
+            - When asked about courses/faculty mappings, use structured directory data first.
+            - Keep responses practical and concise for student actionability.
+            """
 
         system_message = f"""
         You are UnivGPT, the official professional AI assistant for the University.
@@ -1310,11 +1682,10 @@ async def run_agent_pipeline(
         
         {user_profile_text}
 
+        {role_directive}
+
         GUARDRAILS:
-        1. Never invent internal data. Use only provided context and structured lookup results.
-        2. If no matching documents exist, clearly state "0 documents found" for the requested scope.
-        3. Keep responses focused on university and campus topics.
-        4. Stay professional and polite.
+        {common_guardrails}
 
         Extracted Intent Filters: {json.dumps(intent)}
 
