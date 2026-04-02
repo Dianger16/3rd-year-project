@@ -28,7 +28,7 @@ export default function DashboardLayout() {
     const navigation: Record<string, { label: string; href: string; icon: React.ReactNode }[]> = {
         student: [
             { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard className="w-5 h-5 shrink-0" /> },
-            { label: 'AI Chat', href: '/dashboard/chat', icon: <MessageSquare className="w-5 h-5 shrink-0" /> },
+            { label: 'Student AI', href: '/dashboard/chat', icon: <MessageSquare className="w-5 h-5 shrink-0" /> },
             { label: 'My Courses', href: '/dashboard/courses', icon: <BookOpen className="w-5 h-5 shrink-0" /> },
             { label: 'Faculty', href: '/dashboard/faculty', icon: <GraduationCap className="w-5 h-5 shrink-0" /> },
             { label: 'Notifications', href: '/dashboard/notifications', icon: <Bell className="w-5 h-5 shrink-0" /> },
@@ -36,7 +36,7 @@ export default function DashboardLayout() {
         ],
         faculty: [
             { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard className="w-5 h-5 shrink-0" /> },
-            { label: 'AI Chat', href: '/dashboard/chat', icon: <MessageSquare className="w-5 h-5 shrink-0" /> },
+            { label: 'Faculty AI', href: '/dashboard/chat', icon: <MessageSquare className="w-5 h-5 shrink-0" /> },
             { label: 'Documents', href: '/dashboard/documents', icon: <FileText className="w-5 h-5 shrink-0" /> },
             { label: 'Courses', href: '/dashboard/courses', icon: <BookOpen className="w-5 h-5 shrink-0" /> },
             { label: 'Faculty', href: '/dashboard/faculty', icon: <GraduationCap className="w-5 h-5 shrink-0" /> },
@@ -45,7 +45,7 @@ export default function DashboardLayout() {
         ],
         admin: [
             { label: 'Overview', href: '/dashboard', icon: <LayoutDashboard className="w-5 h-5 shrink-0" /> },
-            { label: 'AI Chat', href: '/dashboard/chat', icon: <MessageSquare className="w-5 h-5 shrink-0" /> },
+            { label: 'Admin AI', href: '/dashboard/chat', icon: <MessageSquare className="w-5 h-5 shrink-0" /> },
             { label: 'Users', href: '/dashboard/users', icon: <Users className="w-5 h-5 shrink-0" /> },
             { label: 'Documents', href: '/dashboard/documents', icon: <FileText className="w-5 h-5 shrink-0" /> },
             { label: 'Audit Logs', href: '/dashboard/audit', icon: <Shield className="w-5 h-5 shrink-0" /> },
@@ -65,7 +65,11 @@ export default function DashboardLayout() {
     if (location.pathname.startsWith('/dashboard/faculty/')) pageTitle = 'Faculty Profile';
     const pageDescriptions: Record<string, string> = {
         '/dashboard': role === 'admin' ? 'Control center and operational insights' : role === 'faculty' ? 'Department operations and circulars' : 'Your university workspace',
-        '/dashboard/chat': 'Ask questions and get role-aware assistance',
+        '/dashboard/chat': role === 'admin'
+            ? 'Ask admin operations queries: users, audits, docs, and moderation'
+            : role === 'faculty'
+                ? 'Ask faculty workflow queries: circulars, classes, and department updates'
+                : 'Ask student support queries: courses, notices, and deadlines',
         '/dashboard/courses': 'Browse courses, calendars, and syllabus',
         '/dashboard/documents': 'Upload, route, and manage document access',
         '/dashboard/upload': 'Upload, route, and manage document access',

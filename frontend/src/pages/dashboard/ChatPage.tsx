@@ -16,6 +16,46 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
+type ChatRole = 'student' | 'faculty' | 'admin';
+
+const CHAT_ROLE_UI: Record<ChatRole, {
+    assistantTitle: string;
+    emptySubtitle: string;
+    inputPlaceholder: string;
+    quickPrompts: string[];
+}> = {
+    student: {
+        assistantTitle: 'Student Assistant',
+        emptySubtitle: 'Ask about notices, courses, deadlines, and campus policy updates in your scope.',
+        inputPlaceholder: 'Ask about courses, notices, and deadlines...',
+        quickPrompts: [
+            'Show my latest course notices.',
+            'Any deadlines this week for my scope?',
+            'List faculty mapped to my courses.',
+        ],
+    },
+    faculty: {
+        assistantTitle: 'Faculty Assistant',
+        emptySubtitle: 'Use this for class notices, department circulars, and faculty-course operational updates.',
+        inputPlaceholder: 'Ask about circulars, classes, and department updates...',
+        quickPrompts: [
+            'Summarize latest faculty circulars.',
+            'Show recent class-related uploads.',
+            'List course-faculty mappings for my department.',
+        ],
+    },
+    admin: {
+        assistantTitle: 'Admin Assistant',
+        emptySubtitle: 'Use this for admin operations: user metrics, audit trends, document pipeline, and moderation.',
+        inputPlaceholder: 'Ask admin ops: users, audit, docs, moderation...',
+        quickPrompts: [
+            'How many students, faculty, and admins are active?',
+            'Show recent uploads and uploader details.',
+            'Summarize latest audit activity.',
+        ],
+    },
+};
+
 function SourceCard({ source }: { source: SourceCitation }) {
     const [expanded, setExpanded] = useState(false);
     return (
@@ -71,6 +111,12 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     };
 
     const time = message.timestamp ? new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const fallbackAssistantLabel =
+        user?.role === 'admin'
+            ? 'Admin Assistant'
+            : user?.role === 'faculty'
+                ? 'Faculty Assistant'
+                : 'Student Assistant';
 
     return (
         <motion.div
@@ -102,7 +148,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                         <span className={cn("text-xs font-semibold flex items-center gap-1", isUser ? "text-zinc-400" : "text-orange-400")}>
                             {isUser ? 'You' : (
-                                'UnivGPT'
+                                message.roleBadge || fallbackAssistantLabel
                             )}
                         </span>
                         {time && <span className="text-[10px] text-zinc-500 font-medium px-2 py-0.5 rounded-full bg-white/5 border border-white/5">{time}</span>}
@@ -263,6 +309,8 @@ export default function ChatPage() {
     };
 
     const firstName = user?.full_name?.split(' ')[0] || 'there';
+    const role = ((user?.role || 'student') as ChatRole);
+    const roleUI = CHAT_ROLE_UI[role] || CHAT_ROLE_UI.student;
     const isChatBlocked = Boolean(moderationState?.blocked);
     const appealPending = String(moderationState?.appeal_status || '').toLowerCase() === 'pending';
     const hasStreamingAssistant = messages.some((m) => m.role === 'assistant' && m.isStreaming);
@@ -305,8 +353,23 @@ export default function ChatPage() {
                                     Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-400">{firstName}</span>
                                 </h2>
                                 <p className="text-zinc-500 text-sm leading-relaxed max-w-md mx-auto">
-                                    Ask me anything about your university - courses, policies, research, deadlines, and more.
+                                    {roleUI.emptySubtitle}
                                 </p>
+                                <div className="mt-3 inline-flex items-center rounded-full border border-orange-500/25 bg-orange-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-orange-300">
+                                    {roleUI.assistantTitle}
+                                </div>
+                                <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                                    {roleUI.quickPrompts.map((prompt) => (
+                                        <button
+                                            key={prompt}
+                                            type="button"
+                                            onClick={() => setInput(prompt)}
+                                            className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[11px] text-zinc-300 hover:text-white hover:border-orange-500/35 hover:bg-orange-500/10 transition-colors"
+                                        >
+                                            {prompt}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
 
                         </motion.div>
@@ -402,7 +465,7 @@ export default function ChatPage() {
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={handleKeyDown}
                             onWheelCapture={(e) => e.stopPropagation()}
-                            placeholder="Ask about courses, policies, research..."
+                            placeholder={roleUI.inputPlaceholder}
                             data-lenis-prevent="true"
                             className="flex-1 bg-transparent px-4 py-3 sm:px-5 sm:py-4 text-xs sm:text-sm placeholder:text-zinc-600 outline-none resize-none max-h-40 min-h-[44px] sm:min-h-[52px] text-white overflow-y-auto overscroll-contain"
                             rows={1}
