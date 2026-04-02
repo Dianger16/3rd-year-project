@@ -651,23 +651,31 @@ async def build_fast_smalltalk_answer(
     user_role: str,
     user_profile: Optional[dict[str, Any]] = None,
     conversation_mode: str = "task",
+    has_recent_assistant_turn: bool = False,
 ) -> str:
     profile = user_profile or {}
-    raw_name = str(profile.get("full_name") or "").strip()
-    first_name = raw_name.split(" ")[0] if raw_name else ""
     role_norm = str(user_role or "student").strip().lower()
     role_guidance = {
-        "admin": "administrative and operational scope",
-        "faculty": "teaching and academic coordination scope",
-        "student": "student academic support scope",
+        "admin": "ops, users, audit, and document governance scope",
+        "faculty": "teaching, course notices, and department coordination scope",
+        "student": "course notices, deadlines, and policy support scope",
     }.get(role_norm, "role-scoped university support")
+    role_capability_focus = {
+        "admin": "user counts, audit trends, and document pipeline status",
+        "faculty": "course notices, class updates, and faculty/course mappings",
+        "student": "course notices, deadlines, faculty/course mappings, and policy guidance",
+    }.get(role_norm, "role-scoped university workflows")
 
     mode_instruction = (
-        "The user is in casual conversation or light venting mode. Reply naturally in 1-2 short lines. "
-        "Match the user's tone, sound human and friendly, and avoid robotic phrasing. "
-        "Do not jump into long capability lists unless the user explicitly asks."
+        "The user is in casual conversation. Reply in 1 short line, warm but professional. "
+        "Do not over-greet or restate broad capability lists."
         if conversation_mode == "casual"
-        else "The user asked what you can do. Reply naturally in 1-2 short lines with a concise capability summary."
+        else "The user asked for capabilities. Reply in 2 short lines with concrete, role-scoped help areas only."
+    )
+    continuity_instruction = (
+        "The assistant already replied recently in this conversation. Continue naturally and do not start with greeting words like Hi/Hey."
+        if has_recent_assistant_turn
+        else "If the user greets, you may greet once; otherwise respond directly without opening pleasantries."
     )
 
     profile_hints: list[str] = []
@@ -680,18 +688,19 @@ async def build_fast_smalltalk_answer(
     profile_hint_text = ", ".join(profile_hints) if profile_hints else "not available"
 
     system_prompt = (
-        "You are UnivGPT, a friendly university assistant. "
+        "You are UnivGPT, the university assistant. "
         f"The user role is `{role_norm}` with {role_guidance}. "
+        f"Focus capabilities on: {role_capability_focus}. "
         f"Profile hints: {profile_hint_text}. "
         f"{mode_instruction} "
-        "Do not use bullet points. Keep it warm, concise, and non-repetitive. "
-        "If the user message is just a greeting, greet back first, then offer help. "
-        "Vary wording across turns and avoid repeating the same sentence template."
+        f"{continuity_instruction} "
+        "Do not mention the user's name unless they explicitly ask you to. "
+        "Do not use bullet points. Keep it concise, natural, and non-repetitive. "
+        "Avoid generic filler such as 'I can help with anything' or 'just chatting'. "
+        "Answer the exact user ask directly."
     )
 
     user_prompt = query
-    if first_name:
-        user_prompt = f"User name: {first_name}\nQuery: {query}"
 
     try:
         llm_text = await asyncio.wait_for(
@@ -700,8 +709,8 @@ async def build_fast_smalltalk_answer(
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                max_tokens=120,
-                temperature=0.72,
+                max_tokens=110,
+                temperature=0.65,
                 allow_fallback_models=True,
                 max_retries_override=1,
             ),
@@ -714,9 +723,7 @@ async def build_fast_smalltalk_answer(
         pass
 
     # Minimal emergency fallback only when all model calls fail.
-    if first_name:
-        return f"Hi {first_name}, I couldn't generate a reply just now. Please retry."
-    return "Hi, I couldn't generate a reply just now. Please retry."
+    return "I couldn't generate a reply just now. Please retry."
 
 
 def fetch_filtered_documents(
@@ -979,6 +986,11 @@ async def run_backup_moderation_check(query: str, history_context: str = "") -> 
     except Exception as exc:
         logger.warning("Backup moderation check failed: %s", exc)
 
+    # Provider-independent fallback when moderation model is unavailable or inconclusive.
+    strict_local = detect_local_moderation(query, strict=True)
+    if strict_local.get("is_flagged"):
+        return strict_local
+
     return {"is_flagged": False}
 
 
@@ -1177,11 +1189,17 @@ async def run_agent_pipeline(
         and _normalize(intent.get("conversation_mode")) == "casual"
         and _normalize(intent.get("intent_type")) in {"", "general"}
     ):
+        has_recent_assistant_turn = any(
+            str(m.get("role") or "").strip().lower() == "assistant"
+            for m in messages[-4:]
+            if isinstance(m, dict)
+        )
         answer = await build_fast_smalltalk_answer(
             query=query,
             user_role=user_role,
             user_profile=effective_user_profile,
             conversation_mode="casual",
+            has_recent_assistant_turn=has_recent_assistant_turn,
         )
         answer = append_intent_navigation_links(answer, user_role, intent)
         await log_audit_event(
@@ -1373,7 +1391,13 @@ async def run_agent_pipeline(
     query_text = _normalize(query)
     count_request = bool(re.search(r"\b(how many|count|number of|total)\b", query_text))
 
-    if supabase and should_use_course_faculty_snapshot(query, intent):
+    course_faculty_snapshot: dict[str, Any] = {}
+    should_route_directory = should_use_course_faculty_snapshot(query, intent)
+    attach_directory_context = should_route_directory or (
+        intent_type in {"", "general"} and target_entity in {"", "general"}
+    )
+
+    if supabase and attach_directory_context:
         course_faculty_snapshot = fetch_course_faculty_snapshot(
             supabase=supabase,
             user_role=user_role,
@@ -1381,17 +1405,44 @@ async def run_agent_pipeline(
             allowed_types=allowed_types,
             limit=140,
         )
-        course_answer = build_course_faculty_answer(
-            query=query,
-            intent=intent,
-            snapshot=course_faculty_snapshot,
-        )
-        if course_answer:
-            forced_answer = course_answer
-            courses = course_faculty_snapshot.get("courses") or []
-            faculty_by_id = course_faculty_snapshot.get("faculty_by_id") or {}
+        courses = course_faculty_snapshot.get("courses") or []
+        faculty_by_id = course_faculty_snapshot.get("faculty_by_id") or {}
+        visible_ids = [
+            str(fid)
+            for fid in (course_faculty_snapshot.get("visible_faculty_ids") or [])
+            if str(fid)
+        ]
+
+        if should_route_directory:
+            course_answer = build_course_faculty_answer(
+                query=query,
+                intent=intent,
+                snapshot=course_faculty_snapshot,
+            )
+            if course_answer:
+                forced_answer = course_answer
+
+        if courses or faculty_by_id:
+            faculty_preview_names = []
+            source_ids = visible_ids if visible_ids else list(faculty_by_id.keys())
+            for fid in source_ids[:8]:
+                row = faculty_by_id.get(fid) or {}
+                name = str(row.get("full_name") or "").strip()
+                if name:
+                    faculty_preview_names.append(name)
+
+            course_preview_titles = [
+                str(item.get("title") or "").strip()
+                for item in courses[:6]
+                if str(item.get("title") or "").strip()
+            ]
+
             context_text += (
-                f"\n[Structured Directory Lookup: courses={len(courses)}, faculty={len(faculty_by_id)}]\n"
+                "\n[Structured Directory Snapshot]\n"
+                f"- Faculty total: {len(source_ids) if source_ids else len(faculty_by_id)}\n"
+                f"- Course total: {len(courses)}\n"
+                f"- Faculty preview: {', '.join(faculty_preview_names) if faculty_preview_names else '-'}\n"
+                f"- Course preview: {', '.join(course_preview_titles) if course_preview_titles else '-'}\n"
             )
 
     doc_keyword_request = any(
@@ -1664,6 +1715,8 @@ async def run_agent_pipeline(
         - Be concise and structured.
         - Use Markdown for clarity when helpful.
         - Avoid emojis.
+        - Do not greet repeatedly on every turn.
+        - Avoid vague filler like "I can help with anything"; answer the exact ask.
         - If you cite data from context, name the Source document.
         - If total_documents is 0, explicitly say "0 documents" instead of "no access."
         - If asked about dates, use the provided Today/Tomorrow fields.
@@ -1717,6 +1770,8 @@ async def run_agent_pipeline(
         FORMATTING:
         - Use simple Markdown bullets or tables when useful.
         - Mention source filenames when citing specific document facts.
+        - Do not start every turn with greetings; use direct, context-aware answers.
+        - Avoid vague filler like "I can help with anything."
         """
 
     llm_messages = [{"role": "system", "content": system_message}]
@@ -1735,7 +1790,7 @@ async def run_agent_pipeline(
             logger.error(
                 "LLM provider unavailable for user query. Check OPENROUTER_API_KEY, credits, or provider/network health."
             )
-            answer = "I’m unable to answer right now due to a temporary service issue. Please try again in a moment."
+            answer = "I'm unable to answer right now due to a temporary service issue. Please try again in a moment."
 
     answer = append_intent_navigation_links(answer, user_role, intent)
 
