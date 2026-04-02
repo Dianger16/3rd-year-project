@@ -4,7 +4,7 @@
  */
 
 import { create } from 'zustand';
-import { agentApi, type ConversationResponse, type SourceCitation } from '@/lib/api';
+import { agentApi, type ConversationResponse, type SourceCitation, type ModerationMeta } from '@/lib/api';
 
 export interface ChatMessage {
     role: 'user' | 'assistant';
@@ -12,6 +12,7 @@ export interface ChatMessage {
     sources?: SourceCitation[];
     roleBadge?: string;
     rationale?: string;
+    moderation?: ModerationMeta;
     timestamp: string;
 }
 
@@ -58,6 +59,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
                 sources: res.sources,
                 roleBadge: res.role_badge,
                 rationale: res.rationale,
+                moderation: res.moderation,
                 timestamp: new Date().toISOString(),
             };
 

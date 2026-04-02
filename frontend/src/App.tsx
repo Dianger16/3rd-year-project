@@ -20,6 +20,7 @@ import UploadPage from '@/pages/dashboard/UploadPage';
 import NotificationsPage from '@/pages/dashboard/NotificationsPage';
 import FacultyProfilePage from '@/pages/dashboard/FacultyProfilePage';
 import FacultyDirectoryPage from '@/pages/dashboard/FacultyDirectoryPage';
+import DeanAppealsPage from '@/pages/dashboard/DeanAppealsPage';
 import AuthLayout from '@/components/layout/AuthLayout';
 import SmoothScroll from '@/components/layout/SmoothScroll';
 import { ToastProvider } from '@/components/ui/ToastProvider';
@@ -28,7 +29,7 @@ import { supabase } from '@/lib/supabase';
 import { authApi } from '@/lib/api';
 import { Loader2 } from 'lucide-react';
 
-const academicDomain = (import.meta.env.VITE_ACADEMIC_EMAIL_DOMAIN || 'krmu.edu.in').toLowerCase();
+const academicDomain = (import.meta.env.VITE_ACADEMIC_EMAIL_DOMAIN || '').toLowerCase();
 const isAcademicEmail = (email?: string) => (email || '').trim().toLowerCase().endsWith(`@${academicDomain}`);
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -154,6 +155,7 @@ export default function App() {
               <Route path="notifications" element={<NotificationsPage />} />
               <Route path="faculty" element={<FacultyDirectoryPage />} />
               <Route path="faculty/:id" element={<FacultyProfilePage />} />
+              <Route path="dean" element={<DeanAppealsPage />} />
             </Route>
 
             {/* Fallback */}

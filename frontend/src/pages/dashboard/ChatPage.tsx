@@ -10,7 +10,7 @@ import {
     Copy, Check, AlertTriangle
 } from 'lucide-react';
 import { BrandLogo } from '@/components/ui/BrandLogo';
-import type { SourceCitation } from '@/lib/api';
+import { agentApi, type ModerationMeta, type SourceCitation } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -191,6 +191,10 @@ function MessageBubble({ message }: { message: ChatMessage }) {
 
 export default function ChatPage() {
     const [input, setInput] = useState('');
+    const [appealMessage, setAppealMessage] = useState('');
+    const [isSubmittingAppeal, setIsSubmittingAppeal] = useState(false);
+    const [appealFeedback, setAppealFeedback] = useState<string | null>(null);
+    const [moderationState, setModerationState] = useState<ModerationMeta | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const { messages, isQuerying, sendQuery, newConversation, error, clearError } = useChatStore();
@@ -200,6 +204,28 @@ export default function ChatPage() {
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, [messages]);
+
+    useEffect(() => {
+        if (!token) return;
+        let cancelled = false;
+        agentApi.getModerationState(token)
+            .then((res) => {
+                if (!cancelled) {
+                    setModerationState(res.moderation || null);
+                }
+            })
+            .catch(() => undefined);
+        return () => {
+            cancelled = true;
+        };
+    }, [token]);
+
+    useEffect(() => {
+        const latest = [...messages]
+            .reverse()
+            .find((m) => m.role === 'assistant' && m.moderation)?.moderation as ModerationMeta | undefined;
+        if (latest) setModerationState(latest);
     }, [messages]);
 
     useEffect(() => {
@@ -219,7 +245,7 @@ export default function ChatPage() {
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!input.trim() || !token || isQuerying) return;
+        if (!input.trim() || !token || isQuerying || moderationState?.blocked) return;
         const query = input;
         setInput('');
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -234,6 +260,24 @@ export default function ChatPage() {
     };
 
     const firstName = user?.full_name?.split(' ')[0] || 'there';
+    const isChatBlocked = Boolean(moderationState?.blocked);
+    const appealPending = String(moderationState?.appeal_status || '').toLowerCase() === 'pending';
+
+    const handleSubmitAppeal = async () => {
+        if (!token || !appealMessage.trim() || isSubmittingAppeal || !isChatBlocked) return;
+        try {
+            setIsSubmittingAppeal(true);
+            setAppealFeedback(null);
+            const res = await agentApi.submitAppeal(token, appealMessage.trim());
+            setAppealFeedback(res.message || 'Appeal submitted.');
+            setAppealMessage('');
+            if (res.moderation) setModerationState(res.moderation);
+        } catch (err) {
+            setAppealFeedback((err as Error)?.message || 'Failed to submit appeal.');
+        } finally {
+            setIsSubmittingAppeal(false);
+        }
+    };
 
     return (
         <div className="flex flex-col h-[calc(100vh-80px)]">
@@ -299,6 +343,42 @@ export default function ChatPage() {
             {/* ───── Input Bar — Premium ───── */}
             <div className="px-2 sm:px-6 pb-2 sm:pb-6 pt-0 shrink-0 bg-transparent">
                 <form onSubmit={handleSend} className="max-w-3xl mx-auto">
+                    {isChatBlocked && (
+                        <div className="mb-3 rounded-2xl border border-red-500/35 bg-red-950/30 p-3 sm:p-4">
+                            <div className="text-xs font-semibold text-red-200 mb-1">Chat access blocked</div>
+                            <p className="text-[11px] sm:text-xs text-red-100/90 leading-relaxed">
+                                You have reached the maximum violation limit. Submit an apology appeal below. The Dean section can review and restore your access.
+                            </p>
+                            {!appealPending && (
+                                <div className="mt-3 flex flex-col gap-2">
+                                    <textarea
+                                        value={appealMessage}
+                                        onChange={(e) => setAppealMessage(e.target.value)}
+                                        placeholder="Write your apology and commitment to follow chat policy..."
+                                        className="w-full min-h-[84px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-zinc-100 placeholder:text-zinc-500 outline-none focus:border-orange-500/40"
+                                    />
+                                    <div className="flex justify-end">
+                                        <Button
+                                            type="button"
+                                            onClick={handleSubmitAppeal}
+                                            disabled={isSubmittingAppeal || !appealMessage.trim()}
+                                            className="h-8 px-4 rounded-lg bg-orange-600 hover:bg-orange-500 text-xs font-semibold"
+                                        >
+                                            {isSubmittingAppeal ? 'Submitting...' : 'Submit Apology Appeal'}
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+                            {appealPending && (
+                                <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-100">
+                                    Appeal already submitted and pending dean review.
+                                </div>
+                            )}
+                            {appealFeedback && (
+                                <div className="mt-2 text-[11px] text-zinc-200">{appealFeedback}</div>
+                            )}
+                        </div>
+                    )}
                     {error && (
                         <div className="mb-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] text-red-200 flex items-center justify-between gap-3">
                             <span>{error}</span>
@@ -322,7 +402,7 @@ export default function ChatPage() {
                             data-lenis-prevent="true"
                             className="flex-1 bg-transparent px-4 py-3 sm:px-5 sm:py-4 text-xs sm:text-sm placeholder:text-zinc-600 outline-none resize-none max-h-40 min-h-[44px] sm:min-h-[52px] text-white overflow-y-auto overscroll-contain"
                             rows={1}
-                            disabled={isQuerying}
+                            disabled={isQuerying || isChatBlocked}
                         />
                         <div className="flex items-center gap-1.5 sm:gap-2 p-2 sm:p-2.5 shrink-0">
                             {messages.length > 0 && (
@@ -339,7 +419,7 @@ export default function ChatPage() {
                                 type="submit"
                                 size="icon"
                                 className="h-9 w-9 rounded-xl bg-orange-600 hover:bg-orange-500 text-white shadow-md shadow-orange-500/20 transition-all hover:shadow-lg hover:shadow-orange-500/30 active:scale-90 disabled:opacity-30 disabled:hover:scale-100 disabled:shadow-none"
-                                disabled={!input.trim() || isQuerying}
+                                disabled={!input.trim() || isQuerying || isChatBlocked}
                             >
                                 <ArrowUp className="w-4 h-4" />
                             </Button>

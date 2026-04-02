@@ -203,6 +203,10 @@ export const documentsApi = {
 export const agentApi = {
     query: (token: string, data: { query: string; context?: { dept?: string }; conversation_id?: string }) =>
         request<AgentQueryResponse>('/agent/query', { method: 'POST', body: data, token, timeoutMs: 90_000 }),
+    getModerationState: (token: string) =>
+        request<{ moderation: ModerationMeta }>('/agent/moderation-state', { token }),
+    submitAppeal: (token: string, message: string) =>
+        request<AgentAppealResponse>('/agent/appeal', { method: 'POST', token, body: { message } }),
     getHistory: (token: string) =>
         request<ConversationListResponse>('/agent/history', { token }),
     getConversation: (token: string, id: string) =>
@@ -211,7 +215,27 @@ export const agentApi = {
 
 export const adminApi = {
     getAuditLogs: (token: string) =>
-        request<AuditLogListResponse>('/admin/audit', { token })
+        request<AuditLogListResponse>('/admin/audit', { token }),
+    getDeanAppeals: (token: string, status: 'pending' | 'approved' | 'rejected' | 'all' = 'pending', limit = 100) =>
+        request<{ appeals: DeanAppealItem[]; total: number; status: string }>(
+            `/admin/dean/appeals?status=${encodeURIComponent(status)}&limit=${encodeURIComponent(String(limit))}`,
+            { token },
+        ),
+    approveDeanAppeal: (token: string, userId: string, note?: string) =>
+        request<{ status: string; message: string; moderation?: ModerationMeta }>(
+            `/admin/dean/appeals/${encodeURIComponent(userId)}/approve`,
+            { method: 'POST', token, body: { note: note || null } },
+        ),
+    rejectDeanAppeal: (token: string, userId: string, note?: string) =>
+        request<{ status: string; message: string; moderation?: ModerationMeta }>(
+            `/admin/dean/appeals/${encodeURIComponent(userId)}/reject`,
+            { method: 'POST', token, body: { note: note || null } },
+        ),
+    resetUserFlags: (token: string, userId: string, note?: string) =>
+        request<{ status: string; message: string; moderation?: ModerationMeta }>(
+            `/admin/dean/users/${encodeURIComponent(userId)}/reset-flags`,
+            { method: 'POST', token, body: { note: note || null } },
+        ),
 };
 
 export const systemApi = {
@@ -334,6 +358,45 @@ export interface AgentQueryResponse {
     conversation_id: string;
     role_badge: string;
     rationale?: string;
+    moderation?: ModerationMeta;
+}
+
+export interface ModerationMeta {
+    blocked: boolean;
+    warning_count: number;
+    max_warnings: number;
+    offense_total: number;
+    appeal_required: boolean;
+    appeal_status?: string | null;
+    appeal_submitted_at?: string | null;
+    blocked_at?: string | null;
+}
+
+export interface AgentAppealResponse {
+    status: string;
+    message: string;
+    moderation?: ModerationMeta;
+}
+
+export interface DeanAppealItem {
+    user_id: string;
+    email?: string | null;
+    full_name?: string | null;
+    role?: string | null;
+    department?: string | null;
+    blocked: boolean;
+    blocked_at?: string | null;
+    offense_total: number;
+    warning_count: number;
+    offensive_messages: string[];
+    appeal: {
+        status: string;
+        message?: string | null;
+        submitted_at?: string | null;
+        reviewed_at?: string | null;
+        reviewed_by?: string | null;
+        decision_note?: string | null;
+    };
 }
 
 export interface ConversationResponse {

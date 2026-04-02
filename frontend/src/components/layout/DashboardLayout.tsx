@@ -3,7 +3,7 @@ import { useLocation, useNavigate, Outlet } from 'react-router-dom';
 import {
     LayoutDashboard, LogOut, Bell,
     MessageSquare, FileText, Users, Shield, Settings,
-    BookOpen, ChevronRight, GraduationCap
+    BookOpen, ChevronRight, GraduationCap, ShieldAlert
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/store/authStore';
@@ -49,6 +49,7 @@ export default function DashboardLayout() {
             { label: 'Users', href: '/dashboard/users', icon: <Users className="w-5 h-5 shrink-0" /> },
             { label: 'Documents', href: '/dashboard/documents', icon: <FileText className="w-5 h-5 shrink-0" /> },
             { label: 'Audit Logs', href: '/dashboard/audit', icon: <Shield className="w-5 h-5 shrink-0" /> },
+            { label: 'Dean Desk', href: '/dashboard/dean', icon: <ShieldAlert className="w-5 h-5 shrink-0" /> },
             { label: 'Notifications', href: '/dashboard/notifications', icon: <Bell className="w-5 h-5 shrink-0" /> },
             { label: 'Settings', href: '/dashboard/settings', icon: <Settings className="w-5 h-5 shrink-0" /> },
         ],
@@ -70,6 +71,7 @@ export default function DashboardLayout() {
         '/dashboard/upload': 'Upload, route, and manage document access',
         '/dashboard/users': 'Manage accounts, roles, and status',
         '/dashboard/audit': 'Track platform activity and events',
+        '/dashboard/dean': 'Review moderation appeals and restore user chat access',
         '/dashboard/settings': 'Preferences, security, and account controls',
         '/dashboard/profile': 'Personal details and identity settings',
         '/dashboard/notifications': 'Live updates for your role, department, and courses',
