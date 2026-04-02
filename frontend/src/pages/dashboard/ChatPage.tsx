@@ -7,7 +7,7 @@ import {
     ChevronDown, ChevronUp,
     FileText, Bot, Sparkles, Plus, ExternalLink,
     ArrowUp,
-    Copy, Check
+    Copy, Check, AlertTriangle
 } from 'lucide-react';
 import { BrandLogo } from '@/components/ui/BrandLogo';
 import type { SourceCitation } from '@/lib/api';
@@ -57,6 +57,12 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     const [copied, setCopied] = useState(false);
     const profileImage = (user as any)?.profileImage || null;
     const userInitial = user?.full_name?.charAt(0) || 'U';
+    const isSafetyMessage =
+        !isUser &&
+        (
+            /^(warning\s*\d+\/\d+|safety alert)\s*:/i.test(message.content.trim()) ||
+            String(message.roleBadge || '').toLowerCase().includes('safety')
+        );
 
     const handleCopy = () => {
         navigator.clipboard.writeText(message.content);
@@ -105,9 +111,17 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                     <div className={cn(
                         "rounded-2xl px-4 sm:px-5 py-3 sm:py-4 text-sm leading-relaxed relative",
                         isUser
-                            ? "bg-orange-500/10 border border-orange-500/15 text-white"
+                            ? "bg-white/[0.03] border border-white/[0.08] text-zinc-100"
+                            : isSafetyMessage
+                                ? "bg-gradient-to-br from-red-500/14 via-amber-500/10 to-red-500/14 border border-red-400/45 text-red-50 shadow-[0_0_0_1px_rgba(248,113,113,0.12),0_10px_35px_rgba(239,68,68,0.18)]"
                             : "bg-white/[0.03] border border-white/[0.06] text-zinc-300"
                     )}>
+                        {!isUser && isSafetyMessage && (
+                            <div className="mb-2 inline-flex items-center gap-1.5 rounded-md border border-red-400/40 bg-red-500/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-red-100">
+                                <AlertTriangle className="w-3 h-3" />
+                                Safety Warning
+                            </div>
+                        )}
                         {isUser ? (
                             <p className="whitespace-pre-wrap">{message.content}</p>
                         ) : (
