@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+from typing import List
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -44,6 +45,10 @@ class Settings(BaseSettings):
     openrouter_model: str = "meta-llama/llama-3.1-70b-instruct"
     openrouter_intent_model: str = "z-ai/glm-4.5-air:free"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_fallback_models: str = ""
+    openrouter_timeout_seconds: int = 20
+    openrouter_max_retries: int = 2
+    openrouter_retry_backoff_seconds: float = 0.8
 
     # Embeddings (Local HuggingFace model)
     embedding_model_name: str = "all-MiniLM-L6-v2"
@@ -110,6 +115,13 @@ class Settings(BaseSettings):
                     return [str(item).strip() for item in parsed if str(item).strip()]
             except json.JSONDecodeError:
                 pass
+        return [item.strip() for item in raw.split(",") if item.strip()]
+
+    @property
+    def openrouter_fallback_models_list(self) -> List[str]:
+        raw = (self.openrouter_fallback_models or "").strip()
+        if not raw:
+            return []
         return [item.strip() for item in raw.split(",") if item.strip()]
 
     model_config = SettingsConfigDict(

@@ -13,6 +13,7 @@ import httpx
 import logging
 import datetime
 import re
+import asyncio
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, Dict, Any
 
@@ -29,12 +30,15 @@ logger = logging.getLogger(__name__)
 # Capability flags to avoid repeated failing schema probes on every request.
 _DOCUMENTS_HAS_UPLOADED_AT: Optional[bool] = None
 _OPENROUTER_CLIENT: Optional[httpx.AsyncClient] = None
+_PINECONE_EMBEDDING_DISABLED = False
+_OFFENSE_STATE_CACHE: dict[str, dict[str, Any]] = {}
 
 
 def get_openrouter_client() -> httpx.AsyncClient:
     global _OPENROUTER_CLIENT
     if _OPENROUTER_CLIENT is None:
-        _OPENROUTER_CLIENT = httpx.AsyncClient(timeout=8.0)
+        timeout_seconds = max(5, int(settings.openrouter_timeout_seconds or 20))
+        _OPENROUTER_CLIENT = httpx.AsyncClient(timeout=float(timeout_seconds))
     return _OPENROUTER_CLIENT
 
 def is_network_error(exc: Exception) -> bool:
@@ -42,6 +46,67 @@ def is_network_error(exc: Exception) -> bool:
     if isinstance(exc, httpx.RequestError):
         return True
     return "getaddrinfo failed" in message or "name or service not known" in message or "nodename nor servname provided" in message
+
+
+def _is_embedding_runtime_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "fbgemm.dll" in message or "winerror 126" in message or "error loading" in message
+
+
+def _load_offense_state(supabase, user_id: str) -> dict[str, Any]:
+    cached = _OFFENSE_STATE_CACHE.get(user_id)
+    if cached:
+        return {"warning_count": int(cached.get("warning_count", 0)), "offensive_messages": list(cached.get("offensive_messages", []))}
+
+    base_state = {"warning_count": 0, "offensive_messages": []}
+    if not supabase or not user_id or user_id.startswith("dummy-id-"):
+        return base_state
+
+    try:
+        res = (
+            supabase.table("profiles")
+            .select("preferences")
+            .eq("id", user_id)
+            .limit(1)
+            .execute()
+        )
+        row = (res.data or [{}])[0]
+        preferences = row.get("preferences") if isinstance(row.get("preferences"), dict) else {}
+        moderation = preferences.get("moderation") if isinstance(preferences.get("moderation"), dict) else {}
+        warnings = int(moderation.get("warning_count", 0) or 0)
+        history = moderation.get("offensive_messages")
+        history = [str(item) for item in history] if isinstance(history, list) else []
+        state = {"warning_count": warnings, "offensive_messages": history[-12:]}
+        _OFFENSE_STATE_CACHE[user_id] = state
+        return state
+    except Exception:
+        return base_state
+
+
+def _persist_offense_state(supabase, user_id: str, state: dict[str, Any]) -> None:
+    normalized = {
+        "warning_count": int(state.get("warning_count", 0)),
+        "offensive_messages": [str(item) for item in (state.get("offensive_messages") or [])][-12:],
+    }
+    _OFFENSE_STATE_CACHE[user_id] = normalized
+
+    if not supabase or not user_id or user_id.startswith("dummy-id-"):
+        return
+
+    try:
+        profile_res = (
+            supabase.table("profiles")
+            .select("preferences")
+            .eq("id", user_id)
+            .limit(1)
+            .execute()
+        )
+        existing = (profile_res.data or [{}])[0]
+        preferences = existing.get("preferences") if isinstance(existing.get("preferences"), dict) else {}
+        preferences["moderation"] = normalized
+        supabase.table("profiles").update({"preferences": preferences}).eq("id", user_id).execute()
+    except Exception as exc:
+        logger.warning("Failed to persist moderation state: %s", exc)
 
 def _safe_iso(raw: Optional[str]) -> str:
     if not raw:
@@ -599,54 +664,88 @@ async def call_llm(
     if settings.mock_llm:
         return "This is a mock response from the agent."
 
-    payload = {
-        "model": model or settings.openrouter_model,
-        "messages": messages,
-    }
-    if response_format == "json":
-        payload["response_format"] = {"type": "json_object"}
-    if max_tokens is not None:
-        payload["max_tokens"] = int(max_tokens)
-    if temperature is not None:
-        payload["temperature"] = float(temperature)
-
     client = get_openrouter_client()
-    try:
-        response = await client.post(
-            f"{settings.openrouter_base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {settings.openrouter_api_key}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-        )
-        response.raise_for_status()
-        data = response.json()
+    candidate_models: list[str] = []
+    primary_model = (model or settings.openrouter_model or "").strip()
+    if primary_model:
+        candidate_models.append(primary_model)
+    for fallback in settings.openrouter_fallback_models_list:
+        if fallback not in candidate_models:
+            candidate_models.append(fallback)
+    if settings.openrouter_intent_model and settings.openrouter_intent_model not in candidate_models:
+        candidate_models.append(settings.openrouter_intent_model)
 
-        message = ((data.get("choices") or [{}])[0].get("message") or {})
-        content = message.get("content")
+    max_retries = max(0, int(settings.openrouter_max_retries or 0))
+    backoff = max(0.1, float(settings.openrouter_retry_backoff_seconds or 0.8))
 
-        if isinstance(content, list):
-            # Some providers return segmented blocks for content.
-            text_parts: list[str] = []
-            for block in content:
-                if isinstance(block, dict):
-                    block_text = block.get("text")
-                    if isinstance(block_text, str):
-                        text_parts.append(block_text)
-            content = "\n".join(text_parts).strip()
-
-        if not isinstance(content, str) or not content.strip():
+    last_exception: Optional[Exception] = None
+    for selected_model in candidate_models or [settings.openrouter_model]:
+        for attempt in range(max_retries + 1):
+            payload = {
+                "model": selected_model,
+                "messages": messages,
+            }
             if response_format == "json":
-                return "{}"
-            return "I'm sorry, I'm having trouble connecting to my brain right now."
+                payload["response_format"] = {"type": "json_object"}
+            if max_tokens is not None:
+                payload["max_tokens"] = int(max_tokens)
+            if temperature is not None:
+                payload["temperature"] = float(temperature)
+            try:
+                response = await client.post(
+                    f"{settings.openrouter_base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.openrouter_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+                response.raise_for_status()
+                data = response.json()
 
-        return content
-    except Exception as e:
-        logger.error(f"LLM Call failed: {e}")
-        if response_format == "json":
-            return "{}"
-        return "I'm sorry, I'm having trouble connecting to my brain right now."
+                message = ((data.get("choices") or [{}])[0].get("message") or {})
+                content = message.get("content")
+
+                if isinstance(content, list):
+                    text_parts: list[str] = []
+                    for block in content:
+                        if isinstance(block, dict):
+                            block_text = block.get("text")
+                            if isinstance(block_text, str):
+                                text_parts.append(block_text)
+                    content = "\n".join(text_parts).strip()
+
+                if isinstance(content, str) and content.strip():
+                    return content
+
+                if response_format == "json":
+                    return "{}"
+                return "I'm sorry, I'm having trouble connecting to my brain right now."
+            except httpx.HTTPStatusError as exc:
+                last_exception = exc
+                status = exc.response.status_code
+                retriable = status in {408, 409, 425, 429, 500, 502, 503, 504}
+                if retriable and attempt < max_retries:
+                    await asyncio.sleep(backoff * (2 ** attempt))
+                    continue
+                if status == 429:
+                    logger.warning("OpenRouter rate limited on model %s (attempt %s).", selected_model, attempt + 1)
+                else:
+                    logger.error("LLM HTTP error on model %s: %s", selected_model, exc)
+                break
+            except Exception as exc:
+                last_exception = exc
+                if attempt < max_retries:
+                    await asyncio.sleep(backoff * (2 ** attempt))
+                    continue
+                logger.error("LLM Call failed on model %s: %s", selected_model, exc)
+                break
+
+    if last_exception:
+        logger.error("LLM call failed after retries/fallbacks: %s", last_exception)
+    if response_format == "json":
+        return "{}"
+    return "I'm sorry, I'm having trouble connecting to my brain right now."
 
 
 async def extract_query_intent(query: str, history_context: str = "") -> Dict[str, Any]:
@@ -717,6 +816,7 @@ async def run_agent_pipeline(
     context: Optional[dict] = None,
     user_profile: Optional[dict[str, Any]] = None,
 ) -> AgentQueryResponse:
+    global _PINECONE_EMBEDDING_DISABLED
 
     conversation_id = conversation_id or str(uuid.uuid4())
     audit_user_id = None if str(user_id).startswith("dummy-id-") else user_id
@@ -790,22 +890,43 @@ async def run_agent_pipeline(
                 else:
                     logger.warning(f"Profile lookup failed for alert email: {e}")
 
-        # Send Email Alert to Admin asynchronously
-        from app.services.email_service import EmailService
-        import asyncio
-
-        asyncio.create_task(
-            asyncio.to_thread(
-                EmailService.send_flagged_alert_email,
-                user_id,
-                user_role,
-                query,
-                user_name,
-                user_email,
-            )
+        moderation_state = _load_offense_state(supabase, user_id)
+        prior_messages = moderation_state.get("offensive_messages") or []
+        warning_count = int(moderation_state.get("warning_count", 0)) + 1
+        offensive_messages = [*prior_messages, query][-12:]
+        _persist_offense_state(
+            supabase,
+            user_id,
+            {"warning_count": warning_count, "offensive_messages": offensive_messages},
         )
 
-        answer = "SAFETY ALERT: Your message has been flagged by our automated moderation system for violating the UnivGPT professional conduct policies. Any further attempts to use inappropriate language, harass, or disrespect faculty/staff will result in account suspension. A detailed report of this incident has been forwarded to the University Administration."
+        if warning_count <= 2:
+            answer = (
+                f"Warning {warning_count}/2: Your message was flagged for abusive or disrespectful language. "
+                "Please keep the conversation professional and respectful. Further violations will be escalated."
+            )
+            audit_action = "flagged_query_warning"
+        else:
+            # Send escalation email with complete offensive history.
+            from app.services.email_service import EmailService
+
+            asyncio.create_task(
+                asyncio.to_thread(
+                    EmailService.send_flagged_alert_email,
+                    user_id,
+                    user_role,
+                    query,
+                    user_name,
+                    user_email,
+                    offensive_messages,
+                    warning_count,
+                )
+            )
+            answer = (
+                "SAFETY ALERT: Repeated abusive messages were detected. This incident has been escalated to University Administration. "
+                "Your recent flagged message history has been reported."
+            )
+            audit_action = "flagged_query_escalated"
 
         # Save to history and return
         conversation_id = conversation_id or str(uuid.uuid4())
@@ -843,8 +964,13 @@ async def run_agent_pipeline(
 
         await log_audit_event(
             user_id=audit_user_id,
-            action="flagged_query",
-            payload={"query": query, "user_email": user_email},
+            action=audit_action,
+            payload={
+                "query": query,
+                "user_email": user_email,
+                "warning_count": warning_count,
+                "offensive_messages": offensive_messages,
+            },
         )
 
         return AgentQueryResponse(
@@ -998,7 +1124,9 @@ async def run_agent_pipeline(
                     }
                 )
 
-    should_run_vector_search = pinecone_client.index is not None and forced_answer is None
+    should_run_vector_search = (
+        pinecone_client.index is not None and forced_answer is None and not _PINECONE_EMBEDDING_DISABLED
+    )
 
     if should_run_vector_search:
         try:
@@ -1033,7 +1161,14 @@ async def run_agent_pipeline(
 
                 context_text += f"\n---\nSource: {meta.get('filename')}{meta_str}\n{chunk_content}\n"
         except Exception as e:
-            logger.error(f"Pinecone query failed: {e}")
+            if _is_embedding_runtime_error(e):
+                _PINECONE_EMBEDDING_DISABLED = True
+                logger.warning(
+                    "Disabling Pinecone embedding search for this runtime due to local embedding dependency error: %s",
+                    e,
+                )
+            else:
+                logger.error(f"Pinecone query failed: {e}")
             context_text += (
                 "\n[System Note: Vector database unavailable pending configuration]\n"
             )

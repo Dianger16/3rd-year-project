@@ -3,6 +3,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from app.config import settings
 import logging
+import html
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +176,8 @@ class EmailService:
         user_query: str,
         user_name: str = "Unknown",
         user_email: str = "Unknown",
+        offensive_history: list[str] | None = None,
+        violation_count: int | None = None,
     ):
         """Sends an alert to the admin about flagged/inappropriate student behavior."""
         try:
@@ -182,6 +185,12 @@ class EmailService:
             delivery_email = settings.smtp_user
 
             subject = "ACTION REQUIRED: Flagged User Behavior in UnivGPT"
+            history = [str(item).strip() for item in (offensive_history or []) if str(item).strip()]
+            if not history:
+                history = [str(user_query or "").strip()]
+            escaped_lines = [f"{idx + 1}. {html.escape(line)}" for idx, line in enumerate(history)]
+            history_html = "<br>".join(escaped_lines)
+            count_text = str(violation_count) if violation_count is not None else "Unknown"
 
             html_content = f"""
             <!DOCTYPE html>
@@ -209,11 +218,12 @@ class EmailService:
                             <div style="margin-bottom: 8px;"><span class="label">Name:</span> {user_name}</div>
                             <div style="margin-bottom: 8px;"><span class="label">Email:</span> {user_email}</div>
                             <div style="margin-bottom: 8px;"><span class="label">User ID:</span> {student_id}</div>
-                            <div><span class="label">Role:</span> {student_role}</div>
+                            <div style="margin-bottom: 8px;"><span class="label">Role:</span> {student_role}</div>
+                            <div><span class="label">Violations:</span> {count_text}</div>
                         </div>
                         
-                        <p><strong>Flagged Query:</strong></p>
-                        <div class="details-box">{user_query}</div>
+                        <p><strong>Flagged Message History:</strong></p>
+                        <div class="details-box">{history_html}</div>
                         
                         <p>Please review and take appropriate disciplinary action.</p>
                     </div>
