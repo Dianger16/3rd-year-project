@@ -154,6 +154,7 @@ class IntentPayload(BaseModel):
     model_config = ConfigDict(extra="allow")
     is_flagged: bool = False
     reason: Optional[str] = None
+    conversation_mode: Optional[str] = None
     intent_type: Optional[str] = None
     target_entity: Optional[str] = None
     document_date: Optional[str] = None
@@ -474,7 +475,12 @@ def detect_local_moderation(query: str) -> dict[str, Any]:
     return {"is_flagged": False}
 
 
-async def build_fast_smalltalk_answer(query: str, user_role: str, user_profile: Optional[dict[str, Any]] = None) -> str:
+async def build_fast_smalltalk_answer(
+    query: str,
+    user_role: str,
+    user_profile: Optional[dict[str, Any]] = None,
+    conversation_mode: str = "task",
+) -> str:
     profile = user_profile or {}
     raw_name = str(profile.get("full_name") or "").strip()
     first_name = raw_name.split(" ")[0] if raw_name else ""
@@ -486,28 +492,13 @@ async def build_fast_smalltalk_answer(query: str, user_role: str, user_profile: 
     }
     role_focus = role_capabilities.get(user_role, role_capabilities["student"])
 
-    system_prompt = (
-        "You are UnivGPT, a professional university assistant. "
-        f"The user role is `{user_role}`. "
-        "Respond naturally to greetings/help prompts in 1-2 short sentences, friendly but professional. "
-        f"Mention relevant support scope ({role_focus}) without sounding templated. "
-        "Do not use bullet points. Do not mention technical internals."
-    )
-
-    llm_text = await call_llm(
-        [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": query},
-        ],
-        max_tokens=90,
-        temperature=0.35,
-    )
-    if isinstance(llm_text, str):
-        cleaned = llm_text.strip()
-        if cleaned and cleaned != "I'm sorry, I'm having trouble connecting to my brain right now.":
-            return cleaned
-
     greeting = f"Hi {first_name}," if first_name else "Hi,"
+    if conversation_mode == "casual":
+        return (
+            f"{greeting} I hear you. If you want, I can help with practical next steps right now "
+            "like checking notices, deadlines, course updates, or faculty contacts so things feel more manageable."
+        )
+
     if user_role == "admin":
         return f"{greeting} I can help with admin dashboards, user/document counts, audit activity, and notice lookups."
     if user_role == "faculty":
@@ -1470,20 +1461,23 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
     {history_context}
 
     Task 1 (Moderation): Analyze the user's latest query for explicit hate speech, severe harassment, direct threats, or extreme toxicity directed at the university or its staff. Do NOT flag questions, apologies, mild frustration, general complaints, or references to the moderation/flagging system itself. If an explicit and severe violation is detected, set `"is_flagged": true`. Otherwise, set it to `false`.
-    Task 2 (Intent Routing): Extract structured intent metadata so downstream tools can filter data before the main LLM response.
+    Task 2 (Conversation Mode): classify whether the query is primarily casual chit-chat/emotional venting or an actionable university data/task query.
+    Task 3 (Intent Routing): Extract structured intent metadata so downstream tools can filter data before the main LLM response.
 
     Return ONLY a valid JSON object with these fields when applicable:
     - is_flagged: boolean
     - reason: string (if flagged)
+    - conversation_mode: one of ["casual","task"]
     - intent_type: one of ["count_users","count_documents","list_documents","document_date_lookup","holiday_check","count_courses","list_courses","count_faculty","list_faculty","faculty_profile","course_faculty_map","general"]
     - target_entity: string (e.g., "students", "faculty", "admins", "users", "documents", "notices", "courses")
     - document_date: "YYYY-MM-DD" if asking for uploads on a date (use today/tomorrow/yesterday if referenced)
     - date_reference: one of ["today","tomorrow","yesterday"] if explicitly used
     - doc_type, role, department, course, tags (if relevant)
 
-    Example 1: {{"intent_type":"count_users","target_entity":"students","is_flagged": false}}
-    Example 2: {{"intent_type":"document_date_lookup","document_date":"2026-03-14","is_flagged": false}}
+    Example 1: {{"conversation_mode":"task","intent_type":"count_users","target_entity":"students","is_flagged": false}}
+    Example 2: {{"conversation_mode":"task","intent_type":"document_date_lookup","document_date":"2026-03-14","is_flagged": false}}
     Example 3: {{"is_flagged": true, "reason": "Severe hate speech"}}
+    Example 4: {{"conversation_mode":"casual","intent_type":"general","target_entity":"general","is_flagged": false}}
     """
 
     local_moderation = detect_local_moderation(query)
@@ -1491,7 +1485,7 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
         return local_moderation
 
     if is_fast_smalltalk_query(query):
-        return {"is_flagged": False, "intent_type": "general", "target_entity": "general"}
+        return {"is_flagged": False, "conversation_mode": "casual", "intent_type": "general", "target_entity": "general"}
 
     try:
         intent_timeout = max(4, min(12, int(settings.openrouter_timeout_seconds or 20)))
@@ -1596,6 +1590,30 @@ async def run_agent_pipeline(
     intent = infer_intent_from_query(query, raw_intent)
     intent = enrich_intent_with_profile(intent, effective_user_profile)
     logger.info(f"Extracted dynamic intent: {intent}")
+
+    if (
+        intent.get("is_flagged") is not True
+        and _normalize(intent.get("conversation_mode")) == "casual"
+        and _normalize(intent.get("intent_type")) in {"", "general"}
+    ):
+        answer = await build_fast_smalltalk_answer(
+            query=query,
+            user_role=user_role,
+            user_profile=effective_user_profile,
+            conversation_mode="casual",
+        )
+        answer = append_intent_navigation_links(answer, user_role, intent)
+        await log_audit_event(
+            user_id=audit_user_id,
+            action="agent_query",
+            payload={"conv_id": conversation_id, "intent": {"intent_type": "general", "conversation_mode": "casual"}},
+        )
+        return AgentQueryResponse(
+            answer=answer,
+            sources=[],
+            conversation_id=conversation_id,
+            role_badge="Admin Assistant" if user_role == "admin" else f"{user_role.title()} Agent",
+        )
 
     # Moderation Intercept
     if intent.get("is_flagged") is True:
