@@ -40,6 +40,9 @@ class VerifySignupRequest(BaseModel):
     otp: str
     password: str
 
+class ResendOtpRequest(BaseModel):
+    email: str
+
 
 class ForgotPasswordRequest(BaseModel):
     email: str

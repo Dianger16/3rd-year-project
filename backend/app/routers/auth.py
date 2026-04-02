@@ -29,6 +29,7 @@ from app.models.schemas import (
     UserRole,
     InitiateSignupRequest,
     VerifySignupRequest,
+    ResendOtpRequest,
     ForgotPasswordRequest,
     ResetPasswordRequest,
     SignupResponse,
@@ -92,6 +93,26 @@ def extract_auth_users(users_response: Any) -> list[Any]:
     if isinstance(users_response, dict) and isinstance(users_response.get("users"), list):
         return users_response["users"]
     return []
+
+
+def _auth_user_email(user: Any) -> str:
+    if isinstance(user, dict):
+        return str(user.get("email") or "")
+    return str(getattr(user, "email", "") or "")
+
+
+def _auth_user_id(user: Any) -> str:
+    if isinstance(user, dict):
+        return str(user.get("id") or "")
+    return str(getattr(user, "id", "") or "")
+
+
+def _auth_user_metadata(user: Any) -> dict[str, Any]:
+    if isinstance(user, dict):
+        metadata = user.get("user_metadata")
+    else:
+        metadata = getattr(user, "user_metadata", None)
+    return metadata if isinstance(metadata, dict) else {}
 
 
 def build_oauth_redirect_url() -> str:
@@ -378,12 +399,13 @@ async def signup(request: Request, body: InitiateSignupRequest):
 
         # 2. Check if user already exists in Auth
         users_resp = extract_auth_users(admin.auth.admin.list_users())
+        target_email = (body.email or "").strip().lower()
         existing_auth_user = next(
-            (u for u in users_resp if u.email == body.email), None
+            (u for u in users_resp if _auth_user_email(u).strip().lower() == target_email), None
         )
 
         if existing_auth_user:
-            user_metadata = existing_auth_user.user_metadata or {}
+            user_metadata = _auth_user_metadata(existing_auth_user)
             # If already verified, they really exist - block it
             if user_metadata.get("is_verified", False):
                 raise HTTPException(
@@ -392,7 +414,7 @@ async def signup(request: Request, body: InitiateSignupRequest):
                 )
 
             # If NOT verified, update their record with new OTP and metadata
-            user_id = existing_auth_user.id
+            user_id = _auth_user_id(existing_auth_user)
             admin.auth.admin.update_user_by_id(
                 user_id,
                 {
@@ -404,6 +426,7 @@ async def signup(request: Request, body: InitiateSignupRequest):
                         else body.role,
                         "department": body.department,
                         "otp_code": otp_code,
+                        "otp_expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
                         "is_verified": False,
                     },
                 },
@@ -422,6 +445,7 @@ async def signup(request: Request, body: InitiateSignupRequest):
                         else body.role,
                         "department": body.department,
                         "otp_code": otp_code,
+                        "otp_expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
                         "is_verified": False,
                     },
                 }
@@ -521,6 +545,12 @@ async def login(request: Request, body: LoginRequest):
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         user_id = auth_res.user.id
+        auth_metadata = getattr(auth_res.user, "user_metadata", {}) or {}
+        if not bool(auth_metadata.get("is_verified", False)):
+            raise HTTPException(
+                status_code=403,
+                detail="Email OTP verification is pending. Please verify your email first.",
+            )
 
         # Fetch/update profile from Supabase so profile email/role/name cannot drift.
         admin = get_supabase_admin()
@@ -568,31 +598,45 @@ async def verify_signup(request: Request, body: VerifySignupRequest):
 
         # 1. Find user to check OTP
         users_res = extract_auth_users(admin.auth.admin.list_users())
-        target_user = next((u for u in users_res if u.email == body.email), None)
+        target_email = (body.email or "").strip().lower()
+        target_user = next((u for u in users_res if _auth_user_email(u).strip().lower() == target_email), None)
 
         if not target_user:
             raise HTTPException(
                 status_code=400, detail="User not found. Please sign up first."
             )
 
-        user_metadata = target_user.user_metadata or {}
+        user_metadata = _auth_user_metadata(target_user)
         stored_otp = user_metadata.get("otp_code")
+        otp_expires_at = user_metadata.get("otp_expires_at")
 
         # 2. OTP Check (with Dev Bypass)
         is_verified = False
-        if body.otp == "123456":
+        if is_dummy_auth_enabled() and body.otp == "123456":
             is_verified = True
         elif stored_otp and body.otp == stored_otp:
             is_verified = True
 
         if not is_verified:
             raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+        if otp_expires_at and not (is_dummy_auth_enabled() and body.otp == "123456"):
+            expires_dt = datetime.fromisoformat(str(otp_expires_at).replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) > expires_dt:
+                raise HTTPException(status_code=400, detail="OTP expired. Please resend OTP.")
 
-        user_id = target_user.id
+        user_id = _auth_user_id(target_user)
 
         # 3. Update user metadata to verified
         admin.auth.admin.update_user_by_id(
-            user_id, {"user_metadata": {**user_metadata, "is_verified": True}}
+            user_id,
+            {
+                "user_metadata": {
+                    **user_metadata,
+                    "is_verified": True,
+                    "otp_code": None,
+                    "otp_expires_at": None,
+                }
+            },
         )
 
         # 5. Issue real session token so frontend has a cloud-authenticated login immediately.
@@ -635,13 +679,59 @@ async def verify_signup(request: Request, body: VerifySignupRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/auth/resend-otp")
+async def resend_signup_otp(body: ResendOtpRequest):
+    """Resend signup OTP to users who are not yet verified."""
+    try:
+        admin = get_supabase_admin()
+        users_res = extract_auth_users(admin.auth.admin.list_users())
+        target_email = (body.email or "").strip().lower()
+        target_user = next((u for u in users_res if _auth_user_email(u).strip().lower() == target_email), None)
+
+        if not target_user:
+            return {"status": "success", "message": "If the email exists, OTP has been resent."}
+
+        user_metadata = _auth_user_metadata(target_user)
+        if bool(user_metadata.get("is_verified", False)):
+            return {"status": "success", "message": "Account is already verified. Please login."}
+
+        otp_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+        expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+
+        admin.auth.admin.update_user_by_id(
+            _auth_user_id(target_user),
+            {
+                "user_metadata": {
+                    **user_metadata,
+                    "otp_code": otp_code,
+                    "otp_expires_at": expires_at,
+                    "is_verified": False,
+                }
+            },
+        )
+
+        EmailService.send_otp_email(
+            receiver_email=body.email,
+            otp=otp_code,
+            user_name=str(user_metadata.get("full_name") or "User"),
+        )
+        return {"status": "success", "message": "OTP resent successfully."}
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
+        if is_network_error(e):
+            raise_supabase_unreachable()
+        raise HTTPException(status_code=502, detail=f"OTP resend failed: {e}")
+
+
 @router.post("/auth/forgot-password")
 async def forgot_password(body: ForgotPasswordRequest):
     """Send custom SMTP OTP for password recovery."""
     try:
         admin = get_supabase_admin()
         users_res = extract_auth_users(admin.auth.admin.list_users())
-        target_user = next((u for u in users_res if u.email == body.email), None)
+        target_email = (body.email or "").strip().lower()
+        target_user = next((u for u in users_res if _auth_user_email(u).strip().lower() == target_email), None)
 
         # Keep response generic for unknown emails.
         if not target_user:
@@ -649,7 +739,7 @@ async def forgot_password(body: ForgotPasswordRequest):
 
         reset_otp = "".join([str(random.randint(0, 9)) for _ in range(6)])
         expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
-        current_metadata = target_user.user_metadata or {}
+        current_metadata = _auth_user_metadata(target_user)
 
         admin.auth.admin.update_user_by_id(
             target_user.id,
@@ -669,7 +759,7 @@ async def forgot_password(body: ForgotPasswordRequest):
         )
 
         await log_audit_event(
-            user_id=target_user.id,
+            user_id=_auth_user_id(target_user),
             action="forgot_password_otp_sent",
         )
         return {"status": "success", "message": "Recovery OTP sent if email exists"}
@@ -687,18 +777,19 @@ async def reset_password(body: ResetPasswordRequest):
     try:
         admin = get_supabase_admin()
         users_res = extract_auth_users(admin.auth.admin.list_users())
-        target_user = next((u for u in users_res if u.email == body.email), None)
+        target_email = (body.email or "").strip().lower()
+        target_user = next((u for u in users_res if _auth_user_email(u).strip().lower() == target_email), None)
         if not target_user:
             raise HTTPException(status_code=400, detail="Invalid OTP")
 
-        user_metadata = target_user.user_metadata or {}
+        user_metadata = _auth_user_metadata(target_user)
         stored_otp = user_metadata.get("reset_otp_code")
         expires_at = user_metadata.get("reset_otp_expires_at")
 
-        if body.otp != "123456" and (not stored_otp or body.otp != stored_otp):
+        if (not (is_dummy_auth_enabled() and body.otp == "123456")) and (not stored_otp or body.otp != stored_otp):
             raise HTTPException(status_code=400, detail="Invalid OTP")
 
-        if expires_at and body.otp != "123456":
+        if expires_at and not (is_dummy_auth_enabled() and body.otp == "123456"):
             expires_dt = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
             if datetime.now(timezone.utc) > expires_dt:
                 raise HTTPException(status_code=400, detail="OTP expired")
@@ -709,13 +800,13 @@ async def reset_password(body: ResetPasswordRequest):
             if k not in {"reset_otp_code", "reset_otp_expires_at"}
         }
         admin.auth.admin.update_user_by_id(
-            target_user.id,
+            _auth_user_id(target_user),
             {
                 "password": body.new_password,
                 "user_metadata": cleaned_metadata,
             },
         )
-        await log_audit_event(user_id=target_user.id, action="reset_password")
+        await log_audit_event(user_id=_auth_user_id(target_user), action="reset_password")
         return {"status": "success", "message": "Password updated successfully"}
     except Exception as e:
         if isinstance(e, HTTPException):
