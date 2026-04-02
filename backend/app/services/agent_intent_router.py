@@ -53,38 +53,6 @@ def infer_intent_from_query(query: str, intent: dict[str, Any]) -> dict[str, Any
     text = _normalize(query)
     hydrated = dict(intent or {})
 
-    count_requested = bool(
-        re.search(r"\b(how many|count|number of|total)\b", text)
-    )
-    courses_requested = any(
-        marker in text for marker in ("course", "courses", "curriculum", "subject", "subjects", "syllabus")
-    )
-    faculty_requested = any(
-        marker in text
-        for marker in (
-            "faculty",
-            "teacher",
-            "teachers",
-            "professor",
-            "professors",
-            "mentor",
-            "mentors",
-            "instructor",
-            "instructors",
-            "teach",
-            "teaches",
-            "teaching",
-            "advisor",
-            "adviser",
-        )
-    )
-    notices_requested = any(
-        marker in text for marker in ("notice", "notices", "announcement", "announcements", "circular", "circulars")
-    )
-    documents_requested = notices_requested or any(
-        marker in text for marker in ("document", "documents", "doc", "docs", "uploaded", "uploads")
-    )
-
     if not hydrated.get("date_reference"):
         for marker in ("today", "tomorrow", "yesterday"):
             if marker in text:
@@ -92,52 +60,10 @@ def infer_intent_from_query(query: str, intent: dict[str, Any]) -> dict[str, Any
                 break
 
     if not hydrated.get("intent_type"):
-        if faculty_requested and any(marker in text for marker in ("who is", "about", "profile", "tell me about")):
-            hydrated["intent_type"] = "faculty_profile"
-            hydrated["target_entity"] = "faculty"
-        elif faculty_requested and courses_requested and any(marker in text for marker in ("teach", "teaches", "teaching", "mapped")):
-            hydrated["intent_type"] = "course_faculty_map"
-            hydrated["target_entity"] = "faculty"
-        elif count_requested and any(marker in text for marker in ("student", "students")):
-            hydrated["intent_type"] = "count_users"
-            hydrated["target_entity"] = "students"
-        elif count_requested and any(marker in text for marker in ("faculty", "professor", "teachers")):
-            hydrated["intent_type"] = "count_users"
-            hydrated["target_entity"] = "faculty"
-        elif count_requested and any(marker in text for marker in ("admin", "admins", "administrator")):
-            hydrated["intent_type"] = "count_users"
-            hydrated["target_entity"] = "admins"
-        elif count_requested and any(marker in text for marker in ("user", "users")):
-            hydrated["intent_type"] = "count_users"
-            hydrated["target_entity"] = "users"
-        elif count_requested and documents_requested:
-            hydrated["intent_type"] = "count_documents"
-            hydrated["target_entity"] = "notices" if notices_requested else "documents"
-        elif count_requested and courses_requested:
-            hydrated["intent_type"] = "count_courses"
-            hydrated["target_entity"] = "courses"
-        elif count_requested and faculty_requested:
-            hydrated["intent_type"] = "count_faculty"
-            hydrated["target_entity"] = "faculty"
-        elif notices_requested:
-            hydrated["intent_type"] = "list_documents"
-            hydrated["target_entity"] = "notices"
-        elif courses_requested:
-            hydrated["intent_type"] = "list_courses"
-            hydrated["target_entity"] = "courses"
-        elif faculty_requested:
-            hydrated["intent_type"] = "list_faculty"
-            hydrated["target_entity"] = "faculty"
+        hydrated["intent_type"] = "general"
 
     if not hydrated.get("target_entity"):
-        if notices_requested:
-            hydrated["target_entity"] = "notices"
-        elif courses_requested:
-            hydrated["target_entity"] = "courses"
-        elif faculty_requested:
-            hydrated["target_entity"] = "faculty"
-        elif documents_requested:
-            hydrated["target_entity"] = "documents"
+        hydrated["target_entity"] = "general"
 
     if not hydrated.get("course"):
         course_patterns = [
