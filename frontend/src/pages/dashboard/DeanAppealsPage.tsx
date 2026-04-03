@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, ShieldAlert, XCircle, RefreshCw } from 'lu
 import { adminApi, type DeanAppealItem } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useToastStore } from '@/store/toastStore';
 
 type AppealFilter = 'pending' | 'approved' | 'rejected' | 'all';
@@ -123,7 +124,24 @@ export default function DeanAppealsPage() {
 
                 <div className="rounded-2xl border border-white/10 bg-black/30 overflow-hidden">
                     {loading ? (
-                        <div className="px-6 py-10 text-sm text-zinc-400">Loading appeals...</div>
+                        <div className="px-6 py-6 space-y-4">
+                            {Array.from({ length: 4 }).map((_, idx) => (
+                                <div key={`appeal-skeleton-${idx}`} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="space-y-2">
+                                            <Skeleton className="h-4 w-48" />
+                                            <Skeleton className="h-3 w-64" />
+                                        </div>
+                                        <Skeleton className="h-6 w-20 rounded-full" />
+                                    </div>
+                                    <Skeleton className="h-20 w-full rounded-xl" />
+                                    <div className="flex gap-2">
+                                        <Skeleton className="h-8 w-28 rounded-lg" />
+                                        <Skeleton className="h-8 w-20 rounded-lg" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     ) : appeals.length === 0 ? (
                         <div className="px-6 py-10 text-sm text-zinc-500">No appeals found for this filter.</div>
                     ) : (
