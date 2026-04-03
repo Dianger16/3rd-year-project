@@ -61,6 +61,17 @@ def parse_json_field(raw: str, default):
         return default
 
 
+def parse_document_timestamp(raw: Any) -> Optional[datetime.datetime]:
+    if not raw:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(str(raw).replace("Z", "+00:00")).astimezone(
+            datetime.timezone.utc
+        )
+    except Exception:
+        return None
+
+
 def is_network_error(exc: Exception) -> bool:
     message = str(exc).lower()
     return isinstance(exc, httpx.ConnectError) or "getaddrinfo failed" in message or "name or service not known" in message
@@ -71,6 +82,99 @@ def ensure_supabase_available() -> None:
             status_code=503,
             detail="Supabase offline mode is enabled. Disable SUPABASE_OFFLINE_MODE to use database.",
         )
+
+
+@router.get("/documents/{document_id}/preview")
+async def preview_document(
+    document_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
+):
+    ensure_supabase_available()
+    allowed_types = get_allowed_doc_types(user.role)
+    supabase = get_supabase_admin()
+
+    try:
+        res = (
+            supabase.table("documents")
+            .select("id,filename,doc_type,department,course,tags,uploaded_at,created_at,metadata")
+            .eq("id", document_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        if is_network_error(exc):
+            raise HTTPException(
+                status_code=503,
+                detail="Cannot reach Supabase. Check SUPABASE_URL, DNS/VPN, or your internet connection.",
+            )
+        raise
+
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    row = res.data[0]
+    doc_type = str(row.get("doc_type") or "").strip().lower()
+    if doc_type not in {str(t).strip().lower() for t in allowed_types}:
+        raise HTTPException(status_code=403, detail="You are not allowed to preview this document.")
+
+    metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+    uploaded_at = row.get("uploaded_at") or row.get("created_at")
+    parsed_uploaded = parse_document_timestamp(uploaded_at)
+    preview_limit = 8
+    chunk_count = int(metadata.get("chunk_count") or 0)
+
+    snippet_chunks: list[dict[str, Any]] = []
+    if pinecone_client.index:
+        try:
+            candidate_count = preview_limit if chunk_count <= 0 else min(preview_limit, chunk_count)
+            ids = [f"doc_{document_id}_chunk_{idx}" for idx in range(candidate_count)]
+            fetch_res = pinecone_client.index.fetch(ids=ids)
+
+            vectors = {}
+            if isinstance(fetch_res, dict):
+                vectors = fetch_res.get("vectors") or {}
+            else:
+                vectors = getattr(fetch_res, "vectors", {}) or {}
+
+            for vec_id, vec_data in vectors.items():
+                meta = {}
+                if isinstance(vec_data, dict):
+                    meta = vec_data.get("metadata") or {}
+                else:
+                    meta = getattr(vec_data, "metadata", {}) or {}
+                content = str(meta.get("content") or "").strip()
+                if not content:
+                    continue
+                chunk_index = meta.get("chunk_index")
+                if chunk_index is None:
+                    try:
+                        chunk_index = int(str(vec_id).split("_chunk_")[-1])
+                    except Exception:
+                        chunk_index = 0
+                snippet_chunks.append(
+                    {
+                        "chunk_index": int(chunk_index),
+                        "content": content,
+                    }
+                )
+            snippet_chunks.sort(key=lambda item: item["chunk_index"])
+            snippet_chunks = snippet_chunks[:preview_limit]
+        except Exception:
+            snippet_chunks = []
+
+    return {
+        "id": str(row.get("id") or document_id),
+        "filename": str(row.get("filename") or "Document"),
+        "doc_type": doc_type,
+        "department": row.get("department"),
+        "course": row.get("course"),
+        "tags": row.get("tags") or [],
+        "uploaded_at": parsed_uploaded.isoformat() if parsed_uploaded else (str(uploaded_at) if uploaded_at else None),
+        "chunk_count": chunk_count,
+        "chunks": snippet_chunks,
+        "has_preview": len(snippet_chunks) > 0,
+        "preview_source": "pinecone" if len(snippet_chunks) > 0 else "none",
+    }
 
 @router.post("/admin/documents", response_model=DocumentResponse)
 async def upload_document(
