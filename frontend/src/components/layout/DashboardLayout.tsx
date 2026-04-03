@@ -114,7 +114,12 @@ export default function DashboardLayout() {
             try {
                 const notificationRes = await authApi.getNotifications(token, 6);
                 if (!active) return;
-                setNotifications(notificationRes.notifications || []);
+                const isAdmin = String(role).toLowerCase() === 'admin';
+                const filtered = (notificationRes.notifications || []).filter((item) => {
+                    if (isAdmin) return true;
+                    return !(item.id.startsWith('report:') || item.id.startsWith('appeal:'));
+                });
+                setNotifications(filtered);
             } catch {
                 if (!active) return;
                 setNotifications([]);

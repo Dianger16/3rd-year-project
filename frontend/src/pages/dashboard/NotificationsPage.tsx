@@ -21,7 +21,7 @@ const formatDate = (value?: string | null) => {
 };
 
 export default function NotificationsPage() {
-    const { token } = useAuthStore();
+    const { token, user } = useAuthStore();
     const { showToast } = useToastStore();
     const navigate = useNavigate();
     const location = useLocation();
@@ -52,7 +52,13 @@ export default function NotificationsPage() {
         }
         try {
             const data = await authApi.getNotifications(token, 30, { force });
-            setItems(data.notifications || []);
+            const role = String(user?.role || 'student').toLowerCase();
+            const isAdmin = role === 'admin';
+            const filtered = (data.notifications || []).filter((item) => {
+                if (isAdmin) return true;
+                return !(item.id.startsWith('report:') || item.id.startsWith('appeal:'));
+            });
+            setItems(filtered);
         } catch (err: any) {
             showToast(err?.message || 'Failed to load notifications.', 'error');
             setItems([]);
@@ -60,7 +66,7 @@ export default function NotificationsPage() {
             setIsLoading(false);
             hasLoadedOnceRef.current = true;
         }
-    }, [token, showToast]);
+    }, [token, showToast, user?.role]);
 
     useEffect(() => {
         loadNotifications();
@@ -111,11 +117,23 @@ export default function NotificationsPage() {
     };
 
     const openNotification = async (item: UserNotificationItem) => {
+        const role = String(user?.role || 'student').toLowerCase();
+        const isAdmin = role === 'admin';
         if (item.id.startsWith('appeal:')) {
-            navigate('/dashboard/dean-appeals');
+            if (!isAdmin) {
+                showToast('This notice is restricted to admin workflows.', 'error');
+                openNotificationInChat(item);
+                return;
+            }
+            navigate('/dashboard/dean');
             return;
         }
         if (item.id.startsWith('report:')) {
+            if (!isAdmin) {
+                showToast('This notice is restricted to admin workflows.', 'error');
+                openNotificationInChat(item);
+                return;
+            }
             navigate('/dashboard/users');
             return;
         }
@@ -234,7 +252,7 @@ export default function NotificationsPage() {
                             >
                                 Prev
                             </button>
-                            <button className="h-8 w-8 rounded-lg text-xs font-semibold transition-colors bg-orange-600 text-white">
+                            <button className="h-7 w-7 rounded-lg text-xs font-semibold transition-colors bg-orange-600 text-white">
                                 {currentPage}
                             </button>
                             <span className="text-zinc-600">/ {totalPages}</span>
