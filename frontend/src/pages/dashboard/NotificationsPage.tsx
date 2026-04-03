@@ -51,7 +51,7 @@ export default function NotificationsPage() {
             setIsLoading(true);
         }
         try {
-            const data = await authApi.getNotifications(token, 30, { force });
+            const data = await authApi.getNotifications(token, 100, { force });
             const role = String(user?.role || 'student').toLowerCase();
             const isAdmin = role === 'admin';
             const filtered = (data.notifications || []).filter((item) => {

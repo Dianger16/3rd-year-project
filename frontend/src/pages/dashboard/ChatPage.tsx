@@ -281,10 +281,11 @@ export default function ChatPage() {
 
     useEffect(() => {
         const prefill = (location.state as { prefill?: string } | null)?.prefill;
-        if (!prefill || messages.length > 0) return;
+        if (!prefill) return;
         setInput(prefill);
+        requestAnimationFrame(() => textareaRef.current?.focus());
         navigate(location.pathname, { replace: true, state: null });
-    }, [location.pathname, location.state, messages.length, navigate]);
+    }, [location.key, location.pathname, location.state, navigate]);
 
     // Auto-resize textarea
     useEffect(() => {
