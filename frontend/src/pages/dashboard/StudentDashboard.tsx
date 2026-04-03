@@ -241,7 +241,7 @@ export default function StudentDashboard() {
                             <GraduationCap className="w-3.5 h-3.5 text-orange-400" /> Student Workspace
                         </div>
                         <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
-                            Student Portal <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-300">{firstName}</span>
+                            Welcome, <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-300">{firstName}</span>
                         </h1>
                         <p className="text-zinc-400 text-sm max-w-xl">
                             Live academic dashboard for notices, faculty contacts, and assistant-driven study actions.
