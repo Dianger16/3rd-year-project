@@ -12,6 +12,7 @@ import {
 import { BrandLogo } from '@/components/ui/BrandLogo';
 import { agentApi, type ModerationMeta, type SourceCitation } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { HoverTooltip } from '@/components/ui/tooltip';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -211,14 +212,15 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                             "absolute -bottom-7 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0",
                             isUser ? "right-1" : "left-1"
                         )}>
-                            <button
-                                onClick={handleCopy}
-                                className="flex items-center gap-1 text-[10px] font-medium text-zinc-500 hover:text-orange-400 transition-colors bg-zinc-900/50 backdrop-blur-sm px-2 py-1 rounded-lg border border-white/5"
-                                title="Copy message"
-                            >
-                                {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
-                                {copied ? "Copied" : "Copy"}
-                            </button>
+                            <HoverTooltip content="Copy message" side={isUser ? "left" : "right"}>
+                                <button
+                                    onClick={handleCopy}
+                                    className="flex items-center gap-1 text-[10px] font-medium text-zinc-500 hover:text-orange-400 transition-colors bg-zinc-900/50 backdrop-blur-sm px-2 py-1 rounded-lg border border-white/5"
+                                >
+                                    {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                                    {copied ? "Copied" : "Copy"}
+                                </button>
+                            </HoverTooltip>
                         </div>
                     </div>
 
@@ -473,14 +475,15 @@ export default function ChatPage() {
                         />
                         <div className="flex items-center gap-1.5 sm:gap-2 p-2 sm:p-2.5 shrink-0">
                             {messages.length > 0 && (
-                                <button
-                                    type="button"
-                                    onClick={newConversation}
-                                    className="h-8 w-8 rounded-xl flex items-center justify-center text-zinc-500 hover:text-white hover:bg-white/[0.06] transition-all"
-                                    title="New chat"
-                                >
-                                    <Plus className="w-4 h-4" />
-                                </button>
+                                <HoverTooltip content="New chat">
+                                    <button
+                                        type="button"
+                                        onClick={newConversation}
+                                        className="h-8 w-8 rounded-xl flex items-center justify-center text-zinc-500 hover:text-white hover:bg-white/[0.06] transition-all"
+                                    >
+                                        <Plus className="w-4 h-4" />
+                                    </button>
+                                </HoverTooltip>
                             )}
                             <Button
                                 type="submit"

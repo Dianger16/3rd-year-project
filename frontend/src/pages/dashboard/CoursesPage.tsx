@@ -13,6 +13,7 @@ import {
     Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { HoverTooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { authApi, type CourseDirectoryItem, type FacultySummary } from '@/lib/api';
@@ -252,30 +253,32 @@ export default function CoursesPage() {
                     </div>
                     <div className="flex items-center gap-3">
                         <div className="flex bg-white/[0.03] border border-white/[0.06] rounded-xl p-1">
-                            <button
-                                onClick={() => setView('grid')}
-                                title="Grid view"
-                                className={cn(
-                                    'p-1.5 rounded-lg transition-all',
-                                    view === 'grid'
-                                        ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20'
-                                        : 'text-zinc-500 hover:text-zinc-300'
-                                )}
-                            >
-                                <LayoutGrid className="w-4 h-4" />
-                            </button>
-                            <button
-                                onClick={() => setView('list')}
-                                title="List view"
-                                className={cn(
-                                    'p-1.5 rounded-lg transition-all',
-                                    view === 'list'
-                                        ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20'
-                                        : 'text-zinc-500 hover:text-zinc-300'
-                                )}
-                            >
-                                <List className="w-4 h-4" />
-                            </button>
+                            <HoverTooltip content="Grid view">
+                                <button
+                                    onClick={() => setView('grid')}
+                                    className={cn(
+                                        'p-1.5 rounded-lg transition-all',
+                                        view === 'grid'
+                                            ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20'
+                                            : 'text-zinc-500 hover:text-zinc-300'
+                                    )}
+                                >
+                                    <LayoutGrid className="w-4 h-4" />
+                                </button>
+                            </HoverTooltip>
+                            <HoverTooltip content="List view">
+                                <button
+                                    onClick={() => setView('list')}
+                                    className={cn(
+                                        'p-1.5 rounded-lg transition-all',
+                                        view === 'list'
+                                            ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20'
+                                            : 'text-zinc-500 hover:text-zinc-300'
+                                    )}
+                                >
+                                    <List className="w-4 h-4" />
+                                </button>
+                            </HoverTooltip>
                         </div>
                     </div>
                 </div>

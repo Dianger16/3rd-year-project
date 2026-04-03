@@ -23,6 +23,7 @@ import { Link } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
 import { adminApi, systemApi, type AuditLogEntry, type MetricsResponse } from '@/lib/api';
+import { HoverTooltip } from '@/components/ui/tooltip';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -118,7 +119,6 @@ function InteractiveBarChart({ series }: { series: SevenDayPoint[] }) {
                                     <div className="text-[9px] text-amber-400">
                                         {point.uploads || 0} uploads
                                     </div>
-                                    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-zinc-800 border-r border-b border-white/10 rotate-45" />
                                 </motion.div>
                             )}
                         </AnimatePresence>
@@ -308,13 +308,14 @@ function AdminChatBubble() {
                                 </div>
                             </div>
                             <div className="flex items-center gap-0.5">
-                                <button
-                                    onClick={() => newConversation()}
-                                    title="New chat"
-                                    className="w-7 h-7 rounded-md hover:bg-white/5 flex items-center justify-center text-zinc-500 hover:text-white transition-colors"
-                                >
-                                    <Plus className="w-3.5 h-3.5" />
-                                </button>
+                                <HoverTooltip content="New chat" side="left">
+                                    <button
+                                        onClick={() => newConversation()}
+                                        className="w-7 h-7 rounded-md hover:bg-white/5 flex items-center justify-center text-zinc-500 hover:text-white transition-colors"
+                                    >
+                                        <Plus className="w-3.5 h-3.5" />
+                                    </button>
+                                </HoverTooltip>
                                 <button
                                     onClick={() => setIsOpen(false)}
                                     className="w-7 h-7 rounded-md hover:bg-white/5 flex items-center justify-center text-zinc-500 hover:text-white transition-colors"
@@ -639,35 +640,36 @@ const AdminDashboard = () => {
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.1 + i * 0.08 }}
                         >
-                            <div
-                                className="p-5 rounded-2xl bg-gradient-to-br from-zinc-900/65 to-zinc-950/70 border border-white/[0.06] hover:border-white/[0.14] transition-all cursor-default group"
-                                onMouseEnter={() => setHoveredStat(i)}
-                                onMouseLeave={() => setHoveredStat(null)}
-                                title={`${stat.label}: ${formatCompact(stat.value)}`}
-                            >
-                                <div className="flex justify-between items-start mb-2">
-                                    <div
-                                        className="w-9 h-9 rounded-lg flex items-center justify-center"
-                                        style={{ backgroundColor: `${stat.color}1a` }}
-                                    >
-                                        <stat.icon className="w-4 h-4" style={{ color: stat.color }} />
+                            <HoverTooltip content={`${stat.label}: ${formatCompact(stat.value)}`} followCursor>
+                                <div
+                                    className="p-5 rounded-2xl bg-gradient-to-br from-zinc-900/65 to-zinc-950/70 border border-white/[0.06] hover:border-white/[0.14] transition-all cursor-default group"
+                                    onMouseEnter={() => setHoveredStat(i)}
+                                    onMouseLeave={() => setHoveredStat(null)}
+                                >
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div
+                                            className="w-9 h-9 rounded-lg flex items-center justify-center"
+                                            style={{ backgroundColor: `${stat.color}1a` }}
+                                        >
+                                            <stat.icon className="w-4 h-4" style={{ color: stat.color }} />
+                                        </div>
+                                        <ArrowUpRight className="w-3.5 h-3.5 text-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity" />
                                     </div>
-                                    <ArrowUpRight className="w-3.5 h-3.5 text-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    <div className="text-2xl font-extrabold text-white tracking-tight">
+                                        {isLoading ? '--' : formatCompact(stat.value)}
+                                    </div>
+                                    <div className="text-[11px] text-zinc-500">{stat.label}</div>
+                                    <MiniBarChart
+                                        data={stat.sparkline.length > 0 ? stat.sparkline : [0, 0, 0, 0, 0, 0, 0]}
+                                        color={stat.color}
+                                        hovered={hoveredStat === i}
+                                    />
+                                    <div className="flex items-center gap-1.5 mt-1">
+                                        <TrendingUp className="w-3 h-3 text-emerald-400" />
+                                        <span className="text-[10px] text-zinc-600">{stat.change}</span>
+                                    </div>
                                 </div>
-                                <div className="text-2xl font-extrabold text-white tracking-tight">
-                                    {isLoading ? '--' : formatCompact(stat.value)}
-                                </div>
-                                <div className="text-[11px] text-zinc-500">{stat.label}</div>
-                                <MiniBarChart
-                                    data={stat.sparkline.length > 0 ? stat.sparkline : [0, 0, 0, 0, 0, 0, 0]}
-                                    color={stat.color}
-                                    hovered={hoveredStat === i}
-                                />
-                                <div className="flex items-center gap-1.5 mt-1">
-                                    <TrendingUp className="w-3 h-3 text-emerald-400" />
-                                    <span className="text-[10px] text-zinc-600">{stat.change}</span>
-                                </div>
-                            </div>
+                            </HoverTooltip>
                         </motion.div>
                     ))}
                 </div>
