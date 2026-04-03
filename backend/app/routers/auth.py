@@ -429,6 +429,37 @@ def fetch_pending_appeals_feed(admin: Any, limit: int) -> list[dict[str, Any]]:
     return pending[:limit]
 
 
+def fetch_admin_report_notice_feed(admin: Any, limit: int) -> list[dict[str, Any]]:
+    """Fetch recent admin-generated report notices from audit logs."""
+    try:
+        rows = (
+            admin.table("audit_logs")
+            .select("id,timestamp,payload")
+            .eq("action", "admin_user_report_notice")
+            .order("timestamp", desc=True)
+            .limit(min(max(limit, 1), 500))
+            .execute()
+        ).data or []
+    except Exception:
+        return []
+
+    notices: list[dict[str, Any]] = []
+    for row in rows:
+        payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+        subject = str(payload.get("subject") or "User Activity Report Notice").strip()
+        message = str(payload.get("message") or "Administration shared a new activity report.").strip()
+        preview = message
+        notices.append(
+            {
+                "id": str(row.get("id") or ""),
+                "subject": subject,
+                "message": preview,
+                "timestamp": to_iso(row.get("timestamp")),
+            }
+        )
+    return notices
+
+
 def fetch_documents_feed(admin: Any, limit: int) -> list[dict[str, Any]]:
     global _DOCUMENTS_HAS_CREATED_AT, _DOCUMENTS_HAS_UPLOADER_ID, _DOCUMENTS_ORDER_COLUMN
 
@@ -1190,6 +1221,24 @@ async def get_user_notifications(
                         unread=unread,
                     )
                 )
+
+        report_notice_limit = min(220, max(60, safe_limit * 3))
+        report_notices = fetch_admin_report_notice_feed(admin, report_notice_limit)
+        for report_notice in report_notices:
+            notice_at = report_notice.get("timestamp")
+            notice_dt = parse_timestamp(notice_at)
+            unread = bool(notice_dt and (last_seen_at is None or notice_dt > last_seen_at))
+            notifications.append(
+                UserNotificationItem(
+                    id=f"report:{report_notice.get('id') or notice_at}",
+                    title=str(report_notice.get("subject") or "User Activity Report Notice"),
+                    message=str(report_notice.get("message") or "New admin report notice available."),
+                    course="Admin Notice",
+                    department=None,
+                    uploaded_at=notice_at,
+                    unread=unread,
+                )
+            )
 
         combined_total = len(notifications)
         notifications.sort(
