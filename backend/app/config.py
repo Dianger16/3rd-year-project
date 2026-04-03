@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     # Dev flags
     mock_llm: bool = False
 
+    # Audit retention
+    audit_query_retention_days: int = 14
+    audit_prune_interval_seconds: int = 900
+
     # SMTP (Email)
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
