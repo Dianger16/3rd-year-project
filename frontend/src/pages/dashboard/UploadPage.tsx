@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Upload, FileText, X, Check, AlertCircle, CloudUpload, Loader2, Pencil, Trash2, RefreshCw, Layers, FileUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -43,6 +43,7 @@ const UploadPage = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [docsPage, setDocsPage] = useState(1);
     const DOCS_PER_PAGE = 8;
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
 
     const role = user?.role || 'student';
     const canUpload = role === 'admin' || role === 'faculty';
@@ -133,6 +134,11 @@ const UploadPage = () => {
         if (e.target.files?.length) {
             appendFiles(Array.from(e.target.files));
         }
+        e.currentTarget.value = '';
+    };
+
+    const openFilePicker = () => {
+        fileInputRef.current?.click();
     };
 
     const removeFile = (index: number) => {
@@ -421,34 +427,45 @@ const UploadPage = () => {
                                     </div>
                                 </div>
 
-                                <HoverTooltip content="Drop files here or click to browse.">
-                                    <div
-                                        onDragEnter={handleDrag}
-                                        onDragLeave={handleDrag}
-                                        onDragOver={handleDrag}
-                                        onDrop={handleDrop}
-                                        className={`relative rounded-2xl border-2 border-dashed p-8 text-center transition-all duration-300 cursor-pointer min-h-[252px] flex items-center justify-center ${dragActive ? 'border-orange-500 bg-orange-500/5 shadow-[0_0_40px_-12px_rgba(249,115,22,0.2)]' : 'border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/[0.15]'}`}
-                                    >
-                                        <input
-                                            type="file"
-                                            multiple={mode === 'batch'}
-                                            accept={ACCEPTED_ATTR}
-                                            onChange={handleFileSelect}
-                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
-                                        />
-                                        <div className="space-y-2 pointer-events-none">
-                                            <div className="w-11 h-11 mx-auto rounded-2xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center">
-                                                <CloudUpload className="w-5 h-5 text-orange-400" />
-                                            </div>
-                                            <p className="text-sm font-semibold text-white">
-                                                {mode === 'single' ? 'Select one file' : 'Drag & drop files here'}
-                                            </p>
-                                            <p className="text-[11px] text-zinc-500">
-                                                Max 25MB each - {ACCEPTED_EXTENSIONS.join(', ')}
-                                            </p>
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    multiple={mode === 'batch'}
+                                    accept={ACCEPTED_ATTR}
+                                    onChange={handleFileSelect}
+                                    className="sr-only"
+                                    tabIndex={-1}
+                                    aria-hidden="true"
+                                />
+                                <div
+                                    onDragEnter={handleDrag}
+                                    onDragLeave={handleDrag}
+                                    onDragOver={handleDrag}
+                                    onDrop={handleDrop}
+                                    onClick={openFilePicker}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            openFilePicker();
+                                        }
+                                    }}
+                                    role="button"
+                                    tabIndex={0}
+                                    aria-label={mode === 'single' ? 'Select one file to upload' : 'Select files to upload in batch'}
+                                    className={`relative rounded-2xl border-2 border-dashed p-8 text-center transition-all duration-300 cursor-pointer min-h-[252px] flex items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-orange-500/50 ${dragActive ? 'border-orange-500 bg-orange-500/5 shadow-[0_0_40px_-12px_rgba(249,115,22,0.2)]' : 'border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/[0.15]'}`}
+                                >
+                                    <div className="space-y-2 pointer-events-none">
+                                        <div className="w-11 h-11 mx-auto rounded-2xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center">
+                                            <CloudUpload className="w-5 h-5 text-orange-400" />
                                         </div>
+                                        <p className="text-sm font-semibold text-white">
+                                            {mode === 'single' ? 'Select one file' : 'Drag & drop files here'}
+                                        </p>
+                                        <p className="text-[11px] text-zinc-500">
+                                            Max 25MB each - {ACCEPTED_EXTENSIONS.join(', ')}
+                                        </p>
                                     </div>
-                                </HoverTooltip>
+                                </div>
                             </div>
 
                             {files.length > 0 && (
@@ -656,7 +673,7 @@ const UploadPage = () => {
                                 </button>
                                 <HoverTooltip content="Current page">
                                     <button
-                                        className="h-8 w-8 rounded-lg text-xs font-semibold transition-colors bg-orange-600 text-white"
+                                        className="h-7 w-7 rounded-lg text-xs font-semibold transition-colors bg-orange-600 text-white"
                                     >
                                         {docsPage}
                                     </button>
