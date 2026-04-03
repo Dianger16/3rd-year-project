@@ -146,12 +146,12 @@ export default function FacultyDashboard() {
                 </div>
                 <div className="flex items-center gap-3">
                     <Link to="/dashboard/upload">
-                        <Button className="bg-white text-black hover:bg-zinc-200 font-semibold px-6 h-11 rounded-2xl shadow-lg transition-all active:scale-95 flex gap-2 text-sm">
+                        <Button title="Open upload console" className="bg-white text-black hover:bg-zinc-200 font-semibold px-6 h-11 rounded-2xl shadow-lg transition-all active:scale-95 flex gap-2 text-sm">
                             <Plus className="w-4 h-4" /> Upload Circular
                         </Button>
                     </Link>
                     <Link to="/dashboard/chat">
-                        <Button className="bg-orange-600 hover:bg-orange-500 text-white font-semibold px-6 h-11 rounded-2xl shadow-lg shadow-orange-500/20 transition-all active:scale-95 flex gap-2 text-sm">
+                        <Button title="Open faculty assistant chat" className="bg-orange-600 hover:bg-orange-500 text-white font-semibold px-6 h-11 rounded-2xl shadow-lg shadow-orange-500/20 transition-all active:scale-95 flex gap-2 text-sm">
                             <Sparkles className="w-4 h-4" /> Faculty Assistant
                         </Button>
                     </Link>
@@ -191,6 +191,7 @@ export default function FacultyDashboard() {
                             <Button
                                 variant="ghost"
                                 onClick={() => navigate('/dashboard/documents')}
+                                title="Open documents archive"
                                 className="text-[10px] font-black tracking-widest uppercase text-zinc-500 hover:text-orange-400 transition-colors h-auto p-0"
                             >
                                 Archive
@@ -233,6 +234,7 @@ export default function FacultyDashboard() {
                                             variant="ghost"
                                             size="sm"
                                             onClick={() => openChatWithPrefill(`Acknowledge and summarize this circular for faculty: ${c.title}`)}
+                                            title="Summarize this circular in chat"
                                             className="text-zinc-600 group-hover:text-orange-400 transition-colors font-bold text-xs uppercase tracking-widest"
                                         >
                                             Acknowledge <ArrowRight className="w-3.5 h-3.5 ml-1" />
@@ -254,7 +256,7 @@ export default function FacultyDashboard() {
                                 <p className="text-zinc-500 text-sm max-w-sm">Ask me to summarize current faculty notices, deadlines, and policy updates from your live documents.</p>
                                 <div className="flex flex-wrap justify-center md:justify-start gap-4 pt-4">
                                     <Link to="/dashboard/chat" state={{ prefill: 'Summarize the latest faculty policy updates from uploaded circulars.' }}>
-                                        <Button className="bg-orange-600 hover:bg-orange-500 text-white font-semibold h-12 px-8 rounded-xl transition-all shadow-lg shadow-orange-500/20 text-sm">
+                                        <Button title="Open policy assistant in chat" className="bg-orange-600 hover:bg-orange-500 text-white font-semibold h-12 px-8 rounded-xl transition-all shadow-lg shadow-orange-500/20 text-sm">
                                             Open Policy Chat
                                         </Button>
                                     </Link>
@@ -293,6 +295,7 @@ export default function FacultyDashboard() {
                         <Button
                             variant="ghost"
                             onClick={() => navigate('/dashboard/courses')}
+                            title="Open department calendar and courses"
                             className="w-full text-zinc-500 hover:text-white text-[10px] font-black uppercase tracking-widest py-4 border border-white/[0.04] rounded-xl group/cal"
                         >
                             Department Calendar <ChevronRight className="w-3 h-3 ml-2 group-hover/cal:text-orange-400 transition-colors" />
