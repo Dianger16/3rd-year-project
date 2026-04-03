@@ -4,6 +4,7 @@ from email.mime.multipart import MIMEMultipart
 from app.config import settings
 import logging
 import html
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -247,4 +248,101 @@ class EmailService:
 
         except Exception as e:
             logger.error(f"Failed to send flag alert email: {e}")
+            return False
+
+    @staticmethod
+    def send_appeal_status_email(
+        receiver_email: str,
+        user_name: str = "User",
+        approved: bool = True,
+        decision_note: Optional[str] = None,
+    ) -> bool:
+        """Sends moderation appeal status email to the affected user."""
+        try:
+            sender_email, smtp_password = EmailService._resolve_sender()
+            safe_name = html.escape(user_name or "User")
+            safe_note = html.escape((decision_note or "").strip())
+
+            if approved:
+                subject = "UnivGPT Appeal Update: Approved"
+                status_title = "Your appeal has been approved"
+                status_body = (
+                    "Your account moderation appeal has been reviewed and approved. "
+                    "Your chat access has been restored."
+                )
+                policy_note = (
+                    "Please maintain respectful conduct in future conversations. "
+                    "Repeated violations may lead to disciplinary action, including fines or temporary account restrictions."
+                )
+            else:
+                subject = "UnivGPT Appeal Update: Rejected"
+                status_title = "Your appeal has been rejected"
+                status_body = (
+                    "Your moderation appeal was reviewed and rejected. "
+                    "Your account remains blocked for chat access."
+                )
+                policy_note = (
+                    "If you believe this decision was incorrect, contact university administration with additional context."
+                )
+
+            note_block_text = f"\nReviewer note: {safe_note}" if safe_note else ""
+            note_block_html = (
+                f"<p style='margin-top: 12px; color: #d1d5db;'><strong>Reviewer note:</strong> {safe_note}</p>"
+                if safe_note
+                else ""
+            )
+
+            text_content = (
+                f"Hello {user_name},\n\n"
+                f"{status_title}.\n"
+                f"{status_body}\n\n"
+                f"{policy_note}"
+                f"{note_block_text}\n\n"
+                "Regards,\nUnivGPT Administration"
+            )
+
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body {{ font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #0b0b0c; margin: 0; padding: 0; }}
+                    .container {{ max-width: 620px; margin: 24px auto; background: #111827; border: 1px solid #1f2937; border-radius: 12px; overflow: hidden; }}
+                    .header {{ background: #111111; color: #ffffff; padding: 22px 24px; font-size: 24px; font-weight: 800; }}
+                    .header .accent {{ color: #f97316; }}
+                    .content {{ padding: 24px; color: #e5e7eb; line-height: 1.6; }}
+                    .status {{ margin: 14px 0; padding: 12px 14px; border-radius: 10px; background: #0f172a; border: 1px solid #374151; }}
+                    .footer {{ padding: 14px 24px; color: #9ca3af; font-size: 12px; border-top: 1px solid #1f2937; }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="header">Univ<span class="accent">GPT</span></div>
+                    <div class="content">
+                        <p>Hello {safe_name},</p>
+                        <div class="status"><strong>{html.escape(status_title)}</strong></div>
+                        <p>{html.escape(status_body)}</p>
+                        <p>{html.escape(policy_note)}</p>
+                        {note_block_html}
+                    </div>
+                    <div class="footer">This is an automated account-status update from UnivGPT.</div>
+                </div>
+            </body>
+            </html>
+            """
+
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = f"{settings.smtp_from_name} <{sender_email}>"
+            msg["To"] = receiver_email
+            msg["Reply-To"] = sender_email
+
+            msg.attach(MIMEText(text_content, "plain"))
+            msg.attach(MIMEText(html_content, "html"))
+
+            EmailService._deliver_message(msg, smtp_password)
+            logger.info("Appeal status email sent to %s (approved=%s)", receiver_email, approved)
+            return True
+        except Exception as e:
+            logger.error("Failed to send appeal status email to %s: %s", receiver_email, e)
             return False

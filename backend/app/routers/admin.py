@@ -5,7 +5,9 @@ Provides admin-only endpoints for metrics and audit logs.
 
 from __future__ import annotations
 
+import asyncio
 import datetime
+import logging
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -19,6 +21,7 @@ from app.config import settings
 from app.services.pinecone_client import pinecone_client
 from app.services.supabase_client import get_supabase_admin
 from app.services.audit import log_audit_event
+from app.services.email_service import EmailService
 from app.services.agent_pipeline import (
     list_moderation_appeals,
     review_user_moderation_appeal,
@@ -27,6 +30,7 @@ from app.services.agent_pipeline import (
 )
 
 router = APIRouter(tags=["Admin"])
+logger = logging.getLogger(__name__)
 
 
 def utc_now() -> datetime.datetime:
@@ -54,6 +58,45 @@ def _require_dean_access(user: AuthenticatedUser) -> None:
         return
     if (user.email or "").strip().lower() not in dean_emails:
         raise HTTPException(status_code=403, detail="Dean access required.")
+
+
+def _fetch_target_profile_for_appeal_mail(supabase, target_user_id: str) -> tuple[str | None, str]:
+    try:
+        res = (
+            supabase.table("profiles")
+            .select("email,full_name")
+            .eq("id", target_user_id)
+            .limit(1)
+            .execute()
+        )
+        row = (res.data or [{}])[0]
+        email = (row.get("email") or "").strip() or None
+        name = (row.get("full_name") or "User").strip() or "User"
+        return email, name
+    except Exception as exc:
+        logger.warning("Failed to fetch target profile for appeal email: %s", exc)
+        return None, "User"
+
+
+async def _send_appeal_status_email_if_possible(
+    *,
+    receiver_email: str | None,
+    full_name: str,
+    approved: bool,
+    decision_note: str | None,
+) -> None:
+    if not receiver_email:
+        return
+    try:
+        await asyncio.to_thread(
+            EmailService.send_appeal_status_email,
+            receiver_email,
+            full_name,
+            approved,
+            decision_note,
+        )
+    except Exception as exc:
+        logger.warning("Appeal status email dispatch failed: %s", exc)
 
 
 @router.get("/admin/metrics")
@@ -347,6 +390,7 @@ async def approve_dean_appeal(
 ) -> dict[str, Any]:
     _require_dean_access(user)
     supabase = get_supabase_admin()
+    target_email, target_name = _fetch_target_profile_for_appeal_mail(supabase, target_user_id)
     state = review_user_moderation_appeal(
         supabase=supabase,
         target_user_id=target_user_id,
@@ -360,6 +404,12 @@ async def approve_dean_appeal(
         action="dean_appeal_approved",
         payload={"target_user_id": target_user_id, "note": body.note},
     )
+    await _send_appeal_status_email_if_possible(
+        receiver_email=target_email,
+        full_name=target_name,
+        approved=True,
+        decision_note=body.note,
+    )
     return {"status": "success", "message": "Appeal approved and user flags reset.", "moderation": moderation_meta_from_state(state)}
 
 
@@ -371,6 +421,7 @@ async def reject_dean_appeal(
 ) -> dict[str, Any]:
     _require_dean_access(user)
     supabase = get_supabase_admin()
+    target_email, target_name = _fetch_target_profile_for_appeal_mail(supabase, target_user_id)
     state = review_user_moderation_appeal(
         supabase=supabase,
         target_user_id=target_user_id,
@@ -383,6 +434,12 @@ async def reject_dean_appeal(
         user_id=None if user.id.startswith("dummy-id-") else user.id,
         action="dean_appeal_rejected",
         payload={"target_user_id": target_user_id, "note": body.note},
+    )
+    await _send_appeal_status_email_if_possible(
+        receiver_email=target_email,
+        full_name=target_name,
+        approved=False,
+        decision_note=body.note,
     )
     return {"status": "success", "message": "Appeal rejected. User remains blocked.", "moderation": moderation_meta_from_state(state)}
 
