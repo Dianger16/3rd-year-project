@@ -214,7 +214,7 @@ export const agentApi = {
 };
 
 export const adminApi = {
-    getUsers: (token: string, page = 1, perPage = 200) =>
+    getUsers: (token: string, page = 1, perPage = 100) =>
         request<{ users: UserProfile[]; total: number; page: number; per_page: number }>(
             `/admin/users?page=${encodeURIComponent(String(page))}&per_page=${encodeURIComponent(String(perPage))}`,
             { token, timeoutMs: 20_000 },
@@ -228,7 +228,7 @@ export const adminApi = {
             `/admin/users/${encodeURIComponent(userId)}`,
             { method: 'PATCH', token, body: data },
         ),
-    getAuditLogs: (token: string, page = 1, perPage = 50) =>
+    getAuditLogs: (token: string, page = 1, perPage = 20) =>
         request<AuditLogListResponse>(
             `/admin/audit?page=${encodeURIComponent(String(page))}&per_page=${encodeURIComponent(String(perPage))}`,
             { token, timeoutMs: 25_000 },
