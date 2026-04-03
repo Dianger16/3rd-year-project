@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const formatDate = (value?: string | null) => {
     if (!value) return 'Unknown time';
@@ -182,7 +183,22 @@ export default function NotificationsPage() {
 
                 <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/35 overflow-hidden">
                     {isLoading && (
-                        <div className="px-5 py-8 text-sm text-zinc-500">Loading notifications...</div>
+                        <div className="p-4 space-y-3">
+                            {Array.from({ length: 5 }).map((_, idx) => (
+                                <div key={`notification-skeleton-${idx}`} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+                                    <div className="flex gap-3">
+                                        <Skeleton className="w-8 h-8 rounded-lg shrink-0" />
+                                        <div className="flex-1 space-y-2.5">
+                                            <Skeleton className="h-4 w-48" />
+                                            <Skeleton className="h-3 w-full" />
+                                            <Skeleton className="h-3 w-2/3" />
+                                            <Skeleton className="h-3 w-36" />
+                                        </div>
+                                        <Skeleton className="h-8 w-28 rounded-lg shrink-0" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     )}
                     {!isLoading && items.length === 0 && (
                         <div className="px-5 py-10 text-sm text-zinc-500">No notifications yet.</div>
@@ -287,7 +303,11 @@ export default function NotificationsPage() {
                             </div>
                             <div className="px-5 py-4">
                                 {isPreviewLoading ? (
-                                    <p className="text-sm text-zinc-500">Loading preview...</p>
+                                    <div className="space-y-3">
+                                        <Skeleton className="h-20 w-full rounded-xl" />
+                                        <Skeleton className="h-20 w-full rounded-xl" />
+                                        <Skeleton className="h-20 w-full rounded-xl" />
+                                    </div>
                                 ) : previewDoc.has_preview && previewDoc.chunks.length > 0 ? (
                                     <div className="space-y-3 max-h-[58vh] overflow-y-auto pr-1">
                                         {previewDoc.chunks.map((chunk) => (
