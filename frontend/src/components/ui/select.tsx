@@ -37,13 +37,13 @@ const SelectContent = React.forwardRef<
             position={position}
             sideOffset={8}
             className={cn(
-                "z-[260] min-w-[8rem] overflow-hidden rounded-xl border border-white/[0.12] bg-zinc-950/95 text-zinc-200 backdrop-blur-xl",
+                "z-[260] w-[var(--radix-select-trigger-width)] overflow-hidden rounded-xl border border-white/[0.12] bg-zinc-950/95 text-zinc-200 backdrop-blur-xl",
                 "shadow-[0_18px_60px_rgba(0,0,0,0.65)]",
                 className,
             )}
             {...props}
         >
-            <SelectPrimitive.Viewport className="p-1">
+            <SelectPrimitive.Viewport className="max-h-72 p-1">
                 {children}
             </SelectPrimitive.Viewport>
         </SelectPrimitive.Content>
@@ -74,4 +74,3 @@ const SelectItem = React.forwardRef<
 SelectItem.displayName = SelectPrimitive.Item.displayName;
 
 export { Select, SelectValue, SelectTrigger, SelectContent, SelectItem };
-
