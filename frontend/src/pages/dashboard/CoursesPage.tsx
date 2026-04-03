@@ -254,6 +254,7 @@ export default function CoursesPage() {
                         <div className="flex bg-white/[0.03] border border-white/[0.06] rounded-xl p-1">
                             <button
                                 onClick={() => setView('grid')}
+                                title="Grid view"
                                 className={cn(
                                     'p-1.5 rounded-lg transition-all',
                                     view === 'grid'
@@ -265,6 +266,7 @@ export default function CoursesPage() {
                             </button>
                             <button
                                 onClick={() => setView('list')}
+                                title="List view"
                                 className={cn(
                                     'p-1.5 rounded-lg transition-all',
                                     view === 'list'
@@ -292,6 +294,7 @@ export default function CoursesPage() {
                     <Button
                         variant="outline"
                         onClick={() => setSearchQuery('')}
+                        title="Clear search filter"
                         className="h-12 px-6 border-white/[0.08] bg-white/[0.03] text-zinc-300 hover:text-white rounded-2xl flex items-center gap-2 font-semibold text-xs"
                     >
                         <Filter className="w-4 h-4" />
@@ -396,6 +399,7 @@ export default function CoursesPage() {
                                 <div className="mt-auto flex gap-2">
                                     <Button
                                         onClick={() => openInChat(course, 'syllabus')}
+                                        title="Ask assistant for syllabus highlights"
                                         className="flex-1 bg-white/[0.04] hover:bg-white/[0.08] text-white border border-white/[0.06] h-12 rounded-xl text-xs font-semibold transition-all group/btn"
                                     >
                                         <Download className="w-4 h-4 mr-2 text-zinc-500 group-hover/btn:text-orange-400 transition-colors" />
@@ -404,6 +408,7 @@ export default function CoursesPage() {
                                     <Button
                                         size="icon"
                                         onClick={() => openInChat(course, 'details')}
+                                        title="Open full course details in assistant"
                                         className="w-12 h-12 bg-orange-600 hover:bg-orange-500 text-white rounded-xl shadow-lg shadow-orange-500/20"
                                     >
                                         <ChevronRight className="w-5 h-5" />
@@ -478,6 +483,7 @@ export default function CoursesPage() {
                                     <Button
                                         variant="ghost"
                                         onClick={() => openInChat(course, 'details')}
+                                        title="Open course details"
                                         className="text-orange-400 hover:text-orange-300 hover:bg-orange-500/10 font-semibold text-[10px] uppercase tracking-widest"
                                     >
                                         Details
