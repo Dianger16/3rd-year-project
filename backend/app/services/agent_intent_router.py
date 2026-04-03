@@ -52,17 +52,15 @@ def should_filter_recent_documents(query: str, intent: dict[str, Any]) -> bool:
     return any(marker in text for marker in markers)
 
 
-def infer_intent_from_query(query: str, intent: dict[str, Any]) -> dict[str, Any]:
+def infer_intent_from_query(
+    query: str,
+    intent: dict[str, Any],
+    allow_deterministic_fallback: bool = False,
+) -> dict[str, Any]:
     text = _normalize(query)
     hydrated = dict(intent or {})
     count_request = bool(re.search(r"\b(how many|count|number of|total)\b", text))
     list_request = bool(re.search(r"\b(list|show|display|summarize|latest|recent)\b", text))
-
-    if not hydrated.get("date_reference"):
-        for marker in ("today", "tomorrow", "yesterday"):
-            if marker in text:
-                hydrated["date_reference"] = marker
-                break
 
     if not hydrated.get("intent_type"):
         hydrated["intent_type"] = "general"
@@ -70,9 +68,63 @@ def infer_intent_from_query(query: str, intent: dict[str, Any]) -> dict[str, Any
     if not hydrated.get("target_entity"):
         hydrated["target_entity"] = "general"
 
+    # Deterministic keyword routing is strictly fallback-only.
+    if not allow_deterministic_fallback:
+        return hydrated
+
+    if not hydrated.get("date_reference"):
+        for marker in ("today", "tomorrow", "yesterday"):
+            if marker in text:
+                hydrated["date_reference"] = marker
+                break
+
     # Deterministic fallback routing when LLM intent extraction is unavailable/partial.
-    if _contains_any(text, ("audit", "audit log", "logs", "moderation", "appeal", "appeals")):
+    appeal_request = _contains_any(
+        text,
+        (
+            "appeal",
+            "appeals",
+            "dean",
+            "violation",
+            "violations",
+            "flag reset",
+            "apology",
+        ),
+    )
+    audit_request = _contains_any(
+        text,
+        (
+            "audit",
+            "audit log",
+            "audit logs",
+            "activity log",
+            "event log",
+            "logs",
+        ),
+    ) and not appeal_request
+    moderation_request = _contains_any(
+        text,
+        (
+            "moderation",
+            "flagged",
+            "blocked",
+            "warnings",
+            "warning",
+        ),
+    ) or appeal_request
+
+    if appeal_request:
+        if count_request and hydrated.get("intent_type") in {"", "general"}:
+            hydrated["intent_type"] = "count_appeals"
+        elif hydrated.get("intent_type") in {"", "general"}:
+            hydrated["intent_type"] = "list_appeals"
+        hydrated["target_entity"] = "appeals"
+    elif audit_request:
+        if hydrated.get("intent_type") in {"", "general"}:
+            hydrated["intent_type"] = "audit_summary"
         hydrated["target_entity"] = "audit"
+    elif moderation_request and hydrated.get("target_entity") in {"", "general"}:
+        hydrated["target_entity"] = "moderation"
 
     if _contains_any(text, ("user", "users", "student", "students", "faculty", "admin", "admins")):
         if count_request and hydrated.get("intent_type") in {"", "general"}:
