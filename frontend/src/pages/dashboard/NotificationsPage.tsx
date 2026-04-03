@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, RefreshCw, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { authApi, type UserNotificationItem } from '@/lib/api';
+import { authApi, documentsApi, type DocumentPreviewResponse, type UserNotificationItem } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -28,6 +28,8 @@ export default function NotificationsPage() {
     const [items, setItems] = useState<UserNotificationItem[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [focusedNotificationId, setFocusedNotificationId] = useState<string | null>(null);
+    const [previewDoc, setPreviewDoc] = useState<DocumentPreviewResponse | null>(null);
+    const [isPreviewLoading, setIsPreviewLoading] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const hasLoadedOnceRef = useRef(false);
     const ITEMS_PER_PAGE = 8;
@@ -108,6 +110,31 @@ export default function NotificationsPage() {
         navigate('/dashboard/chat', { state: { prefill } });
     };
 
+    const openNotification = async (item: UserNotificationItem) => {
+        if (item.id.startsWith('appeal:')) {
+            navigate('/dashboard/dean-appeals');
+            return;
+        }
+        if (item.id.startsWith('report:')) {
+            navigate('/dashboard/users');
+            return;
+        }
+        if (!token) {
+            openNotificationInChat(item);
+            return;
+        }
+        setPreviewDoc(null);
+        setIsPreviewLoading(true);
+        try {
+            const doc = await documentsApi.preview(token, item.id);
+            setPreviewDoc(doc);
+        } catch {
+            openNotificationInChat(item);
+        } finally {
+            setIsPreviewLoading(false);
+        }
+    };
+
     return (
         <div className="h-full overflow-y-auto">
             <div className="max-w-7xl mx-auto p-6 md:p-8 pb-24 space-y-6">
@@ -164,10 +191,12 @@ export default function NotificationsPage() {
                                             </div>
                                             <button
                                                 type="button"
-                                                onClick={() => openNotificationInChat(item)}
+                                                onClick={() => openNotification(item)}
                                                 className="shrink-0 h-8 px-3 rounded-lg border border-white/[0.12] bg-white/[0.03] hover:bg-white/[0.07] text-[11px] font-semibold text-orange-300 hover:text-orange-200 transition-colors"
                                             >
-                                                View Notification
+                                                {item.id.startsWith('appeal:') || item.id.startsWith('report:')
+                                                    ? 'Open Notice'
+                                                    : 'Preview Document'}
                                             </button>
                                         </div>
                                         <p className="text-xs text-zinc-400 mt-1 leading-relaxed break-words">{item.message}</p>
@@ -216,6 +245,68 @@ export default function NotificationsPage() {
                             >
                                 Next
                             </button>
+                        </div>
+                    </div>
+                )}
+
+                {previewDoc && (
+                    <div className="fixed inset-0 z-[180] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                        <div className="w-full max-w-3xl rounded-2xl border border-white/[0.12] bg-zinc-950 shadow-2xl shadow-black/60 overflow-hidden">
+                            <div className="px-5 py-4 border-b border-white/[0.08] flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <p className="text-sm font-bold text-white truncate">{previewDoc.filename}</p>
+                                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                                        {previewDoc.course || 'General'} • {previewDoc.department || 'No department'} • {previewDoc.doc_type}
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setPreviewDoc(null)}
+                                    className="h-8 px-3 rounded-lg border border-white/[0.12] bg-white/[0.03] hover:bg-white/[0.08] text-xs text-white"
+                                >
+                                    Close
+                                </button>
+                            </div>
+                            <div className="px-5 py-4">
+                                {isPreviewLoading ? (
+                                    <p className="text-sm text-zinc-500">Loading preview...</p>
+                                ) : previewDoc.has_preview && previewDoc.chunks.length > 0 ? (
+                                    <div className="space-y-3 max-h-[58vh] overflow-y-auto pr-1">
+                                        {previewDoc.chunks.map((chunk) => (
+                                            <div key={`${previewDoc.id}-${chunk.chunk_index}`} className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
+                                                <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5">Chunk {chunk.chunk_index + 1}</div>
+                                                <p className="text-sm leading-relaxed text-zinc-200 whitespace-pre-wrap break-words">{chunk.content}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-4">
+                                        <p className="text-sm text-zinc-300">Preview is not available for this document yet.</p>
+                                        <p className="text-xs text-zinc-500 mt-1">You can still open chat to summarize this notice.</p>
+                                    </div>
+                                )}
+                                <div className="mt-4 flex justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const fakeItem: UserNotificationItem = {
+                                                id: previewDoc.id,
+                                                title: previewDoc.filename,
+                                                message: `Summarize key points from ${previewDoc.filename}`,
+                                                uploaded_at: previewDoc.uploaded_at || null,
+                                                unread: false,
+                                                course: previewDoc.course || null,
+                                                department: previewDoc.department || null,
+                                            };
+                                            setPreviewDoc(null);
+                                            openNotificationInChat(fakeItem);
+                                        }}
+                                        className="h-9 px-3 rounded-lg border border-orange-500/30 bg-orange-500/10 hover:bg-orange-500/15 text-xs font-semibold text-orange-200"
+                                    >
+                                        Summarize in Chat
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}

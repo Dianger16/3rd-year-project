@@ -198,6 +198,8 @@ export const documentsApi = {
         request<DocumentResponse>(`/admin/documents/${id}`, { method: 'PATCH', body: data, token }),
     delete: (token: string, id: string) =>
         request<void>(`/admin/documents/${id}`, { method: 'DELETE', token }),
+    preview: (token: string, id: string) =>
+        request<DocumentPreviewResponse>(`/documents/${encodeURIComponent(id)}/preview`, { token, timeoutMs: 20_000 }),
 };
 
 export const agentApi = {
@@ -395,6 +397,25 @@ export interface DocumentListResponse {
     per_page: number;
 }
 
+export interface DocumentPreviewChunk {
+    chunk_index: number;
+    content: string;
+}
+
+export interface DocumentPreviewResponse {
+    id: string;
+    filename: string;
+    doc_type: string;
+    department?: string | null;
+    course?: string | null;
+    tags: string[];
+    uploaded_at?: string | null;
+    chunk_count: number;
+    chunks: DocumentPreviewChunk[];
+    has_preview: boolean;
+    preview_source: 'pinecone' | 'none' | string;
+}
+
 export interface AgentQueryResponse {
     answer: string;
     sources: Array<{ document_id: string; title: string; snippet: string; metadata?: Record<string, unknown> }>;
@@ -530,6 +551,10 @@ export interface UserActivityReportNoticeResponse {
         email: string;
         role: string;
         query_count: number;
+        active_days_30: number;
+        account_age_days: number;
+        joined_at?: string | null;
+        last_query_at?: string | null;
     }>;
     recipients_sent: number;
     recipients_failed: number;
@@ -549,6 +574,10 @@ export interface UserActivityReportPreviewResponse {
         email: string;
         role: string;
         query_count: number;
+        active_days_30: number;
+        account_age_days: number;
+        joined_at?: string | null;
+        last_query_at?: string | null;
     }>;
     stats: {
         total_users: number;
@@ -567,5 +596,9 @@ export interface UserActivityReportPreviewResponse {
         email: string;
         role: string;
         query_count: number;
+        active_days_30: number;
+        account_age_days: number;
+        joined_at?: string | null;
+        last_query_at?: string | null;
     }>;
 }
