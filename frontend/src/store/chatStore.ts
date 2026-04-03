@@ -19,12 +19,14 @@ export interface ChatMessage {
 }
 
 interface ChatState {
+    activeScope: string;
     conversations: ConversationResponse[];
     currentConversationId: string | null;
     messages: ChatMessage[];
     isQuerying: boolean;
     error: string | null;
 
+    setScope: (scope: string) => void;
     sendQuery: (token: string, query: string, context?: { dept?: string; course?: string }) => Promise<void>;
     loadHistory: (token: string) => Promise<void>;
     loadConversation: (token: string, id: string) => Promise<void>;
@@ -33,11 +35,26 @@ interface ChatState {
 }
 
 export const useChatStore = create<ChatState>()((set, get) => ({
+    activeScope: 'default',
     conversations: [],
     currentConversationId: null,
     messages: [],
     isQuerying: false,
     error: null,
+
+    setScope: (scope) => {
+        const nextScope = String(scope || '').trim() || 'default';
+        const currentScope = get().activeScope;
+        if (currentScope === nextScope) return;
+        set({
+            activeScope: nextScope,
+            conversations: [],
+            currentConversationId: null,
+            messages: [],
+            isQuerying: false,
+            error: null,
+        });
+    },
 
     sendQuery: async (token, query, context) => {
         const makeId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
