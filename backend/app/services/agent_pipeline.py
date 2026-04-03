@@ -37,6 +37,14 @@ from app.services.agent_directory import (
     append_intent_navigation_links,
     build_course_faculty_answer,
 )
+from app.services.agent_admin_snapshot import (
+    _format_short_date,
+    _humanize_action,
+    parse_date_string,
+    fetch_admin_snapshot,
+    fetch_documents_for_date,
+    render_admin_snapshot,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +66,9 @@ _ADMIN_ALLOWED_INTENT_TYPES = {
     "list_faculty",
     "faculty_profile",
     "course_faculty_map",
+    "count_appeals",
+    "list_appeals",
+    "audit_summary",
 }
 _ADMIN_ALLOWED_TARGETS = {
     "users",
@@ -389,54 +400,6 @@ def list_moderation_appeals(
     items.sort(key=lambda item: str((item.get("appeal") or {}).get("submitted_at") or ""), reverse=True)
     return items
 
-def _safe_iso(raw: Optional[str]) -> str:
-    if not raw:
-        return ""
-    try:
-        parsed = datetime.datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        return parsed.isoformat()
-    except Exception:
-        return str(raw)
-
-def _format_short_date(raw: Optional[str]) -> str:
-    if not raw:
-        return "-"
-    try:
-        parsed = datetime.datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        return parsed.strftime("%Y-%m-%d")
-    except Exception:
-        return str(raw)
-
-def _humanize_action(action: str) -> str:
-    clean = str(action or "").replace("_", " ").strip()
-    if not clean:
-        return "Unknown action"
-    return clean.title()
-
-def parse_date_string(raw: Optional[str]) -> Optional[datetime.date]:
-    if not raw:
-        return None
-    raw = raw.strip()
-    iso_match = re.search(r"\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b", raw)
-    if iso_match:
-        try:
-            return datetime.date(int(iso_match.group(1)), int(iso_match.group(2)), int(iso_match.group(3)))
-        except ValueError:
-            return None
-    alt_match = re.search(r"\b(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b", raw)
-    if alt_match:
-        try:
-            return datetime.date(int(alt_match.group(3)), int(alt_match.group(2)), int(alt_match.group(1)))
-        except ValueError:
-            return None
-    if raw.lower() == "today":
-        return datetime.datetime.now().date()
-    if raw.lower() == "tomorrow":
-        return datetime.datetime.now().date() + datetime.timedelta(days=1)
-    if raw.lower() == "yesterday":
-        return datetime.datetime.now().date() - datetime.timedelta(days=1)
-    return None
-
 class IntentPayload(BaseModel):
     model_config = ConfigDict(extra="allow")
     is_flagged: bool = False
@@ -451,222 +414,6 @@ class IntentPayload(BaseModel):
     department: Optional[str] = None
     course: Optional[str] = None
     tags: Optional[list[str]] = None
-
-def fetch_admin_snapshot(supabase) -> dict:
-    snapshot: dict[str, Any] = {
-        "counts": {},
-        "users_by_role": {},
-        "recent_documents": [],
-        "recent_users": [],
-        "recent_audits": [],
-    }
-    if not supabase:
-        return snapshot
-
-    def safe_count(table: str, action_filter: Optional[str] = None) -> int:
-        try:
-            query = supabase.table(table).select("id", count="exact")
-            if action_filter:
-                query = query.eq("action", action_filter)
-            res = query.execute()
-            return int(res.count or 0)
-        except Exception:
-            return 0
-
-    def safe_role_count(role: str) -> int:
-        try:
-            res = supabase.table("profiles").select("id", count="exact").eq("role", role).execute()
-            return int(res.count or 0)
-        except Exception:
-            return 0
-
-    snapshot["counts"] = {
-        "total_users": safe_count("profiles"),
-        "total_documents": safe_count("documents"),
-        "total_conversations": safe_count("conversations"),
-        "total_queries": safe_count("audit_logs", "agent_query"),
-    }
-    snapshot["users_by_role"] = {
-        "student": safe_role_count("student"),
-        "faculty": safe_role_count("faculty"),
-        "admin": safe_role_count("admin"),
-    }
-
-    # Recent documents
-    try:
-        try:
-            doc_res = (
-                supabase.table("documents")
-                .select("id, filename, doc_type, department, course, tags, uploaded_at, created_at, uploader_id")
-                .order("uploaded_at", desc=True)
-                .limit(25)
-                .execute()
-            )
-        except Exception as exc:
-            if "uploaded_at" in str(exc):
-                doc_res = (
-                    supabase.table("documents")
-                    .select("id, filename, doc_type, department, course, tags, created_at, uploader_id")
-                    .order("created_at", desc=True)
-                    .limit(25)
-                    .execute()
-                )
-            else:
-                raise
-        for row in doc_res.data or []:
-            snapshot["recent_documents"].append(
-                {
-                    "id": row.get("id"),
-                    "filename": row.get("filename"),
-                    "doc_type": row.get("doc_type"),
-                    "department": row.get("department") or "",
-                    "course": row.get("course") or "",
-                    "tags": row.get("tags") or [],
-                    "uploaded_at": _safe_iso(row.get("uploaded_at") or row.get("created_at")),
-                    "uploader_id": row.get("uploader_id"),
-                }
-            )
-    except Exception:
-        snapshot["recent_documents"] = []
-
-    # Recent users
-    try:
-        user_res = (
-            supabase.table("profiles")
-            .select("id, email, full_name, role, department, created_at, academic_verified, identity_provider")
-            .order("created_at", desc=True)
-            .limit(15)
-            .execute()
-        )
-        for row in user_res.data or []:
-            snapshot["recent_users"].append(
-                {
-                    "id": row.get("id"),
-                    "email": row.get("email"),
-                    "full_name": row.get("full_name"),
-                    "role": row.get("role"),
-                    "department": row.get("department") or "",
-                    "created_at": _safe_iso(row.get("created_at")),
-                    "academic_verified": row.get("academic_verified"),
-                    "identity_provider": row.get("identity_provider"),
-                }
-            )
-    except Exception:
-        snapshot["recent_users"] = []
-
-    # Recent audits (lightweight)
-    try:
-        try:
-            audit_res = (
-                supabase.table("audit_logs")
-                .select("action, user_id, timestamp, created_at, payload, status, ip_address")
-                .order("timestamp", desc=True)
-                .limit(20)
-                .execute()
-            )
-        except Exception:
-            audit_res = (
-                supabase.table("audit_logs")
-                .select("action, user_id, created_at, payload, status, ip_address")
-                .order("created_at", desc=True)
-                .limit(20)
-                .execute()
-            )
-        snapshot["recent_audits"] = audit_res.data or []
-    except Exception:
-        snapshot["recent_audits"] = []
-
-    return snapshot
-
-def fetch_documents_for_date(supabase, target_date: datetime.date) -> list[dict]:
-    if not supabase:
-        return []
-    start = datetime.datetime.combine(target_date, datetime.time.min).isoformat()
-    end = (datetime.datetime.combine(target_date, datetime.time.min) + datetime.timedelta(days=1)).isoformat()
-    try:
-        try:
-            res = (
-                supabase.table("documents")
-                .select("id, filename, doc_type, department, course, tags, uploaded_at, created_at")
-                .gte("uploaded_at", start)
-                .lt("uploaded_at", end)
-                .order("uploaded_at", desc=False)
-                .execute()
-            )
-        except Exception as exc:
-            if "uploaded_at" in str(exc):
-                res = (
-                    supabase.table("documents")
-                    .select("id, filename, doc_type, department, course, tags, created_at")
-                    .gte("created_at", start)
-                    .lt("created_at", end)
-                    .order("created_at", desc=False)
-                    .execute()
-                )
-            else:
-                raise
-        return res.data or []
-    except Exception:
-        return []
-
-def render_admin_snapshot(snapshot: dict) -> str:
-    counts = snapshot.get("counts", {})
-    users_by_role = snapshot.get("users_by_role", {})
-    recent_docs = snapshot.get("recent_documents", [])
-    recent_users = snapshot.get("recent_users", [])
-    recent_audits = snapshot.get("recent_audits", [])
-
-    today = datetime.datetime.now().date()
-    tomorrow = today + datetime.timedelta(days=1)
-
-    lines = [
-        "ADMIN LIVE DATA SNAPSHOT:",
-        f"- Today: {today.isoformat()}",
-        f"- Tomorrow: {tomorrow.isoformat()}",
-        f"- Total users: {counts.get('total_users', 0)}",
-        f"- Users by role: students {users_by_role.get('student', 0)}, faculty {users_by_role.get('faculty', 0)}, admins {users_by_role.get('admin', 0)}",
-        f"- Total documents: {counts.get('total_documents', 0)}",
-        f"- Total conversations: {counts.get('total_conversations', 0)}",
-        f"- Total queries (audit): {counts.get('total_queries', 0)}",
-    ]
-
-    if recent_docs:
-        lines.append("Recent documents (latest 25):")
-        for doc in recent_docs:
-            date_str = _format_short_date(doc.get("uploaded_at"))
-            tags = ", ".join(doc.get("tags") or []) if isinstance(doc.get("tags"), list) else ""
-            lines.append(
-                f"- {date_str} | {doc.get('doc_type') or 'unknown'} | {doc.get('filename') or 'untitled'}"
-                f" | dept: {doc.get('department') or '-'} | course: {doc.get('course') or '-'}"
-                f"{f' | tags: {tags}' if tags else ''}"
-            )
-    else:
-        lines.append("Recent documents: none (0 total).")
-
-    if recent_users:
-        lines.append("Recent users (latest 15):")
-        for user in recent_users:
-            joined = _format_short_date(user.get("created_at"))
-            lines.append(
-                f"- {joined} | {user.get('email') or 'unknown'} | role: {user.get('role') or 'unknown'}"
-            )
-    else:
-        lines.append("Recent users: none (0 total).")
-
-    if recent_audits:
-        lines.append("Recent audits (latest 20):")
-        for audit in recent_audits[:10]:
-            ts_value = audit.get("timestamp") or audit.get("created_at")
-            ts = _format_short_date(ts_value)
-            lines.append(
-                f"- {ts} | {_humanize_action(str(audit.get('action') or ''))} | user_id: {audit.get('user_id') or 'unknown'}"
-            )
-    else:
-        lines.append("Recent audits: none (0 total).")
-
-    lines.append("If asked about holidays, check document titles/tags for 'holiday' or 'closed'. If none, state that no documents indicate a holiday.")
-    return "\n".join(lines)
-
 
 def fetch_user_profile_context(supabase, user_id: str) -> dict[str, Any]:
     if not supabase or not user_id:
@@ -1124,8 +871,8 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
     - is_flagged: boolean
     - reason: string (if flagged)
     - conversation_mode: one of ["casual","task"]
-    - intent_type: one of ["count_users","count_documents","list_documents","document_date_lookup","holiday_check","count_courses","list_courses","count_faculty","list_faculty","faculty_profile","course_faculty_map","general"]
-    - target_entity: string (e.g., "students", "faculty", "admins", "users", "documents", "notices", "courses")
+    - intent_type: one of ["count_users","count_documents","list_documents","document_date_lookup","holiday_check","count_courses","list_courses","count_faculty","list_faculty","faculty_profile","course_faculty_map","count_appeals","list_appeals","audit_summary","general"]
+    - target_entity: string (e.g., "students", "faculty", "admins", "users", "documents", "notices", "courses", "appeals", "audit")
     - document_date: "YYYY-MM-DD" if asking for uploads on a date (use today/tomorrow/yesterday if referenced)
     - date_reference: one of ["today","tomorrow","yesterday"] if explicitly used
     - doc_type, role, department, course, tags (if relevant)
@@ -1138,10 +885,17 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
 
     local_moderation = detect_local_moderation(query)
     if local_moderation.get("is_flagged"):
+        local_moderation["_intent_source"] = "local_moderation"
         return local_moderation
 
     if is_fast_smalltalk_query(query):
-        return {"is_flagged": False, "conversation_mode": "casual", "intent_type": "general", "target_entity": "general"}
+        return {
+            "is_flagged": False,
+            "conversation_mode": "casual",
+            "intent_type": "general",
+            "target_entity": "general",
+            "_intent_source": "smalltalk_precheck",
+        }
 
     try:
         intent_timeout = max(4, min(12, int(settings.openrouter_timeout_seconds or 20)))
@@ -1165,37 +919,60 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
         if not isinstance(raw, dict):
             backup_flag = await run_backup_moderation_check(query, history_context=history_context)
             if backup_flag.get("is_flagged"):
+                backup_flag["_intent_source"] = "backup_moderation"
                 return backup_flag
-            return {}
+            return {"_deterministic_fallback": True, "_intent_source": "llm_invalid_json"}
         try:
             validated = IntentPayload.model_validate(raw)
             result = validated.model_dump(exclude_none=True)
             if "is_flagged" not in result:
                 backup_flag = await run_backup_moderation_check(query, history_context=history_context)
                 if backup_flag.get("is_flagged"):
+                    backup_flag["_intent_source"] = "backup_moderation"
                     return backup_flag
+            if not result.get("intent_type") and not result.get("target_entity"):
+                result["_deterministic_fallback"] = True
+            result["_intent_source"] = "llm"
             return result
         except Exception:
             backup_flag = await run_backup_moderation_check(query, history_context=history_context)
             if backup_flag.get("is_flagged"):
+                backup_flag["_intent_source"] = "backup_moderation"
                 return backup_flag
+            if isinstance(raw, dict):
+                raw["_deterministic_fallback"] = True
+                raw["_intent_source"] = "llm_unvalidated"
             return raw
     except asyncio.TimeoutError:
         logger.warning("Intent extraction timed out; falling back to deterministic routing.")
         backup_flag = await run_backup_moderation_check(query, history_context=history_context)
         if backup_flag.get("is_flagged"):
+            backup_flag["_intent_source"] = "backup_moderation"
             return backup_flag
         if is_fast_smalltalk_query(query):
-            return {"is_flagged": False, "conversation_mode": "casual", "intent_type": "general", "target_entity": "general"}
-        return {}
+            return {
+                "is_flagged": False,
+                "conversation_mode": "casual",
+                "intent_type": "general",
+                "target_entity": "general",
+                "_intent_source": "smalltalk_timeout",
+            }
+        return {"_deterministic_fallback": True, "_intent_source": "llm_timeout"}
     except Exception as e:
         logger.warning(f"Intent extraction/moderation failed: {e}")
         backup_flag = await run_backup_moderation_check(query, history_context=history_context)
         if backup_flag.get("is_flagged"):
+            backup_flag["_intent_source"] = "backup_moderation"
             return backup_flag
         if is_fast_smalltalk_query(query):
-            return {"is_flagged": False, "conversation_mode": "casual", "intent_type": "general", "target_entity": "general"}
-        return {}
+            return {
+                "is_flagged": False,
+                "conversation_mode": "casual",
+                "intent_type": "general",
+                "target_entity": "general",
+                "_intent_source": "smalltalk_error",
+            }
+        return {"_deterministic_fallback": True, "_intent_source": "llm_error"}
 
 
 async def run_agent_pipeline(
@@ -1277,8 +1054,20 @@ async def run_agent_pipeline(
     else:
         raw_intent = await extract_query_intent(query, history_context=history_text)
     effective_user_profile = user_profile or fetch_user_profile_context(supabase, user_id)
-    intent = infer_intent_from_query(query, raw_intent)
+    allow_deterministic_fallback = bool(
+        isinstance(raw_intent, dict) and raw_intent.get("_deterministic_fallback")
+    )
+    intent = infer_intent_from_query(
+        query,
+        raw_intent,
+        allow_deterministic_fallback=allow_deterministic_fallback,
+    )
     intent = enrich_intent_with_profile(intent, effective_user_profile)
+    intent = {
+        key: value
+        for key, value in intent.items()
+        if not str(key).startswith("_")
+    }
     if (
         not intent.get("intent_type")
         and not intent.get("target_entity")
@@ -1587,6 +1376,13 @@ async def run_agent_pipeline(
         and not doc_keyword_request
         and intent_type not in {"count_documents", "list_documents", "document_date_lookup", "holiday_check"}
     )
+    admin_structured_query = (
+        _normalize(user_role) == "admin"
+        and (
+            intent_type in {"count_users", "count_appeals", "list_appeals", "audit_summary"}
+            or target_entity in {"users", "students", "faculty", "admins", "audit", "logs", "appeal", "appeals", "moderation"}
+        )
+    )
 
     if supabase and doc_lookup_requested and forced_answer is None:
         filtered_docs = fetch_filtered_documents(
@@ -1684,6 +1480,7 @@ async def run_agent_pipeline(
         and not _PINECONE_EMBEDDING_DISABLED
         and not structured_directory_query
         and not non_retrieval_intent
+        and not admin_structured_query
     )
 
     if should_run_vector_search:
@@ -1788,7 +1585,10 @@ async def run_agent_pipeline(
 
         if supabase:
             try:
-                admin_snapshot = fetch_admin_snapshot(supabase)
+                admin_snapshot = fetch_admin_snapshot(
+                    supabase,
+                    appeal_fetcher=list_moderation_appeals,
+                )
                 admin_snapshot_text = render_admin_snapshot(admin_snapshot)
             except Exception:
                 admin_snapshot_text = "ADMIN LIVE DATA SNAPSHOT: unavailable."
@@ -1809,9 +1609,88 @@ async def run_agent_pipeline(
             else:
                 forced_answer = f"There are **{int(total_users or 0)} total users** in the current database snapshot."
 
+        appeal_requested = (
+            target_entity in {"appeal", "appeals", "moderation"}
+            or intent_type in {"count_appeals", "list_appeals"}
+            or any(
+                marker in query_text
+                for marker in (
+                    "appeal",
+                    "appeals",
+                    "pending appeal",
+                    "violation",
+                    "violations",
+                    "flag reset",
+                    "moderation queue",
+                    "dean review",
+                )
+            )
+        )
+        if appeal_requested and not forced_answer:
+            appeals_summary = (
+                admin_snapshot.get("appeals_summary", {})
+                if isinstance(admin_snapshot.get("appeals_summary"), dict)
+                else {}
+            )
+            recent_appeals = (
+                admin_snapshot.get("recent_appeals", [])
+                if isinstance(admin_snapshot.get("recent_appeals"), list)
+                else []
+            )
+            pending_appeals = [
+                item
+                for item in recent_appeals
+                if _normalize(item.get("appeal_status")) == "pending"
+            ]
+            total_pending = int(appeals_summary.get("pending", len(pending_appeals)) or 0)
+            total_approved = int(appeals_summary.get("approved", 0) or 0)
+            total_rejected = int(appeals_summary.get("rejected", 0) or 0)
+
+            if total_pending == 0:
+                forced_answer = (
+                    "I checked the moderation queue and found **0 pending appeals** right now.\n\n"
+                    "Appeal summary:\n"
+                    f"- Pending: {total_pending}\n"
+                    f"- Approved: {total_approved}\n"
+                    f"- Rejected: {total_rejected}\n\n"
+                    "Quick links:\n"
+                    "- [Open Dean Appeals](/dashboard/dean)\n"
+                    "- [Open Audit Logs](/dashboard/audit)"
+                )
+            else:
+                preview_lines = []
+                for item in pending_appeals[:6]:
+                    submitted = _format_short_date(item.get("submitted_at"))
+                    user_label = (
+                        item.get("full_name")
+                        or item.get("email")
+                        or "Unknown user"
+                    )
+                    user_id = str(item.get("user_id") or "").strip()
+                    review_link = (
+                        f"/dashboard/dean?status=pending&user_id={user_id}"
+                        if user_id
+                        else "/dashboard/dean?status=pending"
+                    )
+                    preview_lines.append(
+                        f"- {submitted} | {user_label} | offense_total: {int(item.get('offense_total') or 0)} | [Review]({review_link})"
+                    )
+                forced_answer = (
+                    f"I found **{total_pending} pending appeals** in the moderation queue.\n\n"
+                    "Pending appeals (latest):\n"
+                    f"{chr(10).join(preview_lines)}\n\n"
+                    "Quick links:\n"
+                    "- [Open Dean Appeals](/dashboard/dean?status=pending)\n"
+                    "- [Open Audit Logs](/dashboard/audit)"
+                )
+
         audit_requested = (
-            target_entity in {"audit", "logs"}
-            or any(marker in query_text for marker in ("audit", "log", "logs", "activity", "activities"))
+            not appeal_requested
+            and (
+                target_entity in {"audit", "logs"}
+                or intent_type == "audit_summary"
+                or any(marker in query_text for marker in ("audit", "log", "logs", "activity", "activities"))
+            )
         )
         if audit_requested and not forced_answer:
             recent_audits = (admin_snapshot.get("recent_audits") or []) if isinstance(admin_snapshot, dict) else []

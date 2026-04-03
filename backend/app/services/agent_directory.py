@@ -469,6 +469,13 @@ def append_intent_navigation_links(answer: str, user_role: str, intent: dict[str
     if intent_type == "count_users" and _normalize(user_role) == "admin":
         links.append(("Open User Management", "/dashboard/users"))
         links.append(("Open Audit Logs", "/dashboard/audit"))
+    if _normalize(user_role) == "admin":
+        if intent_type in {"count_appeals", "list_appeals"} or target_entity in {"appeal", "appeals", "moderation"}:
+            links.append(("Open Dean Appeals", "/dashboard/dean"))
+            links.append(("Open Audit Logs", "/dashboard/audit"))
+        if intent_type == "audit_summary" or target_entity in {"audit", "logs"}:
+            links.append(("Open Audit Logs", "/dashboard/audit"))
+            links.append(("Open User Management", "/dashboard/users"))
 
     if not links:
         return answer
