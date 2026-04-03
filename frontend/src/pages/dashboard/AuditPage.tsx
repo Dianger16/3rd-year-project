@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, Search, Clock, Download, ChevronRight, RefreshCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { HoverTooltip } from '@/components/ui/tooltip';
 import { adminApi, type AuditLogEntry } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
@@ -216,7 +217,7 @@ const AuditPage = () => {
                 <div className="hidden sm:grid grid-cols-[80px_1fr_1fr_140px_160px_30px] gap-4 px-6 py-3 border-b border-white/[0.1] text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
                     <span>Type</span><span>Event</span><span>User</span><span>IP Address</span><span>Time</span><span></span>
                 </div>
-                {filtered.map((log) => (
+                {!isLoading && filtered.map((log) => (
                     <div key={log.id} className="group flex flex-col hover:bg-white/[0.02] transition-colors cursor-pointer" onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)}>
                         <div className="grid grid-cols-1 sm:grid-cols-[80px_1fr_1fr_140px_160px_30px] gap-2 sm:gap-4 items-center px-6 py-4">
                             <Badge className={`text-[9px] font-semibold px-2 py-0.5 border ${typeColors[log.type]} w-fit`}>{log.type}</Badge>
@@ -259,8 +260,21 @@ const AuditPage = () => {
                         </AnimatePresence>
                     </div>
                 ))}
-                {isLoading && logs.length === 0 && (
-                    <div className="py-12 text-center text-zinc-600 text-xs">Loading live audit logs...</div>
+                {isLoading && (
+                    <div className="p-4 space-y-3">
+                        {Array.from({ length: 6 }).map((_, idx) => (
+                            <div key={`audit-skeleton-${idx}`} className="rounded-xl border border-white/[0.05] bg-white/[0.02] p-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-[80px_1fr_1fr_140px_160px_30px] gap-3 items-center">
+                                    <Skeleton className="h-5 w-14 rounded-full" />
+                                    <Skeleton className="h-4 w-40" />
+                                    <Skeleton className="h-4 w-32" />
+                                    <Skeleton className="h-3 w-20" />
+                                    <Skeleton className="h-3 w-28" />
+                                    <Skeleton className="h-4 w-4 rounded-full" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 )}
                 {!isLoading && filtered.length === 0 && (
                     <div className="py-12 text-center text-zinc-600 text-xs">No audit logs match criteria.</div>
