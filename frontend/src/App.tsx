@@ -38,6 +38,21 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RoleRoute({
+  allowedRoles,
+  children,
+}: {
+  allowedRoles: Array<'student' | 'faculty' | 'admin'>;
+  children: React.ReactNode;
+}) {
+  const { user } = useAuthStore();
+  if (!user) return <Navigate to="/auth/login" replace />;
+  if (!allowedRoles.includes((user.role as any) || 'student')) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <>{children}</>;
+}
+
 function DashboardHome() {
   const { user } = useAuthStore();
   if (!user) return <Navigate to="/auth/login" replace />;
@@ -146,16 +161,51 @@ export default function App() {
               <Route index element={<DashboardHome />} />
               <Route path="chat" element={<ChatPage />} />
               <Route path="courses" element={<CoursesPage />} />
-              <Route path="documents" element={<UploadPage />} />
-              <Route path="upload" element={<UploadPage />} />
-              <Route path="users" element={<UsersPage />} />
-              <Route path="audit" element={<AuditPage />} />
+              <Route
+                path="documents"
+                element={
+                  <RoleRoute allowedRoles={['admin', 'faculty']}>
+                    <UploadPage />
+                  </RoleRoute>
+                }
+              />
+              <Route
+                path="upload"
+                element={
+                  <RoleRoute allowedRoles={['admin', 'faculty']}>
+                    <UploadPage />
+                  </RoleRoute>
+                }
+              />
+              <Route
+                path="users"
+                element={
+                  <RoleRoute allowedRoles={['admin']}>
+                    <UsersPage />
+                  </RoleRoute>
+                }
+              />
+              <Route
+                path="audit"
+                element={
+                  <RoleRoute allowedRoles={['admin']}>
+                    <AuditPage />
+                  </RoleRoute>
+                }
+              />
               <Route path="settings" element={<SettingsPage />} />
               <Route path="profile" element={<ProfilePage />} />
               <Route path="notifications" element={<NotificationsPage />} />
               <Route path="faculty" element={<FacultyDirectoryPage />} />
               <Route path="faculty/:id" element={<FacultyProfilePage />} />
-              <Route path="dean" element={<DeanAppealsPage />} />
+              <Route
+                path="dean"
+                element={
+                  <RoleRoute allowedRoles={['admin']}>
+                    <DeanAppealsPage />
+                  </RoleRoute>
+                }
+              />
             </Route>
 
             {/* Fallback */}
