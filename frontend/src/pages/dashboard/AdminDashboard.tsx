@@ -168,13 +168,26 @@ function DonutChart({
     const circleBase = total > 0 ? total : 1;
     let cum = 0;
     const [hovered, setHovered] = useState<number | null>(null);
+    const activeSegment = hovered !== null ? segments[hovered] : null;
+    const activePercent = activeSegment ? Math.round((activeSegment.value / circleBase) * 100) : 100;
 
     return (
         <div className="space-y-4">
-            <h3 className="text-sm font-bold text-white">User Distribution</h3>
-            <div className="flex items-center gap-6">
-                <div className="relative w-28 h-28 shrink-0">
-                    <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+            <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-bold text-white">User Distribution</h3>
+                <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Live role split</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] items-center gap-5">
+                <div className="relative w-36 h-36 shrink-0 mx-auto sm:mx-0">
+                    <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90 drop-shadow-[0_12px_24px_rgba(0,0,0,0.45)]">
+                        <circle
+                            r="15.9"
+                            cx="18"
+                            cy="18"
+                            fill="none"
+                            stroke="rgba(255,255,255,0.07)"
+                            strokeWidth="3"
+                        />
                         {segments.map((segment, idx) => {
                             const dash = (segment.value / circleBase) * 100;
                             const offset = -cum;
@@ -200,30 +213,51 @@ function DonutChart({
                         })}
                     </svg>
                     <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-lg font-extrabold text-white">{total}</span>
-                        <span className="text-[8px] text-zinc-500 uppercase tracking-wider">Total</span>
+                        <span className="text-[11px] text-zinc-500 uppercase tracking-wider">
+                            {activeSegment ? activeSegment.label : 'Total'}
+                        </span>
+                        <span className="text-2xl font-extrabold text-white leading-none">
+                            {activeSegment ? activeSegment.value : total}
+                        </span>
+                        <span className="text-[10px] text-zinc-500 uppercase tracking-wider mt-1">
+                            {activePercent}% share
+                        </span>
                     </div>
                 </div>
                 <div className="space-y-2.5 flex-1">
-                    {segments.map((segment, idx) => (
-                        <div
-                            key={segment.label}
-                            className={`flex items-center justify-between p-2 rounded-lg transition-colors cursor-pointer ${
-                                hovered === idx ? 'bg-white/[0.04]' : ''
-                            }`}
-                            onMouseEnter={() => setHovered(idx)}
-                            onMouseLeave={() => setHovered(null)}
-                        >
-                            <div className="flex items-center gap-2">
-                                <div
-                                    className="w-2.5 h-2.5 rounded-full"
-                                    style={{ backgroundColor: segment.color }}
-                                />
-                                <span className="text-xs text-zinc-400">{segment.label}</span>
+                    {segments.map((segment, idx) => {
+                        const pct = Math.round((segment.value / circleBase) * 100);
+                        return (
+                            <div
+                                key={segment.label}
+                                className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                                    hovered === idx ? 'bg-white/[0.04]' : ''
+                                }`}
+                                onMouseEnter={() => setHovered(idx)}
+                                onMouseLeave={() => setHovered(null)}
+                            >
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div
+                                            className="w-2.5 h-2.5 rounded-full"
+                                            style={{ backgroundColor: segment.color }}
+                                        />
+                                        <span className="text-xs text-zinc-400">{segment.label}</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 min-w-[110px] justify-end">
+                                        <span className="text-[10px] text-zinc-500">{pct}%</span>
+                                        <span className="text-xs font-bold text-white min-w-[18px] text-right">{segment.value}</span>
+                                    </div>
+                                </div>
+                                <div className="mt-1.5 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                                    <div
+                                        className="h-full rounded-full transition-all duration-300"
+                                        style={{ width: `${pct}%`, backgroundColor: segment.color }}
+                                    />
+                                </div>
                             </div>
-                            <span className="text-xs font-bold text-white">{segment.value}</span>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
         </div>
@@ -570,12 +604,16 @@ const AdminDashboard = () => {
                         </p>
                         <div className="flex flex-wrap gap-2 sm:gap-3 pt-1">
                             <Link to="/dashboard/users">
-                                <Button className="rounded-xl h-8 sm:h-9 px-3 sm:px-4 bg-orange-600 hover:bg-orange-500 text-white text-[10px] sm:text-xs font-semibold transition-all hover:shadow-lg hover:shadow-orange-500/20 active:scale-95">
+                                <Button
+                                    title="Open user management controls"
+                                    className="rounded-xl h-8 sm:h-9 px-3 sm:px-4 bg-orange-600 hover:bg-orange-500 text-white text-[10px] sm:text-xs font-semibold transition-all hover:shadow-lg hover:shadow-orange-500/20 active:scale-95"
+                                >
                                     <Users className="w-3 sm:w-3.5 h-3 sm:h-3.5 mr-1 sm:mr-1.5" /> Manage Users
                                 </Button>
                             </Link>
                             <Link to="/dashboard/audit">
                                 <Button
+                                    title="Review system audit logs"
                                     variant="glass"
                                     className="rounded-xl h-8 sm:h-9 px-3 sm:px-4 text-zinc-300 text-[10px] sm:text-xs font-semibold hover:text-white transition-all active:scale-95"
                                 >
@@ -605,6 +643,7 @@ const AdminDashboard = () => {
                                 className="p-5 rounded-2xl bg-gradient-to-br from-zinc-900/65 to-zinc-950/70 border border-white/[0.06] hover:border-white/[0.14] transition-all cursor-default group"
                                 onMouseEnter={() => setHoveredStat(i)}
                                 onMouseLeave={() => setHoveredStat(null)}
+                                title={`${stat.label}: ${formatCompact(stat.value)}`}
                             >
                                 <div className="flex justify-between items-start mb-2">
                                     <div
