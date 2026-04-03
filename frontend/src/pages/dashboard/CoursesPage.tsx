@@ -172,7 +172,7 @@ export default function CoursesPage() {
                     const byId = new Map((facultyRes.faculty || []).map((item) => [item.id, item]));
                     const mapped = facultyIds
                         .map((id) => byId.get(id))
-                        .filter((item): item is FacultySummary => Boolean(item));
+                        .filter(Boolean) as FacultySummary[];
                     setFaculty(mapped);
                 } catch {
                     if (!active) return;

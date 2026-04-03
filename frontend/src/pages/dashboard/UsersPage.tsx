@@ -410,6 +410,13 @@ const UsersPage = () => {
                     {!isLoading && paginatedUsers.map((user, idx) => {
                         const role = roleValue(user.role);
                         const status = statusFromProfile(user);
+                        const avatar =
+                            ((user as any).avatar_url as string | null | undefined) ||
+                            ((user as any).profileImage as string | null | undefined) ||
+                            ((user as any).profile_image as string | null | undefined) ||
+                            ((user as any).profile_picture as string | null | undefined) ||
+                            ((user as any).avatar as string | null | undefined) ||
+                            null;
                         return (
                             <motion.div
                                 key={user.id}
@@ -420,9 +427,9 @@ const UsersPage = () => {
                             >
                                 <div className="flex items-center gap-3 min-w-0">
                                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500/20 to-amber-500/20 flex items-center justify-center shrink-0">
-                                        {((user as any).avatar_url || (user as any).profileImage) ? (
+                                        {avatar ? (
                                             <img
-                                                src={((user as any).avatar_url || (user as any).profileImage) as string}
+                                                src={avatar}
                                                 alt="User avatar"
                                                 className="w-full h-full rounded-full object-cover"
                                             />

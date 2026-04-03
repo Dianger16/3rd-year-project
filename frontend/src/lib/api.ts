@@ -123,8 +123,19 @@ function invalidateCacheByPrefix(prefix: string) {
     }
 }
 
+function resolveAvatar(user: any): string | null {
+    return (
+        (user.avatar_url as string | null | undefined) ||
+        (user.profileImage as string | null | undefined) ||
+        (user.profile_image as string | null | undefined) ||
+        (user.profile_picture as string | null | undefined) ||
+        (user.avatar as string | null | undefined) ||
+        null
+    );
+}
+
 function normalizeUserProfile(user: UserProfile): UserProfile {
-    const avatar = (user.avatar_url || user.profileImage || null) as string | null;
+    const avatar = resolveAvatar(user as Partial<UserProfile> & Record<string, unknown>);
     return {
         ...user,
         avatar_url: avatar,
@@ -199,11 +210,19 @@ export const authApi = {
         cachedGet(
             buildCacheKey('user-faculty', token, String(limit)),
             60_000,
-            () =>
-                request<FacultyListResponse>(
+            async () => {
+                const res = await request<FacultyListResponse>(
                     `/user/faculty?limit=${encodeURIComponent(String(limit))}`,
                     { token, timeoutMs: 20_000 },
-                ),
+                );
+                return {
+                    ...res,
+                    faculty: (res.faculty || []).map((item: FacultySummary) => ({
+                        ...item,
+                        avatar_url: resolveAvatar(item),
+                    })),
+                };
+            },
         ),
     getCourseDirectory: (token: string, limit = 50) =>
         cachedGet(
@@ -223,8 +242,8 @@ export const authApi = {
             60_000,
             () => request<UserExportData>('/user/export-data', { token, timeoutMs: 20_000 }),
         ),
-    listUsers: (token: string) =>
-        request<UserProfile[]>('/auth/users', { token }),
+    listUsers: async (token: string) =>
+        (await request<UserProfile[]>('/auth/users', { token })).map(normalizeUserProfile),
     inviteUser: (token: string, data: { email: string; full_name: string; role: string }) =>
         request<void>('/auth/invite', { method: 'POST', body: data, token }),
 };
@@ -286,10 +305,16 @@ export const adminApi = {
         cachedGet(
             buildCacheKey('admin-users', token, `${page}:${perPage}`),
             45_000,
-            () => request<{ users: UserProfile[]; total: number; page: number; per_page: number }>(
-                `/admin/users?page=${encodeURIComponent(String(page))}&per_page=${encodeURIComponent(String(perPage))}`,
-                { token, timeoutMs: 25_000 },
-            ),
+            async () => {
+                const res = await request<{ users: UserProfile[]; total: number; page: number; per_page: number }>(
+                    `/admin/users?page=${encodeURIComponent(String(page))}&per_page=${encodeURIComponent(String(perPage))}`,
+                    { token, timeoutMs: 25_000 },
+                );
+                return {
+                    ...res,
+                    users: (res.users || []).map(normalizeUserProfile),
+                };
+            },
         ),
     updateUser: (
         token: string,
@@ -302,7 +327,10 @@ export const adminApi = {
         ).then((res) => {
             invalidateCacheByPrefix(`admin-users:${tokenSuffix(token)}`);
             invalidateCacheByPrefix(`admin-metrics:${tokenSuffix(token)}`);
-            return res;
+            return {
+                ...res,
+                user: normalizeUserProfile(res.user),
+            };
         }),
     getAuditLogs: (token: string, page = 1, perPage = 20) =>
         cachedGet(
@@ -402,6 +430,9 @@ export interface UserProfile {
     avatar_url?: string | null;
     created_at?: string;
     profileImage?: string | null;
+    profile_image?: string | null;
+    profile_picture?: string | null;
+    avatar?: string | null;
     academic_verified?: boolean;
     identity_provider?: string | null;
 }
