@@ -25,6 +25,7 @@ export default function DashboardLayout() {
     const navigate = useNavigate();
 
     const role = user?.role || 'student';
+    const firstName = user?.full_name?.split(' ')[0] || 'there';
 
     const navigation: Record<string, { label: string; href: string; icon: React.ReactNode }[]> = {
         student: [
@@ -65,7 +66,11 @@ export default function DashboardLayout() {
     if (location.pathname === '/dashboard/faculty') pageTitle = 'Faculty';
     if (location.pathname.startsWith('/dashboard/faculty/')) pageTitle = 'Faculty Profile';
     const pageDescriptions: Record<string, string> = {
-        '/dashboard': role === 'admin' ? 'Control center and operational insights' : role === 'faculty' ? 'Department operations and circulars' : 'Your university workspace',
+        '/dashboard': role === 'admin'
+            ? `Welcome back, ${firstName}. Control center and operational insights`
+            : role === 'faculty'
+                ? `Welcome back, ${firstName}. Department operations and circulars`
+                : `Welcome back, ${firstName}. Your university workspace`,
         '/dashboard/chat': role === 'admin'
             ? 'Ask admin operations queries: users, audits, docs, and moderation'
             : role === 'faculty'
@@ -136,6 +141,10 @@ export default function DashboardLayout() {
         authApi.markNotificationsRead(token).catch(() => undefined);
         setNotifications((prev) => prev.map((item) => ({ ...item, unread: false })));
     }, [showNotifications, unreadCount, token]);
+
+    useEffect(() => {
+        setSidebarOpen(false);
+    }, [location.pathname]);
 
     // Get profile image from store (would be set by ProfilePage)
     const profileImage = (user as any)?.profileImage || null;
@@ -222,7 +231,7 @@ export default function DashboardLayout() {
                         <div className="flex items-center gap-4">
                             {/* Mobile Brand Toggle */}
                             <button
-                                onClick={() => setSidebarOpen(true)}
+                                onClick={() => setSidebarOpen((prev) => !prev)}
                                 className="md:hidden flex items-center gap-3 shrink-0 active:scale-95 transition-all"
                             >
                                 <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shrink-0 shadow-lg shadow-white/10">
