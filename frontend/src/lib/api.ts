@@ -291,6 +291,39 @@ export const documentsApi = {
         request<DocumentPreviewResponse>(`/documents/${encodeURIComponent(id)}/preview`, { token, timeoutMs: 20_000 }),
 };
 
+export const noticesApi = {
+    serve: (
+        token: string,
+        body: {
+            title: string;
+            message: string;
+            target: 'students' | 'faculty' | 'both';
+            department?: string;
+            course?: string;
+            tags?: string[];
+        },
+    ) =>
+        request<NoticeServeResponse>(
+            '/admin/notices/serve',
+            { method: 'POST', token, body, timeoutMs: 45_000 },
+        ).then((res) => {
+            invalidateCacheByPrefix(`documents-list:${tokenSuffix(token)}`);
+            invalidateCacheByPrefix(`user-notifications:${tokenSuffix(token)}`);
+            invalidateCacheByPrefix(`served-notices:${tokenSuffix(token)}`);
+            return res;
+        }),
+    listServed: (token: string, limit = 120) =>
+        cachedGet(
+            buildCacheKey('served-notices', token, String(limit)),
+            20_000,
+            () =>
+                request<NoticeListResponse>(
+                    `/admin/notices/served?limit=${encodeURIComponent(String(limit))}`,
+                    { token, timeoutMs: 20_000 },
+                ),
+        ),
+};
+
 export const agentApi = {
     query: (token: string, data: { query: string; context?: { dept?: string }; conversation_id?: string }) =>
         request<AgentQueryResponse>('/agent/query', { method: 'POST', body: data, token, timeoutMs: 90_000 }),
@@ -552,6 +585,38 @@ export interface DocumentPreviewResponse {
     chunks: DocumentPreviewChunk[];
     has_preview: boolean;
     preview_source: 'pinecone' | 'none' | string;
+    is_notice?: boolean;
+    notice_title?: string | null;
+    notice_message?: string | null;
+}
+
+export interface ServedNoticeItem {
+    id: string;
+    title: string;
+    message: string;
+    doc_type: string;
+    department?: string | null;
+    course?: string | null;
+    uploaded_at?: string | null;
+}
+
+export interface NoticeListResponse {
+    items: ServedNoticeItem[];
+    total: number;
+}
+
+export interface NoticeServeResponse {
+    status: string;
+    message: string;
+    target: 'students' | 'faculty' | 'both' | string;
+    created: Array<{
+        id: string;
+        doc_type: string;
+        department?: string | null;
+        course?: string | null;
+        title?: string;
+    }>;
+    failed: string[];
 }
 
 export interface AgentQueryResponse {

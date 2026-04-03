@@ -22,6 +22,7 @@ import SettingsPage from '@/pages/dashboard/SettingsPage';
 import ProfilePage from '@/pages/dashboard/ProfilePage';
 import UploadPage from '@/pages/dashboard/UploadPage';
 import NotificationsPage from '@/pages/dashboard/NotificationsPage';
+import NoticesPage from '@/pages/dashboard/NoticesPage';
 import FacultyProfilePage from '@/pages/dashboard/FacultyProfilePage';
 import FacultyDirectoryPage from '@/pages/dashboard/FacultyDirectoryPage';
 import DeanAppealsPage from '@/pages/dashboard/DeanAppealsPage';
@@ -178,6 +179,14 @@ export default function App() {
                 element={
                   <RoleRoute allowedRoles={['admin', 'faculty']}>
                     <UploadPage />
+                  </RoleRoute>
+                }
+              />
+              <Route
+                path="notices"
+                element={
+                  <RoleRoute allowedRoles={['admin', 'faculty']}>
+                    <NoticesPage />
                   </RoleRoute>
                 }
               />
