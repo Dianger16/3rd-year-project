@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/store/authStore';
 import { cn } from '@/lib/utils';
 import { BrandLogo } from '@/components/ui/BrandLogo';
-import { Sidebar, SidebarBody, SidebarLink } from '@/components/ui/sidebar';
+import { Sidebar, SidebarBody, SidebarLink, useSidebar } from '@/components/ui/sidebar';
 import { useToastStore } from '@/store/toastStore';
 import { authApi, type UserNotificationItem } from '@/lib/api';
 import { HoverTooltip } from '@/components/ui/tooltip';
@@ -164,6 +164,29 @@ export default function DashboardLayout() {
         );
     };
 
+    const SidebarBrand = () => {
+        const { hovered } = useSidebar();
+        return (
+            <div className="hidden md:flex items-center gap-3 px-3 mb-6 mt-5 h-10 shrink-0 overflow-hidden">
+                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shrink-0 shadow-lg shadow-white/10">
+                    <BrandLogo className="w-6 h-6 text-black" />
+                </div>
+                <motion.span
+                    initial={false}
+                    animate={{
+                        opacity: hovered ? 1 : 0,
+                        x: hovered ? 0 : -10,
+                        width: hovered ? 'auto' : 0,
+                    }}
+                    className="text-xl font-extrabold text-white tracking-tight leading-none whitespace-nowrap overflow-hidden"
+                    style={{ fontFamily: '"Bricolage Grotesque", sans-serif' }}
+                >
+                    Univ<span className="text-orange-500">GPT</span>
+                </motion.span>
+            </div>
+        );
+    };
+
     return (
         <div className="flex min-h-screen w-full bg-[#050507] text-white">
             {/* Sticky Sidebar */}
@@ -173,19 +196,7 @@ export default function DashboardLayout() {
                         {/* Top: Logo + Nav */}
                         <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden scrollbar-none">
                             {/* Brand Logo - Fixed at top of sidebar, Desktop Only */}
-                            <div className="hidden md:flex items-center gap-3 px-3 mb-6 mt-5 h-10 shrink-0">
-                                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shrink-0 shadow-lg shadow-white/10">
-                                    <BrandLogo className="w-6 h-6 text-black" />
-                                </div>
-                                <motion.span
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    className="text-xl font-extrabold text-white tracking-tight leading-none"
-                                    style={{ fontFamily: '"Bricolage Grotesque", sans-serif' }}
-                                >
-                                    Univ<span className="text-orange-500">GPT</span>
-                                </motion.span>
-                            </div>
+                            <SidebarBrand />
 
                             {/* Nav Links */}
                             <div className="flex flex-col gap-1">
@@ -226,7 +237,7 @@ export default function DashboardLayout() {
 
             {/* Content Area */}
             <div className="flex-1 flex flex-col min-w-0 pt-2 lg:pt-0 bg-black">
-                <div className="flex-1 flex flex-col min-w-0 bg-black rounded-tl-[32px] overflow-hidden border-l border-t border-white/[0.07] relative">
+                <div className="flex-1 flex flex-col min-w-0 bg-black overflow-hidden border-l border-t border-white/[0.07] relative">
                     <header className="h-20 flex items-center justify-between px-6 md:px-8 shrink-0 relative z-40 border-b border-white/[0.06] bg-black">
                         <div className="flex items-center gap-4">
                             {/* Mobile Brand Toggle */}
