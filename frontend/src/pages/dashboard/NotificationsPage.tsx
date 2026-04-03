@@ -205,23 +205,10 @@ export default function NotificationsPage() {
                             >
                                 Prev
                             </button>
-                            {Array.from({ length: totalPages }).map((_, idx) => {
-                                const page = idx + 1;
-                                const active = page === currentPage;
-                                return (
-                                    <button
-                                        key={page}
-                                        onClick={() => setCurrentPage(page)}
-                                        className={`h-7 min-w-[28px] px-2 rounded-lg text-xs font-semibold transition-colors ${
-                                            active
-                                                ? 'bg-orange-600 text-white'
-                                                : 'border border-white/[0.08] bg-white/[0.02] text-zinc-400 hover:bg-white/[0.08]'
-                                        }`}
-                                    >
-                                        {page}
-                                    </button>
-                                );
-                            })}
+                            <button className="h-8 w-8 rounded-lg text-xs font-semibold transition-colors bg-orange-600 text-white">
+                                {currentPage}
+                            </button>
+                            <span className="text-zinc-600">/ {totalPages}</span>
                             <button
                                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                                 disabled={currentPage === totalPages}

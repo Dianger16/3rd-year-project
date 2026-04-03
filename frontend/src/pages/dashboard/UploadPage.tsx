@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Upload, FileText, X, Check, AlertCircle, CloudUpload, Loader2, Pencil, Trash2, RefreshCw, Layers, FileUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/auth-fuse';
+import { HoverTooltip } from '@/components/ui/tooltip';
 import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
 import { documentsApi, type DocumentResponse } from '@/lib/api';
@@ -327,22 +328,24 @@ const UploadPage = () => {
                         <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-zinc-900/70 to-zinc-900/30 p-5 space-y-4">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <div className="flex flex-wrap items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => { setMode('single'); setFiles((prev) => prev.slice(0, 1)); }}
-                                    className={`inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold border transition-all ${mode === 'single' ? 'bg-orange-500/15 border-orange-500/40 text-orange-200' : 'bg-white/[0.02] border-white/10 text-zinc-400 hover:text-white'}`}
-                                    title="Upload exactly one file with dedicated metadata."
-                                >
-                                    <FileUp className="w-3.5 h-3.5" /> Single Upload
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setMode('batch')}
-                                    className={`inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold border transition-all ${mode === 'batch' ? 'bg-orange-500/15 border-orange-500/40 text-orange-200' : 'bg-white/[0.02] border-white/10 text-zinc-400 hover:text-white'}`}
-                                    title="Upload multiple files together under shared routing metadata."
-                                >
-                                    <Layers className="w-3.5 h-3.5" /> Batch Upload
-                                </button>
+                                <HoverTooltip content="Upload exactly one file with dedicated metadata.">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setMode('single'); setFiles((prev) => prev.slice(0, 1)); }}
+                                        className={`inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold border transition-all ${mode === 'single' ? 'bg-orange-500/15 border-orange-500/40 text-orange-200' : 'bg-white/[0.02] border-white/10 text-zinc-400 hover:text-white'}`}
+                                    >
+                                        <FileUp className="w-3.5 h-3.5" /> Single Upload
+                                    </button>
+                                </HoverTooltip>
+                                <HoverTooltip content="Upload multiple files together under shared routing metadata.">
+                                    <button
+                                        type="button"
+                                        onClick={() => setMode('batch')}
+                                        className={`inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold border transition-all ${mode === 'batch' ? 'bg-orange-500/15 border-orange-500/40 text-orange-200' : 'bg-white/[0.02] border-white/10 text-zinc-400 hover:text-white'}`}
+                                    >
+                                        <Layers className="w-3.5 h-3.5" /> Batch Upload
+                                    </button>
+                                </HoverTooltip>
                             </div>
                                 <div className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-black/30 px-3 py-1.5 text-[11px] text-zinc-400">
                                     <span className="text-zinc-500">Queue</span>
@@ -418,33 +421,34 @@ const UploadPage = () => {
                                     </div>
                                 </div>
 
-                                <div
-                                    onDragEnter={handleDrag}
-                                    onDragLeave={handleDrag}
-                                    onDragOver={handleDrag}
-                                    onDrop={handleDrop}
-                                    className={`relative rounded-2xl border-2 border-dashed p-8 text-center transition-all duration-300 cursor-pointer min-h-[252px] flex items-center justify-center ${dragActive ? 'border-orange-500 bg-orange-500/5 shadow-[0_0_40px_-12px_rgba(249,115,22,0.2)]' : 'border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/[0.15]'}`}
-                                    title="Drop files here or click to browse."
-                                >
-                                    <input
-                                        type="file"
-                                        multiple={mode === 'batch'}
-                                        accept={ACCEPTED_ATTR}
-                                        onChange={handleFileSelect}
-                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
-                                    />
-                                    <div className="space-y-2 pointer-events-none">
-                                        <div className="w-11 h-11 mx-auto rounded-2xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center">
-                                            <CloudUpload className="w-5 h-5 text-orange-400" />
+                                <HoverTooltip content="Drop files here or click to browse.">
+                                    <div
+                                        onDragEnter={handleDrag}
+                                        onDragLeave={handleDrag}
+                                        onDragOver={handleDrag}
+                                        onDrop={handleDrop}
+                                        className={`relative rounded-2xl border-2 border-dashed p-8 text-center transition-all duration-300 cursor-pointer min-h-[252px] flex items-center justify-center ${dragActive ? 'border-orange-500 bg-orange-500/5 shadow-[0_0_40px_-12px_rgba(249,115,22,0.2)]' : 'border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/[0.15]'}`}
+                                    >
+                                        <input
+                                            type="file"
+                                            multiple={mode === 'batch'}
+                                            accept={ACCEPTED_ATTR}
+                                            onChange={handleFileSelect}
+                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
+                                        />
+                                        <div className="space-y-2 pointer-events-none">
+                                            <div className="w-11 h-11 mx-auto rounded-2xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center">
+                                                <CloudUpload className="w-5 h-5 text-orange-400" />
+                                            </div>
+                                            <p className="text-sm font-semibold text-white">
+                                                {mode === 'single' ? 'Select one file' : 'Drag & drop files here'}
+                                            </p>
+                                            <p className="text-[11px] text-zinc-500">
+                                                Max 25MB each - {ACCEPTED_EXTENSIONS.join(', ')}
+                                            </p>
                                         </div>
-                                        <p className="text-sm font-semibold text-white">
-                                            {mode === 'single' ? 'Select one file' : 'Drag & drop files here'}
-                                        </p>
-                                        <p className="text-[11px] text-zinc-500">
-                                            Max 25MB each - {ACCEPTED_EXTENSIONS.join(', ')}
-                                        </p>
                                     </div>
-                                </div>
+                                </HoverTooltip>
                             </div>
 
                             {files.length > 0 && (
@@ -462,13 +466,14 @@ const UploadPage = () => {
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 {statusIcon(file.status)}
-                                                <button
-                                                    onClick={() => removeFile(i)}
-                                                    title="Remove file from queue"
-                                                    className="w-6 h-6 rounded-md hover:bg-white/5 flex items-center justify-center text-zinc-600 hover:text-white transition-colors"
-                                                >
-                                                    <X className="w-3 h-3" />
-                                                </button>
+                                                <HoverTooltip content="Remove file from queue">
+                                                    <button
+                                                        onClick={() => removeFile(i)}
+                                                        className="w-6 h-6 rounded-md hover:bg-white/5 flex items-center justify-center text-zinc-600 hover:text-white transition-colors"
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                </HoverTooltip>
                                             </div>
                                         </div>
                                     ))}
@@ -527,16 +532,17 @@ const UploadPage = () => {
                 <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-zinc-900/70 to-zinc-900/30 p-5 space-y-4">
                     <div className="flex items-center justify-between">
                         <h2 className="text-sm font-bold text-white">Uploaded Documents</h2>
-                        <button
-                            type="button"
-                            onClick={loadDocuments}
-                            title="Reload documents from server."
-                            className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-white/90 hover:text-white hover:border-white/30 transition-all"
-                            disabled={isLoadingDocs}
-                        >
-                            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingDocs ? 'animate-spin' : ''}`} />
-                            Refresh
-                        </button>
+                        <HoverTooltip content="Reload documents from server.">
+                            <button
+                                type="button"
+                                onClick={loadDocuments}
+                                className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-white/90 hover:text-white hover:border-white/30 transition-all"
+                                disabled={isLoadingDocs}
+                            >
+                                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingDocs ? 'animate-spin' : ''}`} />
+                                Refresh
+                            </button>
+                        </HoverTooltip>
                     </div>
 
                     {isLoadingDocs ? (
@@ -560,13 +566,14 @@ const UploadPage = () => {
                                                 {canAdminCrud && (
                                                     <>
                                                         {!isEditing ? (
-                                                            <button
-                                                                onClick={() => startEdit(doc)}
-                                                                title="Edit metadata"
-                                                                className="w-7 h-7 rounded-lg border border-white/10 hover:border-orange-500/40 text-zinc-400 hover:text-orange-300 flex items-center justify-center transition-all"
-                                                            >
-                                                                <Pencil className="w-3.5 h-3.5" />
-                                                            </button>
+                                                            <HoverTooltip content="Edit metadata">
+                                                                <button
+                                                                    onClick={() => startEdit(doc)}
+                                                                    className="w-7 h-7 rounded-lg border border-white/10 hover:border-orange-500/40 text-zinc-400 hover:text-orange-300 flex items-center justify-center transition-all"
+                                                                >
+                                                                    <Pencil className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            </HoverTooltip>
                                                         ) : (
                                                             <Button
                                                                 className="h-7 px-3 text-[10px] bg-emerald-600 hover:bg-emerald-500"
@@ -576,13 +583,14 @@ const UploadPage = () => {
                                                                 Save
                                                             </Button>
                                                         )}
-                                                        <button
-                                                            onClick={() => deleteDoc(doc.id)}
-                                                            title="Delete document"
-                                                            className="w-7 h-7 rounded-lg border border-white/10 hover:border-red-500/40 text-zinc-400 hover:text-red-300 flex items-center justify-center transition-all"
-                                                        >
-                                                            <Trash2 className="w-3.5 h-3.5" />
-                                                        </button>
+                                                        <HoverTooltip content="Delete document">
+                                                            <button
+                                                                onClick={() => deleteDoc(doc.id)}
+                                                                className="w-7 h-7 rounded-lg border border-white/10 hover:border-red-500/40 text-zinc-400 hover:text-red-300 flex items-center justify-center transition-all"
+                                                            >
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </HoverTooltip>
                                                     </>
                                                 )}
                                             </div>
@@ -646,12 +654,13 @@ const UploadPage = () => {
                                 >
                                     Prev
                                 </button>
-                                <button
-                                    className="h-7 min-w-[52px] px-2 rounded-lg text-xs font-semibold transition-colors bg-orange-600 text-white"
-                                    title="Current page"
-                                >
-                                    {docsPage}
-                                </button>
+                                <HoverTooltip content="Current page">
+                                    <button
+                                        className="h-8 w-8 rounded-lg text-xs font-semibold transition-colors bg-orange-600 text-white"
+                                    >
+                                        {docsPage}
+                                    </button>
+                                </HoverTooltip>
                                 <span className="text-zinc-600">/ {totalDocPages}</span>
                                 <button
                                     onClick={() => setDocsPage((p) => Math.min(totalDocPages, p + 1))}

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Shield, Search, Clock, Download, ChevronRight, RefreshCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { HoverTooltip } from '@/components/ui/tooltip';
 import { adminApi, type AuditLogEntry } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
@@ -197,14 +198,15 @@ const AuditPage = () => {
                 <div className="h-6 w-px bg-white/10 hidden sm:block" />
                 <div className="flex gap-2 flex-wrap">
                     {['all', 'auth', 'upload', 'admin', 'system', 'query'].map(t => (
-                        <button
-                            key={t} onClick={() => setFilterType(t)}
-                            className={`h-8 px-3 rounded-lg text-[11px] font-semibold capitalize transition-all flex items-center gap-1.5 border active:scale-95 ${filterType === t ? 'bg-orange-500/15 text-orange-400 border-orange-500/20' : 'bg-white/[0.03] text-zinc-400 border-white/[0.08] hover:bg-white/[0.06] hover:text-white hover:border-white/[0.15]'}`}
-                            title={`Filter by ${t} events`}
-                        >
-                            {t !== 'all' && <div className={`w-1.5 h-1.5 rounded-full ${typeDotColors[t] || 'bg-zinc-500'}`} />}
-                            {t}
-                        </button>
+                        <HoverTooltip key={t} content={`Filter by ${t} events`}>
+                            <button
+                                onClick={() => setFilterType(t)}
+                                className={`h-8 px-3 rounded-lg text-[11px] font-semibold capitalize transition-all flex items-center gap-1.5 border active:scale-95 ${filterType === t ? 'bg-orange-500/15 text-orange-400 border-orange-500/20' : 'bg-white/[0.03] text-zinc-400 border-white/[0.08] hover:bg-white/[0.06] hover:text-white hover:border-white/[0.15]'}`}
+                            >
+                                {t !== 'all' && <div className={`w-1.5 h-1.5 rounded-full ${typeDotColors[t] || 'bg-zinc-500'}`} />}
+                                {t}
+                            </button>
+                        </HoverTooltip>
                     ))}
                 </div>
             </motion.div>
@@ -285,12 +287,11 @@ const AuditPage = () => {
                         >
                             Prev
                         </button>
-                        <button
-                            className="h-7 min-w-[52px] px-2 rounded-lg text-xs font-semibold transition-colors bg-orange-600 text-white"
-                            title="Current page"
-                        >
-                            {currentPage}
-                        </button>
+                        <HoverTooltip content="Current page">
+                            <button className="h-8 w-8 rounded-lg text-xs font-semibold transition-colors bg-orange-600 text-white">
+                                {currentPage}
+                            </button>
+                        </HoverTooltip>
                         <span className="text-zinc-600">/ {totalPages}</span>
                         <button
                             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
