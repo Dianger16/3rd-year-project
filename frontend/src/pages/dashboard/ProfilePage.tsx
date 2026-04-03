@@ -549,6 +549,61 @@ const ProfilePage = () => {
                                 ))}
                             </div>
                         </div>
+
+                        <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/50 p-5">
+                            <h2 className="text-sm font-semibold text-white mb-4">Account Presence</h2>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
+                                    <div className="flex items-center gap-2 text-[11px] text-zinc-500">
+                                        <span className={`w-5 h-5 rounded-md border flex items-center justify-center ${iconToneByLabel['Member Since']}`}>
+                                            <Calendar className="w-3 h-3" />
+                                        </span>
+                                        Joined
+                                    </div>
+                                    <div className="text-sm font-semibold text-white mt-1.5">
+                                        {user?.created_at
+                                            ? new Date(user.created_at).toLocaleDateString('en-US', {
+                                                year: 'numeric',
+                                                month: 'short',
+                                                day: 'numeric',
+                                            })
+                                            : 'Not available'}
+                                    </div>
+                                </div>
+
+                                <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
+                                    <div className="flex items-center gap-2 text-[11px] text-zinc-500">
+                                        <span className={`w-5 h-5 rounded-md border flex items-center justify-center ${iconToneByLabel['Academic Verification']}`}>
+                                            <CheckCircle2 className="w-3 h-3" />
+                                        </span>
+                                        Verification
+                                    </div>
+                                    <div className="text-sm font-semibold text-white mt-1.5">
+                                        {user?.academic_verified ? 'Verified' : 'Pending'}
+                                    </div>
+                                </div>
+
+                                <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3 sm:col-span-2">
+                                    <div className="flex items-center gap-2 text-[11px] text-zinc-500">
+                                        <span className={`w-5 h-5 rounded-md border flex items-center justify-center ${iconToneByLabel['Recent Notices']}`}>
+                                            <Bell className="w-3 h-3" />
+                                        </span>
+                                        Last Snapshot Refresh
+                                    </div>
+                                    <div className="text-sm font-semibold text-white mt-1.5">
+                                        {exportData?.exportDate
+                                            ? new Date(exportData.exportDate).toLocaleString('en-US', {
+                                                year: 'numeric',
+                                                month: 'short',
+                                                day: 'numeric',
+                                                hour: '2-digit',
+                                                minute: '2-digit',
+                                            })
+                                            : 'Waiting for latest sync'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </motion.div>
                 </div>
             </div>
