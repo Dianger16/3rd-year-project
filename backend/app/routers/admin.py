@@ -42,6 +42,17 @@ def iso(dt: datetime.datetime) -> str:
     return dt.astimezone(datetime.timezone.utc).isoformat()
 
 
+def parse_iso_datetime(raw: Any) -> Optional[datetime.datetime]:
+    if not raw:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(str(raw).replace("Z", "+00:00")).astimezone(
+            datetime.timezone.utc
+        )
+    except Exception:
+        return None
+
+
 class AdminUserUpdateRequest(BaseModel):
     full_name: Optional[str] = None
     role: Optional[str] = None
@@ -157,23 +168,52 @@ def _build_user_activity_dataset(
         raise HTTPException(status_code=400, detail="No users with valid emails found.")
 
     query_counts: dict[str, int] = {}
+    active_days_30: dict[str, int] = {}
+    last_query_at: dict[str, Optional[str]] = {}
+    account_age_days: dict[str, int] = {}
+    joined_at_map: dict[str, Optional[str]] = {}
+    now_utc = utc_now()
+
     for profile in users_for_report:
         uid = profile["id"]
+        joined_dt = parse_iso_datetime(profile.get("created_at"))
+        joined_at_map[uid] = iso(joined_dt) if joined_dt else None
+        account_age_days[uid] = max(0, (now_utc - joined_dt).days) if joined_dt else 0
         if not uid:
             query_counts[uid] = 0
+            active_days_30[uid] = 0
+            last_query_at[uid] = None
             continue
         try:
-            q_res = (
+            q_rows = (
                 supabase.table("audit_logs")
-                .select("id", count="exact")
+                .select("timestamp")
                 .eq("action", "agent_query")
                 .eq("user_id", uid)
-                .limit(1)
+                .order("timestamp", desc=True)
+                .limit(1200)
                 .execute()
             )
-            query_counts[uid] = int(q_res.count or 0)
+            rows = q_rows.data or []
+            query_counts[uid] = len(rows)
+            if rows:
+                newest_ts = rows[0].get("timestamp")
+                last_query_at[uid] = iso(parse_iso_datetime(newest_ts)) if newest_ts else None
+                active_days_set: set[str] = set()
+                for row in rows:
+                    dt = parse_iso_datetime(row.get("timestamp"))
+                    if not dt:
+                        continue
+                    if (now_utc - dt).days <= 30:
+                        active_days_set.add(dt.date().isoformat())
+                active_days_30[uid] = len(active_days_set)
+            else:
+                last_query_at[uid] = None
+                active_days_30[uid] = 0
         except Exception:
             query_counts[uid] = 0
+            active_days_30[uid] = 0
+            last_query_at[uid] = None
 
     role_counts = Counter(profile["role"] for profile in users_for_report)
     total_queries = sum(query_counts.get(profile["id"], 0) for profile in users_for_report)
@@ -188,6 +228,10 @@ def _build_user_activity_dataset(
     return {
         "users_for_report": users_for_report,
         "query_counts": query_counts,
+        "active_days_30": active_days_30,
+        "last_query_at": last_query_at,
+        "account_age_days": account_age_days,
+        "joined_at_map": joined_at_map,
         "role_counts": role_counts,
         "total_queries": total_queries,
         "active_users": active_users,
@@ -475,6 +519,10 @@ async def generate_user_activity_notice(
     dataset = _build_user_activity_dataset(supabase, recipients_max)
     users_for_report = dataset["users_for_report"]
     query_counts = dataset["query_counts"]
+    active_days_30 = dataset["active_days_30"]
+    last_query_at = dataset["last_query_at"]
+    account_age_days = dataset["account_age_days"]
+    joined_at_map = dataset["joined_at_map"]
     role_counts = dataset["role_counts"]
     total_queries = dataset["total_queries"]
     active_users = dataset["active_users"]
@@ -502,6 +550,9 @@ async def generate_user_activity_notice(
             subject,
             message,
             query_counts.get(profile["id"], 0),
+            active_days_30.get(profile["id"], 0),
+            account_age_days.get(profile["id"], 0),
+            last_query_at.get(profile["id"]),
             user.full_name or user.email or "Admin",
             generated_at,
         )
@@ -538,6 +589,10 @@ async def generate_user_activity_notice(
                 "email": item["email"],
                 "role": item["role"],
                 "query_count": int(query_counts.get(item["id"], 0)),
+                "active_days_30": int(active_days_30.get(item["id"], 0)),
+                "account_age_days": int(account_age_days.get(item["id"], 0)),
+                "joined_at": joined_at_map.get(item["id"]),
+                "last_query_at": last_query_at.get(item["id"]),
             }
             for item in top_users
         ],
@@ -569,6 +624,10 @@ async def preview_user_activity_notice_recipients(
     dataset = _build_user_activity_dataset(supabase, recipients_max)
     users_for_report = dataset["users_for_report"]
     query_counts = dataset["query_counts"]
+    active_days_30 = dataset["active_days_30"]
+    last_query_at = dataset["last_query_at"]
+    account_age_days = dataset["account_age_days"]
+    joined_at_map = dataset["joined_at_map"]
     role_counts = dataset["role_counts"]
     total_queries = dataset["total_queries"]
     active_users = dataset["active_users"]
@@ -589,6 +648,10 @@ async def preview_user_activity_notice_recipients(
             "full_name": profile["full_name"],
             "role": profile["role"],
             "query_count": int(query_counts.get(profile["id"], 0)),
+            "active_days_30": int(active_days_30.get(profile["id"], 0)),
+            "account_age_days": int(account_age_days.get(profile["id"], 0)),
+            "joined_at": joined_at_map.get(profile["id"]),
+            "last_query_at": last_query_at.get(profile["id"]),
         }
         for profile in recipients[:preview_limit]
     ]
@@ -619,6 +682,10 @@ async def preview_user_activity_notice_recipients(
                 "email": item["email"],
                 "role": item["role"],
                 "query_count": int(query_counts.get(item["id"], 0)),
+                "active_days_30": int(active_days_30.get(item["id"], 0)),
+                "account_age_days": int(account_age_days.get(item["id"], 0)),
+                "joined_at": joined_at_map.get(item["id"]),
+                "last_query_at": last_query_at.get(item["id"]),
             }
             for item in top_users
         ],
