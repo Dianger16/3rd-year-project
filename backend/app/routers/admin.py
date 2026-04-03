@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 """
 Admin Router
 Provides admin-only endpoints for metrics and audit logs.
@@ -802,3 +805,5 @@ async def reset_user_flags(
         payload={"target_user_id": target_user_id, "note": body.note},
     )
     return {"status": "success", "message": "User flags reset and chat access restored.", "moderation": moderation_meta_from_state(state)}
+
+

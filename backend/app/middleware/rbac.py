@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 """
 Role-Based Access Control (RBAC) Middleware
 Provides dependency factories that enforce role requirements on endpoints.
@@ -68,3 +71,5 @@ def is_sensitive_query(query: str) -> bool:
     ]
     query_lower = query.lower()
     return any(kw in query_lower for kw in sensitive_keywords)
+
+

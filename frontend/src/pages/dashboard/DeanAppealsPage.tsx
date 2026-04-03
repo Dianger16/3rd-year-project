@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ShieldAlert, XCircle, RefreshCw } from 'lucide-react';
 import { adminApi, type DeanAppealItem } from '@/lib/api';
@@ -279,3 +283,5 @@ export default function DeanAppealsPage() {
         </div>
     );
 }
+
+

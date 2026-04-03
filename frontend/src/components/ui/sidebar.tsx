@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 "use client";
 
 import { cn } from "@/lib/utils";
@@ -236,3 +240,5 @@ export const SidebarLink = ({
         </HoverTooltip>
     );
 };
+
+

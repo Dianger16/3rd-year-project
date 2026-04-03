@@ -1,4 +1,6 @@
-﻿# Changelog
+﻿<!-- Copyright (c) 2026 XynaxDev | Contact: akashkumar.cs27@gmail.com -->
+
+# Changelog
 
 All notable changes to UnivGPT are documented here.
 
@@ -91,3 +93,4 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - Initial UnivGPT codebase bootstrap.
 - Base backend/frontend structure, docs scaffold, and local setup flow.
+

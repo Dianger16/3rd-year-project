@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, type Variants } from 'framer-motion';
@@ -68,7 +72,7 @@ const Landing = () => {
 
     const testimonials = [
         {
-            quote: "UnivGPT changed how I study. Instead of spending hours digging through course portals, I just ask a question and get exactly what I need — with sources.",
+            quote: "UnivGPT changed how I study. Instead of spending hours digging through course portals, I just ask a question and get exactly what I need â€” with sources.",
             author: "Sarah Chen",
             role: "Computer Science, Class of 2026"
         },
@@ -142,7 +146,7 @@ const Landing = () => {
 
     return (
         <div id="top" className="min-h-screen bg-black text-white overflow-x-hidden">
-            {/* ═══════════════════ HEADER ═══════════════════ */}
+            {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• HEADER â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
             <header className="site-header fixed top-0 w-full z-[100] transition-all duration-300 bg-transparent">
                 <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
                     <Link to="/" className="flex items-center gap-3 group shrink-0">
@@ -224,7 +228,7 @@ const Landing = () => {
             `}</style>
 
             <main>
-                {/* ═══════════════════ HERO ═══════════════════ */}
+                {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• HERO â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
                 <section ref={heroRef} className="relative min-h-[90vh] flex items-center justify-center px-6 pt-20 overflow-hidden">
                     <div className="absolute inset-0 bg-black z-0">
                         {/* Premium Dynamic Glows - Orange Theme */}
@@ -262,8 +266,8 @@ const Landing = () => {
                             variants={fadeUp} initial="hidden" animate="visible" custom={0.2}
                             className="text-lg md:text-xl text-zinc-400 max-w-2xl mx-auto mb-10 leading-relaxed"
                         >
-                            UnivGPT connects students and faculty with institutional knowledge —
-                            course materials, policies, research papers — all through a single intelligent assistant.
+                            UnivGPT connects students and faculty with institutional knowledge â€”
+                            course materials, policies, research papers â€” all through a single intelligent assistant.
                         </motion.p>
 
                         <motion.div
@@ -306,7 +310,7 @@ const Landing = () => {
 
                 </section>
 
-                {/* ═══════════════════ SOCIAL PROOF ═══════════════════ */}
+                {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• SOCIAL PROOF â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
                 <motion.section
                     initial={{ opacity: 0 }}
                     whileInView={{ opacity: 1 }}
@@ -336,7 +340,7 @@ const Landing = () => {
                     </div>
                 </motion.section>
 
-                {/* ═══════════════════ FEATURES ═══════════════════ */}
+                {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• FEATURES â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
                 <section id="features" className="py-32 px-6 bg-black relative">
 
                     <div className="max-w-7xl mx-auto">
@@ -354,7 +358,7 @@ const Landing = () => {
                                 Built for the modern campus
                             </h2>
                             <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
-                                From course guidance to research — UnivGPT is the single platform
+                                From course guidance to research â€” UnivGPT is the single platform
                                 that understands your entire university ecosystem.
                             </p>
                         </motion.div>
@@ -381,7 +385,7 @@ const Landing = () => {
                     </div>
                 </section>
 
-                {/* ═══════════════════ ECOSYSTEM ═══════════════════ */}
+                {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• ECOSYSTEM â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
                 <section className="py-32 px-6 bg-black">
                     <div className="max-w-7xl mx-auto">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-20 items-center">
@@ -453,7 +457,7 @@ const Landing = () => {
                     </div>
                 </section>
 
-                {/* ═══════════════════ HOW IT WORKS ═══════════════════ */}
+                {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• HOW IT WORKS â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
 
                 <section id="how-it-works" className="py-40 px-6 bg-black relative overflow-hidden">
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-[600px] bg-orange-600/5 rounded-full blur-[160px] pointer-events-none" />
@@ -526,7 +530,7 @@ const Landing = () => {
                     </div>
                 </section>
 
-                {/* ═══════════════════ STATS ═══════════════════ */}
+                {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• STATS â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
                 <section className="py-24 px-6 bg-transparent relative z-10 w-full flex flex-col items-center">
                     <div className="max-w-5xl mx-auto w-full">
                         <div className="text-center mb-16">
@@ -557,7 +561,7 @@ const Landing = () => {
                     </div>
                 </section>
 
-                {/* ═══════════════════ TESTIMONIALS CAROUSEL ═══════════════════ */}
+                {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• TESTIMONIALS CAROUSEL â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
                 <section className="py-32 px-6 bg-black relative overflow-hidden">
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-amber-600/5 rounded-full blur-[120px] pointer-events-none" />
 
@@ -631,7 +635,7 @@ const Landing = () => {
                     </div>
                 </section>
 
-                {/* ═══════════════════ FAQ SECTION ═══════════════════ */}
+                {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• FAQ SECTION â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
                 <section className="py-32 px-6 bg-black relative z-10">
                     <div className="max-w-3xl mx-auto">
                         <motion.div
@@ -686,7 +690,7 @@ const Landing = () => {
                     </div>
                 </section>
 
-                {/* ═══════════════════ CTA ═══════════════════ */}
+                {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• CTA â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
                 <motion.section
                     initial={{ opacity: 0, y: 20 }}
                     whileInView={{ opacity: 1, y: 0 }}
@@ -736,7 +740,7 @@ const Landing = () => {
                 </motion.section>
             </main>
 
-            {/* ═══════════════════ FOOTER ═══════════════════ */}
+            {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• FOOTER â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
             <footer className="bg-black pt-32 pb-16 px-6 relative overflow-hidden">
                 <div className="absolute top-0 left-1/4 w-96 h-96 bg-orange-600/5 rounded-full blur-[128px]" />
                 <div className="max-w-7xl mx-auto relative z-10">
@@ -784,7 +788,7 @@ const Landing = () => {
                     </div>
 
                     <div className="pt-12 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-10">
-                        <p className="text-zinc-600 text-sm font-medium">© 2026 UnivGPT. Crafted for academics worldwide.</p>
+                        <p className="text-zinc-600 text-sm font-medium">Â© 2026 UnivGPT. Crafted for academics worldwide.</p>
 
                         <div className="flex items-center gap-4">
                             <div className="flex items-center gap-3 px-4 py-2 bg-emerald-500/5 rounded-full border border-emerald-500/10">
@@ -804,3 +808,5 @@ const Landing = () => {
 };
 
 export default Landing;
+
+

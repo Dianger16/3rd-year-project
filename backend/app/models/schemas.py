@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 """
 UnivGPT Pydantic Models
 Request/response schemas for all API endpoints.
@@ -8,7 +11,7 @@ from typing import Optional
 from enum import Enum
 
 
-# ─── Enums ───
+# â”€â”€â”€ Enums â”€â”€â”€
 
 
 class UserRole(str, Enum):
@@ -24,7 +27,7 @@ class DocType(str, Enum):
     PUBLIC = "public"
 
 
-# ─── Auth Models ───
+# â”€â”€â”€ Auth Models â”€â”€â”€
 
 
 class InitiateSignupRequest(BaseModel):
@@ -189,7 +192,7 @@ class UserExportDataResponse(BaseModel):
     notices: int = 0
 
 
-# ─── Document Models ───
+# â”€â”€â”€ Document Models â”€â”€â”€
 
 
 class DocumentUploadMeta(BaseModel):
@@ -217,7 +220,7 @@ class DocumentListResponse(BaseModel):
     per_page: int = 20
 
 
-# ─── Agent / Chat Models ───
+# â”€â”€â”€ Agent / Chat Models â”€â”€â”€
 
 
 class AgentQueryRequest(BaseModel):
@@ -271,7 +274,7 @@ class ConversationListResponse(BaseModel):
     total: int
 
 
-# ─── Audit Models ───
+# â”€â”€â”€ Audit Models â”€â”€â”€
 
 
 class AuditLogEntry(BaseModel):
@@ -289,7 +292,7 @@ class AuditLogListResponse(BaseModel):
     per_page: int = 50
 
 
-# ─── Health ───
+# â”€â”€â”€ Health â”€â”€â”€
 
 
 class HealthResponse(BaseModel):
@@ -303,3 +306,5 @@ class MetricsResponse(BaseModel):
     total_embeddings: int = 0
     total_conversations: int = 0
     total_users: int = 0
+
+

@@ -1,4 +1,6 @@
-﻿# UnivGPT Design
+﻿<!-- Copyright (c) 2026 XynaxDev | Contact: akashkumar.cs27@gmail.com -->
+
+# UnivGPT Design
 
 This document explains the current architecture, request flows, and role boundaries.
 
@@ -85,3 +87,5 @@ Scope is enforced both at API authorization and retrieval context level.
 - Seed/reset controlled datasets: `python seed.py`
 - Frontend build check: `npm run build`
 - Keep secrets in `.env` only; never commit secrets.
+
+

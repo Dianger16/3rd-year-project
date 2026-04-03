@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Search, Edit2, X, Check, RefreshCcw, Megaphone, BarChart3, Eye } from 'lucide-react';
@@ -324,7 +328,7 @@ const UsersPage = () => {
                             <div>
                                 <p className="text-xs font-semibold text-white">Recipient Preview</p>
                                 <p className="text-[11px] text-zinc-500">
-                                    {reportPreview.recipients_total} total recipients • showing first {reportPreview.preview_recipients.length}
+                                    {reportPreview.recipients_total} total recipients â€¢ showing first {reportPreview.preview_recipients.length}
                                 </p>
                             </div>
                             <div className="text-[11px] text-zinc-500">
@@ -592,3 +596,5 @@ const UsersPage = () => {
 };
 
 export default UsersPage;
+
+

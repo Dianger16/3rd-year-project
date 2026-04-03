@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 """
 Document Processing Service
 Handles file text extraction, chunking, and HuggingFace embedding generation.
@@ -17,7 +20,7 @@ logger = logging.getLogger(__name__)
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 
 
-# ─── Text Extraction ───
+# â”€â”€â”€ Text Extraction â”€â”€â”€
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
@@ -118,7 +121,7 @@ def derive_route_targets(doc_type: str) -> list[str]:
     return ["admin"]
 
 
-# ─── Text Chunking ───
+# â”€â”€â”€ Text Chunking â”€â”€â”€
 
 
 def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> list[str]:
@@ -146,7 +149,7 @@ def chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> list[st
     return chunks
 
 
-# ─── Embedding Model Singleton ───
+# â”€â”€â”€ Embedding Model Singleton â”€â”€â”€
 _embeddings_model = None
 _embeddings_model_lock = threading.Lock()
 
@@ -200,7 +203,7 @@ def get_single_embedding(text: str) -> list[float]:
     return model.embed_query(text)
 
 
-# ─── Full Processing Pipeline ───
+# â”€â”€â”€ Full Processing Pipeline â”€â”€â”€
 
 
 async def process_document(
@@ -290,3 +293,5 @@ async def process_document(
         "tags": derived_tags,
         "route_targets": route_targets,
     }
+
+

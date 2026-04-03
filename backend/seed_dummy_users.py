@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 import os
 from supabase import create_client, Client
 from dotenv import load_dotenv
@@ -66,3 +69,5 @@ for user in dummy_users:
             print(f"Error seeding {user['email']}: {e}")
 
 print("Seeding complete.")
+
+

@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 import React, { useEffect } from 'react';
 import Lenis from 'lenis';
 import { gsap } from 'gsap';
@@ -38,3 +42,5 @@ export default function SmoothScroll({ children }: { children: React.ReactNode }
 
     return <>{children}</>;
 }
+
+

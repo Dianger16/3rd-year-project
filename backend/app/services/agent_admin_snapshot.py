@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 import datetime
 import re
 from typing import Any, Callable, Optional
@@ -338,3 +341,5 @@ def render_admin_snapshot(snapshot: dict) -> str:
 
     lines.append("If asked about holidays, check document titles/tags for 'holiday' or 'closed'. If none, state that no documents indicate a holiday.")
     return "\n".join(lines)
+
+

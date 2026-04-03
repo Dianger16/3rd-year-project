@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 from __future__ import annotations
 
 import sys
@@ -218,3 +221,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+

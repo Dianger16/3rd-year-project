@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 import datetime
 import re
 from typing import Any, Optional
@@ -700,3 +703,5 @@ def build_course_faculty_answer(
         )
 
     return None
+
+

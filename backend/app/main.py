@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 """
 UnivGPT API - Main Application
 Updated for Supabase + Pinecone Hybrid Stack.
@@ -61,3 +64,5 @@ app.include_router(admin.router)
 @app.get("/health", response_model=HealthResponse)
 async def health():
     return HealthResponse(status="ok", environment=settings.environment)
+
+

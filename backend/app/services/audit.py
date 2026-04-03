@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 """
 Audit Logging Service
 Records significant user actions for monitoring in Supabase.
@@ -110,3 +113,5 @@ async def log_audit_event(
                     _handle_audit_error(exc)
 
             loop.create_task(_prune())
+
+

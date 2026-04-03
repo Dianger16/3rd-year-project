@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 """
 Demo directory seed and fallback helpers.
 
@@ -243,4 +246,6 @@ def ensure_demo_directory_seed() -> None:
         logger.info("Demo directory seed completed.")
     except Exception as exc:
         logger.warning("Demo directory seed skipped due to runtime error: %s", exc)
+
+
 

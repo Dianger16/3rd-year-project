@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 import os
 from pathlib import Path
 from urllib.parse import urlparse
@@ -262,3 +265,5 @@ def migrate() -> None:
 
 if __name__ == "__main__":
     migrate()
+
+

@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, RefreshCw, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -290,7 +294,7 @@ export default function NotificationsPage() {
                                 <div className="min-w-0">
                                     <p className="text-sm font-bold text-white truncate">{previewDoc.filename}</p>
                                     <p className="text-[11px] text-zinc-500 mt-0.5">
-                                        {previewDoc.course || 'General'} • {previewDoc.department || 'No department'} • {previewDoc.doc_type}
+                                        {previewDoc.course || 'General'} â€¢ {previewDoc.department || 'No department'} â€¢ {previewDoc.doc_type}
                                     </p>
                                 </div>
                                 <button
@@ -352,3 +356,5 @@ export default function NotificationsPage() {
         </div>
     );
 }
+
+

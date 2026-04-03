@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
@@ -29,7 +33,7 @@
   --color-destructive-foreground: var(--destructive-foreground);
 }
 
-/* ─── Design Tokens ─── */
+/* â”€â”€â”€ Design Tokens â”€â”€â”€ */
 :root {
   --background: 0 0% 100%;
   --foreground: 240 10% 3.9%;
@@ -79,7 +83,7 @@
   --sparkles-color: #ffffff;
 }
 
-/* ─── Base ─── */
+/* â”€â”€â”€ Base â”€â”€â”€ */
 @layer base {
   * {
     border-color: hsl(var(--border) / 0.5);
@@ -107,7 +111,7 @@
   }
 }
 
-/* ─── Utility Classes ─── */
+/* â”€â”€â”€ Utility Classes â”€â”€â”€ */
 @layer utilities {
   .glass {
     background: rgba(255, 255, 255, 0.03);
@@ -163,7 +167,7 @@
   }
 }
 
-/* ─── Scrollbar ─── */
+/* â”€â”€â”€ Scrollbar â”€â”€â”€ */
 * {
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
@@ -200,7 +204,7 @@ body {
   scrollbar-color: rgba(255, 255, 255, 0.06) transparent;
 }
 
-/* ─── Selection ─── */
+/* â”€â”€â”€ Selection â”€â”€â”€ */
 ::selection {
   background: rgba(249, 115, 22, 0.3);
   color: white;
@@ -226,3 +230,5 @@ body {
   );
   animation: skeleton-shimmer 1.25s linear infinite;
 }
+
+

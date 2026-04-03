@@ -1,4 +1,8 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { AuthUI, Label, Input, PasswordInput, Button, OTPInput, Select } from '@/components/ui/auth-fuse';
@@ -291,4 +295,6 @@ export default function Login() {
         </AuthUI>
     );
 }
+
+
 

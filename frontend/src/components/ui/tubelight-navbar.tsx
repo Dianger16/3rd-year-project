@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 "use client"
 
 import React, { useEffect, useState } from "react"
@@ -78,3 +82,5 @@ export function NavBar({ items, className }: NavBarProps) {
         </div>
     )
 }
+
+

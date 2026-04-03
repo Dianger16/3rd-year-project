@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 "use client";
 
 import * as React from "react";
@@ -97,3 +101,5 @@ export function UpgradeBanner({
         </div>
     );
 }
+
+

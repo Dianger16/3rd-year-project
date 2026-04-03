@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Building2, Mail, Sparkles, UserCircle, BookOpen, CalendarClock } from 'lucide-react';
@@ -231,3 +235,5 @@ export default function FacultyProfilePage() {
         </div>
     );
 }
+
+

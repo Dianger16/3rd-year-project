@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -344,7 +348,7 @@ export default function ChatPage() {
             {/* Messages Area */}
             <div className="flex-1 overflow-y-auto overscroll-contain" data-lenis-prevent="true" style={{ WebkitOverflowScrolling: 'touch' }}>
                 {messages.length === 0 ? (
-                    /* ───── Premium Empty State ───── */
+                    /* â”€â”€â”€â”€â”€ Premium Empty State â”€â”€â”€â”€â”€ */
                     <div className="flex flex-col items-center min-h-full px-4 sm:px-6 py-10 sm:py-14 text-center">
                         <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="space-y-6 sm:space-y-8 max-w-2xl w-full">
                             {/* Brand Icon */}
@@ -383,7 +387,7 @@ export default function ChatPage() {
                         </motion.div>
                     </div>
                 ) : (
-                    /* ───── Messages ───── */
+                    /* â”€â”€â”€â”€â”€ Messages â”€â”€â”€â”€â”€ */
                     <div className="px-6 py-4">
                         {messages.map((msg, i) => (
                             <MessageBubble key={i} message={msg} />
@@ -415,7 +419,7 @@ export default function ChatPage() {
                 )}
             </div>
 
-            {/* ───── Input Bar — Premium ───── */}
+            {/* â”€â”€â”€â”€â”€ Input Bar â€” Premium â”€â”€â”€â”€â”€ */}
             <div className="px-2 sm:px-6 pb-2 sm:pb-6 pt-0 shrink-0 bg-transparent">
                 <form onSubmit={handleSend} className="max-w-3xl mx-auto">
                     {isChatBlocked && (
@@ -509,4 +513,6 @@ export default function ChatPage() {
         </div>
     );
 }
+
+
 

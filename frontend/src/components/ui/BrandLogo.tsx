@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 import React, { forwardRef } from 'react';
 import type { LucideProps } from 'lucide-react';
 
@@ -43,3 +47,5 @@ export const BrandLogo = forwardRef<SVGSVGElement, LucideProps>(
 );
 
 BrandLogo.displayName = "BrandLogo";
+
+

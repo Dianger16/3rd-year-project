@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 /**
  * UnivGPT API Client
  * Typed API client for communicating with the Hybrid FastAPI backend.
@@ -736,3 +740,5 @@ export interface UserActivityReportPreviewResponse {
         last_query_at?: string | null;
     }>;
 }
+
+

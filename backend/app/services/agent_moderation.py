@@ -1,17 +1,20 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 import re
 from typing import Any
 
 
 _PERSON_REFERENCE = re.compile(
-    r"\b(?:dr|prof(?:essor)?|sir|madam|ma['’]?am|teacher|faculty|dean)\b",
+    r"\b(?:dr|prof(?:essor)?|sir|madam|ma['â€™]?am|teacher|faculty|dean)\b",
     re.IGNORECASE,
 )
 _TARGETED_PERSON_QUERY = re.compile(
-    r"\bwhy\s+.{0,80}\b(?:dr|prof(?:essor)?|sir|madam|ma['’]?am|teacher|faculty|dean)\b.{0,30}\b(?:is|are|was|were)\b.{1,60}\??$",
+    r"\bwhy\s+.{0,80}\b(?:dr|prof(?:essor)?|sir|madam|ma['â€™]?am|teacher|faculty|dean)\b.{0,30}\b(?:is|are|was|were)\b.{1,60}\??$",
     re.IGNORECASE,
 )
 _TARGETED_PERSON_STATEMENT = re.compile(
-    r"\b(?:dr|prof(?:essor)?|sir|madam|ma['’]?am|teacher|faculty|dean)\b.{0,30}\b(?:is|are|was|were)\b.{1,60}$",
+    r"\b(?:dr|prof(?:essor)?|sir|madam|ma['â€™]?am|teacher|faculty|dean)\b.{0,30}\b(?:is|are|was|were)\b.{1,60}$",
     re.IGNORECASE,
 )
 _ACADEMIC_CONTEXT = re.compile(
@@ -53,3 +56,5 @@ def detect_local_moderation(query: str, *, strict: bool = False) -> dict[str, An
         }
 
     return {"is_flagged": False}
+
+

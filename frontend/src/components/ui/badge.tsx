@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
@@ -31,3 +35,5 @@ const Badge = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivEleme
 Badge.displayName = "Badge";
 
 export { Badge };
+
+

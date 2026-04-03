@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 import re
 from typing import Any
 
@@ -189,3 +192,5 @@ def enrich_intent_with_profile(intent: dict[str, Any], user_profile: dict[str, A
         if profile_program:
             hydrated["course"] = str(profile_program)
     return hydrated
+
+

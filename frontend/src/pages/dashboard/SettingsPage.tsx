@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -12,7 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import { useToastStore } from '@/store/toastStore';
 import { authApi } from '@/lib/api';
 
-/* ─── Toggle Switch ─── */
+/* â”€â”€â”€ Toggle Switch â”€â”€â”€ */
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
     return (
         <button
@@ -241,7 +245,7 @@ const SettingsPage = () => {
                             </div>
                         </motion.div>
 
-                        {/* Danger Zone — Delete Account */}
+                        {/* Danger Zone â€” Delete Account */}
                         <motion.div
                             initial={{ opacity: 0, y: 8 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -373,3 +377,5 @@ const SettingsPage = () => {
 };
 
 export default SettingsPage;
+
+

@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 import { create } from 'zustand';
 
 interface Toast {
@@ -30,3 +34,5 @@ export const useToastStore = create<ToastState>((set) => ({
         toasts: state.toasts.filter((t) => t.id !== id),
     })),
 }));
+
+

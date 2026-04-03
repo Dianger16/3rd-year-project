@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 /**
  * Chat Store (Zustand)
  * Manages chat conversations, messages, and agent interactions.
@@ -164,3 +168,5 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     clearError: () => set({ error: null }),
 }));
+
+

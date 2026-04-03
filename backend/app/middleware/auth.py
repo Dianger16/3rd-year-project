@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 """
 Authentication Middleware
 Validates Supabase JWTs and extracts user information.
@@ -230,3 +233,5 @@ async def get_optional_user(request: Request) -> Optional[AuthenticatedUser]:
         return await get_current_user(creds)
     except HTTPException:
         return None
+
+

@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 from app.middleware.auth import is_academic_email
 from app.routers.documents import get_allowed_upload_doc_types
 from app.services.document_processor import derive_document_tags, is_supported_document
@@ -37,3 +40,5 @@ def test_derive_document_tags_merges_manual_and_inferred_metadata():
     assert "cs301" in tags
     assert "syllabus" in tags
     assert "attendance-policy" in tags
+
+

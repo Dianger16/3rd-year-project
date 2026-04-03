@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 "use client"
 
 import React, { useEffect, useId, useState } from "react"
@@ -95,3 +99,5 @@ export function Sparkles({
 
     return isReady ? <Particles id={id} options={{ ...defaultOptions, ...options }} className={className} /> : null
 }
+
+

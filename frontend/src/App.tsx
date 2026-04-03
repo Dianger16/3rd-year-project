@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import Landing from '@/pages/Landing';
@@ -216,3 +220,5 @@ export default function App() {
     </BrowserRouter>
   );
 }
+
+

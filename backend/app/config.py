@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 import re
 from pathlib import Path
 from typing import List
@@ -143,3 +146,5 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+

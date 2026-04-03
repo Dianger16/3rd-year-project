@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 import React from 'react';
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
@@ -19,3 +23,5 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
     );
 }
+
+

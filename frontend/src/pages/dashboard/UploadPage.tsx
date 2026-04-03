@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Upload, FileText, X, Check, AlertCircle, CloudUpload, Loader2, Pencil, Trash2, RefreshCw, Layers, FileUp } from 'lucide-react';
@@ -712,3 +716,5 @@ const UploadPage = () => {
 };
 
 export default UploadPage;
+
+

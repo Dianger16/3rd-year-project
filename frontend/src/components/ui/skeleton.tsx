@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 import type { HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
@@ -14,3 +18,5 @@ export function Skeleton({ className, ...props }: SkeletonProps) {
         />
     );
 }
+
+

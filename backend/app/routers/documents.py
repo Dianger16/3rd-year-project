@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 """
 Documents Router
 Hybrid: Supabase (Metadata) + Pinecone (Vectors).
@@ -601,3 +604,5 @@ async def list_documents(
     ]
 
     return DocumentListResponse(documents=docs, total=total_count, page=page, per_page=per_page)
+
+

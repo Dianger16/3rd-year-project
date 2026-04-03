@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, Outlet } from 'react-router-dom';
 import {
@@ -407,3 +411,5 @@ export default function DashboardLayout() {
         </div>
     );
 }
+
+

@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 """
 UniGPT API Tests
 Unit and integration tests for core backend endpoints.
@@ -15,7 +18,7 @@ from app.middleware.rbac import get_allowed_doc_types, is_sensitive_query
 client = TestClient(app)
 
 
-# ─── Health Tests ───
+# â”€â”€â”€ Health Tests â”€â”€â”€
 
 class TestHealth:
     def test_health_endpoint(self):
@@ -32,7 +35,7 @@ class TestHealth:
         assert data["name"] == "UniGPT API"
 
 
-# ─── RBAC Tests ───
+# â”€â”€â”€ RBAC Tests â”€â”€â”€
 
 class TestRBAC:
     def test_student_allowed_doc_types(self):
@@ -68,7 +71,7 @@ class TestRBAC:
         assert types == ["public"]
 
 
-# ─── Auth Tests (with mocks) ───
+# â”€â”€â”€ Auth Tests (with mocks) â”€â”€â”€
 
 class TestAuth:
     def test_signup_requires_body(self):
@@ -84,7 +87,7 @@ class TestAuth:
         assert response.status_code == 403  # No auth header
 
 
-# ─── Document Tests (with mocks) ───
+# â”€â”€â”€ Document Tests (with mocks) â”€â”€â”€
 
 class TestDocuments:
     def test_list_documents_requires_auth(self):
@@ -96,7 +99,7 @@ class TestDocuments:
         assert response.status_code == 403
 
 
-# ─── Agent Tests (with mocks) ───
+# â”€â”€â”€ Agent Tests (with mocks) â”€â”€â”€
 
 class TestAgent:
     def test_query_requires_auth(self):
@@ -108,7 +111,7 @@ class TestAgent:
         assert response.status_code == 403
 
 
-# ─── Intent Classification Tests ───
+# â”€â”€â”€ Intent Classification Tests â”€â”€â”€
 
 class TestIntentClassification:
     def test_factual_intent(self):
@@ -128,7 +131,7 @@ class TestIntentClassification:
         assert classify_intent("Delete user john@university.edu") == IntentType.ADMIN_ACTION
 
 
-# ─── Document Processing Tests ───
+# â”€â”€â”€ Document Processing Tests â”€â”€â”€
 
 class TestDocumentProcessing:
     def test_chunk_text_short(self):
@@ -158,7 +161,7 @@ class TestDocumentProcessing:
             extract_text(b"data", "test.xlsx")
 
 
-# ─── Integration Test Simulation ───
+# â”€â”€â”€ Integration Test Simulation â”€â”€â”€
 
 class TestIntegration:
     """
@@ -203,3 +206,5 @@ class TestIntegration:
         assert "faculty" not in student_types
         assert "student" in student_types
         assert "public" in student_types
+
+

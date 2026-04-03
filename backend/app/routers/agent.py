@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 """
 Agent Router
 Hybrid: Supabase (Chat History) + Pinecone (Search).
@@ -123,3 +126,5 @@ async def submit_appeal(
         message="Apology appeal submitted successfully. The Dean section will review your request.",
         moderation=moderation_meta_from_state(state),
     )
+
+

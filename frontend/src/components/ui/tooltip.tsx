@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 import * as React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { createPortal } from "react-dom";
@@ -104,3 +108,5 @@ export function HoverTooltip({
         </TooltipPrimitive.Provider>
     );
 }
+
+

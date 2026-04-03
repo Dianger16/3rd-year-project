@@ -1,3 +1,5 @@
+﻿<!-- Copyright (c) 2026 XynaxDev | Contact: akashkumar.cs27@gmail.com -->
+
 # Tunnel Setup Guide: Local vs Hosted
 
 This guide explains exactly **when**, **where**, and **what** to change so your frontend (ngrok) and backend (Dev Tunnels) work correctly.
@@ -174,3 +176,6 @@ FRONTEND_CALLBACK_URL=https://<your-frontend>.ngrok-free.app/auth/callback
 - Use this variable in code for `redirect_to`.
 
 This way switching URLs is easier and safer.
+
+
+

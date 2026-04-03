@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 """
 Authentication Router
 Simplified for Supabase Auth integration.
@@ -1899,3 +1902,5 @@ async def set_role(
         if is_network_error(e):
             raise_supabase_unreachable()
         raise HTTPException(status_code=400, detail=str(e))
+
+

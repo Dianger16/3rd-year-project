@@ -1,4 +1,6 @@
-﻿# Docs Index
+﻿<!-- Copyright (c) 2026 XynaxDev | Contact: akashkumar.cs27@gmail.com -->
+
+# Docs Index
 
 This folder contains technical docs for UnivGPT.
 
@@ -15,3 +17,5 @@ This folder contains technical docs for UnivGPT.
 
 - `docs/private/` is gitignored by default.
 - Keep docs here focused and current; remove stale run logs and duplicate guides.
+
+

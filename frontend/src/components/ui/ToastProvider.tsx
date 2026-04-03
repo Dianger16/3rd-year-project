@@ -1,3 +1,7 @@
+﻿/* Copyright (c) 2026 XynaxDev
+ * Contact: akashkumar.cs27@gmail.com
+ */
+
 import { useToastStore } from '@/store/toastStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, AlertCircle, X } from 'lucide-react';
@@ -28,3 +32,5 @@ export const ToastProvider = () => {
         </div>
     );
 };
+
+

@@ -1,3 +1,6 @@
+﻿# Copyright (c) 2026 XynaxDev
+# Contact: akashkumar.cs27@gmail.com
+
 from pinecone import Pinecone, ServerlessSpec
 import logging
 from app.config import settings
@@ -36,3 +39,5 @@ class PineconeClient:
 
 # Singleton instance
 pinecone_client = PineconeClient()
+
+

@@ -1,3 +1,5 @@
+﻿<!-- Copyright (c) 2026 XynaxDev | Contact: akashkumar.cs27@gmail.com -->
+
 # UnivGPT
 
 Role-aware university assistant with document ingestion, moderation, and dashboard operations.
@@ -276,3 +278,5 @@ If vector query is slow/failing:
 ## Project Status
 
 Active development. Architecture and UX are being continuously improved for production readiness.
+
+
