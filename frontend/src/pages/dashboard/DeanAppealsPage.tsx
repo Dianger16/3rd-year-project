@@ -59,10 +59,10 @@ export default function DeanAppealsPage() {
             setActingUserId(userId);
             if (action === 'approve') {
                 await adminApi.approveDeanAppeal(token, userId, 'Approved by dean review.');
-                showToast('Appeal approved and flags reset.', 'success');
+                showToast('Appeal approved and user was notified.', 'success');
             } else if (action === 'reject') {
                 await adminApi.rejectDeanAppeal(token, userId, 'Rejected by dean review.');
-                showToast('Appeal rejected. User remains blocked.', 'info');
+                showToast('Appeal rejected and user was notified.', 'info');
             } else {
                 await adminApi.resetUserFlags(token, userId, 'Manual dean reset.');
                 showToast('User flags reset successfully.', 'success');
@@ -137,9 +137,9 @@ export default function DeanAppealsPage() {
                                                 <div className="text-sm font-semibold text-white">
                                                     {item.full_name || 'Unknown user'} <span className="text-zinc-500">({item.role || 'user'})</span>
                                                 </div>
-                                                <div className="text-xs text-zinc-400">{item.email || 'No email'} • {item.department || 'No department'}</div>
+                                                <div className="text-xs text-zinc-400">{item.email || 'No email'} - {item.department || 'No department'}</div>
                                                 <div className="text-xs text-zinc-500">
-                                                    Offense total: {item.offense_total} • Blocked: {item.blocked ? 'Yes' : 'No'}
+                                                    Offense total: {item.offense_total} - Blocked: {item.blocked ? 'Yes' : 'No'}
                                                 </div>
                                             </div>
                                             <div className="text-xs px-2.5 py-1 rounded-full border border-white/15 bg-white/5 text-zinc-300">
@@ -166,32 +166,56 @@ export default function DeanAppealsPage() {
                                             </div>
                                         )}
                                         <div className="mt-3 flex flex-wrap gap-2">
-                                            <Button
-                                                type="button"
-                                                className="h-8 text-xs bg-green-600 hover:bg-green-500"
-                                                disabled={actingUserId === item.user_id}
-                                                onClick={() => runAction(item.user_id, 'approve')}
-                                            >
-                                                <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Approve Appeal
-                                            </Button>
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                className="h-8 text-xs border-red-400/30 text-red-200 hover:bg-red-500/15"
-                                                disabled={actingUserId === item.user_id}
-                                                onClick={() => runAction(item.user_id, 'reject')}
-                                            >
-                                                <XCircle className="w-3.5 h-3.5 mr-1.5" /> Reject
-                                            </Button>
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                className="h-8 text-xs border-orange-300/30 text-orange-100 hover:bg-orange-500/10"
-                                                disabled={actingUserId === item.user_id}
-                                                onClick={() => runAction(item.user_id, 'reset')}
-                                            >
-                                                Force Reset Flags
-                                            </Button>
+                                            {status === 'pending' ? (
+                                                <>
+                                                    <Button
+                                                        type="button"
+                                                        className="h-8 text-xs bg-green-600 hover:bg-green-500"
+                                                        disabled={actingUserId === item.user_id}
+                                                        onClick={() => runAction(item.user_id, 'approve')}
+                                                    >
+                                                        <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Approve Appeal
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        className="h-8 text-xs border-red-400/30 text-red-200 hover:bg-red-500/15"
+                                                        disabled={actingUserId === item.user_id}
+                                                        onClick={() => runAction(item.user_id, 'reject')}
+                                                    >
+                                                        <XCircle className="w-3.5 h-3.5 mr-1.5" /> Reject
+                                                    </Button>
+                                                </>
+                                            ) : (
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    className={`h-8 text-xs ${
+                                                        status === 'approved'
+                                                            ? 'border-green-400/30 text-green-200 bg-green-500/10'
+                                                            : 'border-red-400/30 text-red-200 bg-red-500/10'
+                                                    }`}
+                                                    disabled
+                                                >
+                                                    {status === 'approved' ? (
+                                                        <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                                                    ) : (
+                                                        <XCircle className="w-3.5 h-3.5 mr-1.5" />
+                                                    )}
+                                                    {status === 'approved' ? 'Approved' : 'Rejected'}
+                                                </Button>
+                                            )}
+                                            {(status === 'approved' || status === 'rejected') && (
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    className="h-8 text-xs border-orange-300/30 text-orange-100 hover:bg-orange-500/10"
+                                                    disabled={actingUserId === item.user_id}
+                                                    onClick={() => runAction(item.user_id, 'reset')}
+                                                >
+                                                    Force Reset Flags
+                                                </Button>
+                                            )}
                                         </div>
                                     </div>
                                 );
