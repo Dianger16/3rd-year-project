@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, Search, Filter, Clock, Download, ChevronRight } from 'lucide-react';
+import { Shield, Search, Clock, Download, ChevronRight, RefreshCcw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { adminApi, type AuditLogEntry } from '@/lib/api';
@@ -61,6 +61,7 @@ const AuditPage = () => {
     const [filterType, setFilterType] = useState<string>('all');
     const [expandedLog, setExpandedLog] = useState<string | null>(null);
     const [currentPage, setCurrentPage] = useState(1);
+    const [totalLogs, setTotalLogs] = useState(0);
 
     const ITEMS_PER_PAGE = 6;
 
@@ -79,11 +80,11 @@ const AuditPage = () => {
         system: 'bg-red-400',
     };
 
-    const loadAuditLogs = async () => {
+    const loadAuditLogs = async (page = currentPage) => {
         if (!token) return;
         setIsLoading(true);
         try {
-            const response = await adminApi.getAuditLogs(token, 1, 200);
+            const response = await adminApi.getAuditLogs(token, page, ITEMS_PER_PAGE);
             const mapped: AuditLog[] = (response.logs || []).map((row: AuditLogEntry) => {
                 const action = row.action || '';
                 const mappedType = actionToType(action);
@@ -104,18 +105,20 @@ const AuditPage = () => {
                 };
             });
             setLogs(mapped);
+            setTotalLogs(Number(response.total || 0));
         } catch (err: any) {
             showToast(err?.message || 'Failed to load audit logs.', 'error');
             setLogs([]);
+            setTotalLogs(0);
         } finally {
             setIsLoading(false);
         }
     };
 
     useEffect(() => {
-        loadAuditLogs();
+        loadAuditLogs(currentPage);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [token]);
+    }, [token, currentPage]);
 
     const statusIcons: Record<string, React.ReactNode> = {
         success: <div className="w-2 h-2 rounded-full bg-emerald-500" />,
@@ -129,16 +132,11 @@ const AuditPage = () => {
         return matchesSearch && matchesType;
     });
 
-    const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+    const totalPages = Math.max(1, Math.ceil(totalLogs / ITEMS_PER_PAGE));
 
     useEffect(() => {
         setCurrentPage(1);
     }, [searchQuery, filterType]);
-
-    const paginated = filtered.slice(
-        (currentPage - 1) * ITEMS_PER_PAGE,
-        currentPage * ITEMS_PER_PAGE
-    );
 
     const formatTime = (ts: string) => {
         const d = new Date(ts);
@@ -160,11 +158,13 @@ const AuditPage = () => {
                 </div>
                 <div className="flex items-center gap-3 sm:justify-end">
                     <Button
-                        onClick={loadAuditLogs}
+                        onClick={() => loadAuditLogs(currentPage)}
                         variant="glass"
-                        className="h-10 px-4 rounded-xl text-[11px] font-semibold"
+                        className="h-10 px-4 rounded-xl text-[11px] font-semibold text-white border-white/20 hover:border-white/35"
                         disabled={isLoading}
+                        title="Reload the current audit page."
                     >
+                        <RefreshCcw className={`w-3.5 h-3.5 mr-1.5 ${isLoading ? 'animate-spin' : ''}`} />
                         {isLoading ? 'Syncing...' : 'Refresh'}
                     </Button>
                     <Button
@@ -177,6 +177,7 @@ const AuditPage = () => {
                             URL.revokeObjectURL(url);
                         }}
                         className="h-10 px-5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-[11px] font-semibold tracking-[0.18em] uppercase transition-all hover:shadow-lg hover:shadow-orange-500/30 active:scale-[0.97]"
+                        title="Export current filtered rows to CSV."
                     >
                         <Download className="w-3.5 h-3.5 mr-1.5" /> Export CSV
                     </Button>
@@ -199,6 +200,7 @@ const AuditPage = () => {
                         <button
                             key={t} onClick={() => setFilterType(t)}
                             className={`h-8 px-3 rounded-lg text-[11px] font-semibold capitalize transition-all flex items-center gap-1.5 border active:scale-95 ${filterType === t ? 'bg-orange-500/15 text-orange-400 border-orange-500/20' : 'bg-white/[0.03] text-zinc-400 border-white/[0.08] hover:bg-white/[0.06] hover:text-white hover:border-white/[0.15]'}`}
+                            title={`Filter by ${t} events`}
                         >
                             {t !== 'all' && <div className={`w-1.5 h-1.5 rounded-full ${typeDotColors[t] || 'bg-zinc-500'}`} />}
                             {t}
@@ -212,7 +214,7 @@ const AuditPage = () => {
                 <div className="hidden sm:grid grid-cols-[80px_1fr_1fr_140px_160px_30px] gap-4 px-6 py-3 border-b border-white/[0.1] text-[10px] text-zinc-500 font-bold uppercase tracking-wider">
                     <span>Type</span><span>Event</span><span>User</span><span>IP Address</span><span>Time</span><span></span>
                 </div>
-                {paginated.map((log) => (
+                {filtered.map((log) => (
                     <div key={log.id} className="group flex flex-col hover:bg-white/[0.02] transition-colors cursor-pointer" onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)}>
                         <div className="grid grid-cols-1 sm:grid-cols-[80px_1fr_1fr_140px_160px_30px] gap-2 sm:gap-4 items-center px-6 py-4">
                             <Badge className={`text-[9px] font-semibold px-2 py-0.5 border ${typeColors[log.type]} w-fit`}>{log.type}</Badge>
@@ -269,11 +271,11 @@ const AuditPage = () => {
                     <span>
                         Showing{' '}
                         <span className="text-zinc-300">
-                            {(currentPage - 1) * ITEMS_PER_PAGE + 1}
+                            {totalLogs === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1}
                             {'-'}
-                            {Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)}
+                            {Math.min(currentPage * ITEMS_PER_PAGE, totalLogs)}
                         </span>{' '}
-                        of <span className="text-zinc-300">{filtered.length}</span> events
+                        of <span className="text-zinc-300">{totalLogs}</span> events
                     </span>
                     <div className="flex items-center gap-1.5">
                         <button
@@ -283,23 +285,13 @@ const AuditPage = () => {
                         >
                             Prev
                         </button>
-                        {Array.from({ length: totalPages }).map((_, idx) => {
-                            const page = idx + 1;
-                            const active = page === currentPage;
-                            return (
-                                <button
-                                    key={page}
-                                    onClick={() => setCurrentPage(page)}
-                                    className={`h-7 min-w-[28px] px-2 rounded-lg text-xs font-semibold transition-colors ${
-                                        active
-                                            ? 'bg-orange-600 text-white'
-                                            : 'border border-white/[0.08] bg-white/[0.02] text-zinc-400 hover:bg-white/[0.08]'
-                                    }`}
-                                >
-                                    {page}
-                                </button>
-                            );
-                        })}
+                        <button
+                            className="h-7 min-w-[52px] px-2 rounded-lg text-xs font-semibold transition-colors bg-orange-600 text-white"
+                            title="Current page"
+                        >
+                            {currentPage}
+                        </button>
+                        <span className="text-zinc-600">/ {totalPages}</span>
                         <button
                             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                             disabled={currentPage === totalPages}
