@@ -4,6 +4,7 @@ import {
     BookOpen,
     Search,
     Filter,
+    SlidersHorizontal,
     Building2,
     Clock,
     ChevronRight,
@@ -19,8 +20,18 @@ import { useNavigate } from 'react-router-dom';
 import { authApi, type CourseDirectoryItem, type FacultySummary } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 type ViewMode = 'grid' | 'list';
+type NoticeFilter = 'all' | 'with_updates' | 'without_updates';
+type FacultyFilter = 'all' | 'mapped' | 'unmapped';
+type SortBy = 'recent' | 'title_asc' | 'code_asc';
 
 type DisplayFaculty = {
     id: string;
@@ -28,6 +39,7 @@ type DisplayFaculty = {
     subtitle: string;
     isSynthetic: boolean;
     avatarSeed: string;
+    avatar_url?: string | null;
 };
 
 type CourseWithFaculty = CourseDirectoryItem & {
@@ -87,6 +99,7 @@ const toDisplayFaculty = (teacher: FacultySummary): DisplayFaculty => ({
     subtitle: teacher.program || teacher.department || 'Faculty',
     isSynthetic: false,
     avatarSeed: teacher.id || teacher.full_name || 'faculty',
+    avatar_url: teacher.avatar_url || null,
 });
 
 const buildFallbackFaculty = (course: CourseDirectoryItem, count: number): DisplayFaculty[] => {
@@ -109,6 +122,10 @@ const buildFallbackFaculty = (course: CourseDirectoryItem, count: number): Displ
 export default function CoursesPage() {
     const [view, setView] = useState<ViewMode>('grid');
     const [searchQuery, setSearchQuery] = useState('');
+    const [departmentFilter, setDepartmentFilter] = useState<string>('all');
+    const [noticeFilter, setNoticeFilter] = useState<NoticeFilter>('all');
+    const [facultyFilter, setFacultyFilter] = useState<FacultyFilter>('all');
+    const [sortBy, setSortBy] = useState<SortBy>('recent');
     const [courses, setCourses] = useState<CourseDirectoryItem[]>([]);
     const [faculty, setFaculty] = useState<FacultySummary[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -207,19 +224,56 @@ export default function CoursesPage() {
         [courses, facultyById]
     );
 
-    const filteredCourses = useMemo(
-        () =>
-            normalizedCourses.filter((course) => {
-                const q = searchQuery.toLowerCase().trim();
-                if (!q) return true;
-                return (
-                    (course.title || '').toLowerCase().includes(q) ||
-                    (course.code || '').toLowerCase().includes(q) ||
-                    (course.department || '').toLowerCase().includes(q)
-                );
-            }),
-        [normalizedCourses, searchQuery]
-    );
+    const filteredCourses = useMemo(() => {
+        const filtered = normalizedCourses.filter((course) => {
+            const q = searchQuery.toLowerCase().trim();
+            const queryMatch = !q || (
+                (course.title || '').toLowerCase().includes(q) ||
+                (course.code || '').toLowerCase().includes(q) ||
+                (course.department || '').toLowerCase().includes(q)
+            );
+            const dept = String(course.department || '').trim().toLowerCase();
+            const deptMatch = departmentFilter === 'all' || dept === departmentFilter;
+
+            const hasUpdates = (course.notice_count || 0) > 0;
+            const noticeMatch =
+                noticeFilter === 'all' ||
+                (noticeFilter === 'with_updates' && hasUpdates) ||
+                (noticeFilter === 'without_updates' && !hasUpdates);
+
+            const hasMappedFaculty = (course.faculty?.length || 0) > 0;
+            const facultyMatch =
+                facultyFilter === 'all' ||
+                (facultyFilter === 'mapped' && hasMappedFaculty) ||
+                (facultyFilter === 'unmapped' && !hasMappedFaculty);
+
+            return queryMatch && deptMatch && noticeMatch && facultyMatch;
+        });
+
+        const sorted = [...filtered];
+        sorted.sort((a, b) => {
+            if (sortBy === 'title_asc') return (a.title || '').localeCompare(b.title || '');
+            if (sortBy === 'code_asc') return (a.code || '').localeCompare(b.code || '');
+
+            const aDate = a.next_update_at ? new Date(a.next_update_at).getTime() : 0;
+            const bDate = b.next_update_at ? new Date(b.next_update_at).getTime() : 0;
+            return bDate - aDate;
+        });
+        return sorted;
+    }, [normalizedCourses, searchQuery, departmentFilter, noticeFilter, facultyFilter, sortBy]);
+
+    const departmentOptions = useMemo(() => {
+        const values = Array.from(
+            new Set(
+                normalizedCourses
+                    .map((course) => String(course.department || '').trim())
+                    .filter(Boolean)
+            )
+        )
+            .sort((a, b) => a.localeCompare(b))
+            .map((value) => ({ value: value.toLowerCase(), label: value }));
+        return values;
+    }, [normalizedCourses]);
 
     const openInChat = (course: CourseDirectoryItem, mode: 'syllabus' | 'details') => {
         const prefill =
@@ -246,7 +300,12 @@ export default function CoursesPage() {
             <div className="p-6 md:p-8 space-y-8 pb-20 max-w-7xl mx-auto">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-gradient-to-br from-zinc-900/90 to-zinc-900/40 p-5 md:p-6">
                     <div>
-                        <h1 className="text-2xl font-black text-white tracking-tight">Curriculum Directory</h1>
+                        <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
+                            <span className="w-7 h-7 rounded-lg border border-orange-500/25 bg-orange-500/10 text-orange-300 flex items-center justify-center">
+                                <BookOpen className="w-4 h-4" />
+                            </span>
+                            Curriculum Directory
+                        </h1>
                         <p className="text-zinc-500 text-sm mt-1">
                             Dynamic course feed from uploaded documents, with mapped faculty and live updates.
                         </p>
@@ -283,7 +342,7 @@ export default function CoursesPage() {
                     </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-4 items-center">
+                <div className="flex flex-col gap-3">
                     <div className="relative flex-1 w-full">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                         <input
@@ -294,15 +353,91 @@ export default function CoursesPage() {
                             className="w-full bg-white/[0.03] border border-white/[0.06] rounded-2xl py-3.5 pl-11 pr-4 text-sm text-white placeholder:text-zinc-700 focus:outline-none focus:border-orange-500/30 focus:bg-white/[0.05] transition-all"
                         />
                     </div>
-                    <Button
-                        variant="outline"
-                        onClick={() => setSearchQuery('')}
-                        title="Clear search filter"
-                        className="h-12 px-6 border-white/[0.08] bg-white/[0.03] text-zinc-300 hover:text-white rounded-2xl flex items-center gap-2 font-semibold text-xs"
-                    >
-                        <Filter className="w-4 h-4" />
-                        CLEAR FILTER
-                    </Button>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="w-full">
+                            <HoverTooltip content="Filter by department">
+                                <div className="relative">
+                                    <SlidersHorizontal className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none z-10" />
+                                    <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                                        <SelectTrigger className="pl-10">
+                                            <SelectValue placeholder="All departments" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">All departments</SelectItem>
+                                            {departmentOptions.map((dept) => (
+                                                <SelectItem key={dept.value} value={dept.value}>
+                                                    {dept.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </HoverTooltip>
+                        </div>
+
+                        <div className="w-full">
+                            <HoverTooltip content="Filter by notice availability">
+                                <Select value={noticeFilter} onValueChange={(value) => setNoticeFilter(value as NoticeFilter)}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="All notice states" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All notice states</SelectItem>
+                                        <SelectItem value="with_updates">With updates</SelectItem>
+                                        <SelectItem value="without_updates">No updates</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </HoverTooltip>
+                        </div>
+
+                        <div className="w-full">
+                            <HoverTooltip content="Filter by faculty mapping">
+                                <Select value={facultyFilter} onValueChange={(value) => setFacultyFilter(value as FacultyFilter)}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="All faculty mappings" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All faculty mappings</SelectItem>
+                                        <SelectItem value="mapped">Mapped faculty</SelectItem>
+                                        <SelectItem value="unmapped">Unmapped faculty</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </HoverTooltip>
+                        </div>
+
+                        <div className="w-full">
+                            <HoverTooltip content="Sort course list">
+                                <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortBy)}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Sort courses" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="recent">Latest updates</SelectItem>
+                                        <SelectItem value="title_asc">Title A-Z</SelectItem>
+                                        <SelectItem value="code_asc">Course code A-Z</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </HoverTooltip>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end">
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setSearchQuery('');
+                                setDepartmentFilter('all');
+                                setNoticeFilter('all');
+                                setFacultyFilter('all');
+                                setSortBy('recent');
+                            }}
+                            title="Clear all filters"
+                            className="h-11 px-5 border-white/[0.08] bg-white/[0.03] text-zinc-300 hover:text-white rounded-xl flex items-center gap-2 font-semibold text-xs"
+                        >
+                            <Filter className="w-4 h-4" />
+                            CLEAR FILTERS
+                        </Button>
+                    </div>
                 </div>
 
                 {isLoading && <div className="text-sm text-zinc-500">Loading course directory...</div>}
@@ -360,7 +495,11 @@ export default function CoursesPage() {
                                                                 swatch
                                                             )}
                                                         >
-                                                            {initialsFromName(member.full_name)}
+                                                            {member.avatar_url ? (
+                                                                <img src={member.avatar_url} alt={member.full_name} className="w-full h-full rounded-xl object-cover" />
+                                                            ) : (
+                                                                initialsFromName(member.full_name)
+                                                            )}
                                                         </div>
                                                         <div className="min-w-0 flex-1 text-left">
                                                             <p className="text-xs text-zinc-200 font-semibold truncate">{member.full_name}</p>
@@ -453,7 +592,11 @@ export default function CoursesPage() {
                                                                 swatch
                                                             )}
                                                         >
-                                                            {initialsFromName(member.full_name)}
+                                                            {member.avatar_url ? (
+                                                                <img src={member.avatar_url} alt={member.full_name} className="w-full h-full rounded-md object-cover" />
+                                                            ) : (
+                                                                initialsFromName(member.full_name)
+                                                            )}
                                                         </div>
                                                         <span className="text-[10px] font-semibold text-zinc-300 truncate max-w-[140px]">
                                                             {member.full_name}
