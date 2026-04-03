@@ -2,6 +2,7 @@ import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
+import { HoverTooltip } from "@/components/ui/tooltip";
 
 const buttonVariants = cva(
     "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-semibold tracking-normal transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
@@ -44,15 +45,26 @@ export interface ButtonProps
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-    ({ className, variant, size, asChild = false, ...props }, ref) => {
+    ({ className, variant, size, asChild = false, title, ...props }, ref) => {
         const Comp = asChild ? Slot : "button";
-        return (
+        const ariaLabel =
+            (props as React.ButtonHTMLAttributes<HTMLButtonElement>)["aria-label"] ||
+            (typeof title === "string" ? title : undefined);
+
+        const buttonNode = (
             <Comp
                 className={cn(buttonVariants({ variant, size, className }))}
                 ref={ref}
+                aria-label={ariaLabel}
                 {...props}
             />
         );
+
+        if (typeof title === "string" && title.trim().length > 0) {
+            return <HoverTooltip content={title}>{buttonNode}</HoverTooltip>;
+        }
+
+        return buttonNode;
     }
 );
 Button.displayName = "Button";
