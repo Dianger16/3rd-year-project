@@ -55,14 +55,16 @@ class ServeNoticeRequest(BaseModel):
     target: str = "students"  # students | faculty | both
     department: Optional[str] = None
     course: Optional[str] = None
+    attachment_document_id: Optional[str] = None
     tags: list[str] = []
 
 
 def get_allowed_upload_doc_types(role: str) -> list[str]:
     if role == UserRole.ADMIN.value:
-        return [doc.value for doc in DocType]
+        return [DocType.STUDENT.value, DocType.FACULTY.value, DocType.ADMIN.value]
     if role == UserRole.FACULTY.value:
-        return [DocType.STUDENT.value, DocType.FACULTY.value, DocType.PUBLIC.value]
+        # Faculty can only serve student-facing documents.
+        return [DocType.STUDENT.value]
     return []
 
 
@@ -84,32 +86,45 @@ def parse_document_timestamp(raw: Any) -> Optional[datetime.datetime]:
         return None
 
 
+def normalize_scope_value(raw: Any) -> str:
+    text = str(raw or "").strip().lower()
+    if not text:
+        return ""
+    normalized = "".join(ch if ch.isalnum() else " " for ch in text)
+    return " ".join(normalized.split())
+
+
 def is_document_relevant_for_user(doc: dict[str, Any], user: AuthenticatedUser) -> bool:
     doc_type = str(doc.get("doc_type") or "").strip().lower()
     role = str(user.role or "").strip().lower()
     if role == UserRole.ADMIN.value:
         allowed = True
     elif role == UserRole.FACULTY.value:
-        allowed = doc_type in {UserRole.FACULTY.value, UserRole.STUDENT.value, "public"}
+        allowed = doc_type in {UserRole.FACULTY.value, UserRole.STUDENT.value}
     else:
-        allowed = doc_type in {UserRole.STUDENT.value, "public"}
+        allowed = doc_type in {UserRole.STUDENT.value}
     if not allowed:
         return False
 
-    user_dept = (user.department or "").strip().lower()
-    user_program = (user.program or "").strip().lower()
-    doc_dept = str(doc.get("department") or "").strip().lower()
-    doc_course = str(doc.get("course") or "").strip().lower()
+    user_dept = normalize_scope_value(user.department)
+    user_program = normalize_scope_value(user.program)
+    doc_dept = normalize_scope_value(doc.get("department"))
+    doc_course = normalize_scope_value(doc.get("course"))
 
     if role == UserRole.ADMIN.value:
+        return True
+
+    # Faculty-scoped documents should remain visible to faculty even when
+    # optional department/program metadata is missing or not normalized.
+    if role == UserRole.FACULTY.value and doc_type == UserRole.FACULTY.value:
         return True
 
     if not doc_dept and not doc_course:
         return True
 
-    if user_dept and doc_dept and user_dept == doc_dept:
+    if user_dept and doc_dept and (user_dept == doc_dept or user_dept in doc_dept or doc_dept in user_dept):
         return True
-    if user_program and doc_course and user_program in doc_course:
+    if user_program and doc_course and (user_program in doc_course or doc_course in user_program):
         return True
     return False
 
@@ -158,7 +173,7 @@ async def preview_document(
     try:
         res = (
             supabase.table("documents")
-            .select("id,filename,doc_type,department,course,tags,uploaded_at,created_at,metadata")
+            .select("id,filename,doc_type,department,course,tags,uploaded_at,updated_at,metadata")
             .eq("id", document_id)
             .limit(1)
             .execute()
@@ -182,7 +197,7 @@ async def preview_document(
         raise HTTPException(status_code=403, detail="You are not allowed to preview this document.")
 
     metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
-    uploaded_at = row.get("uploaded_at") or row.get("created_at")
+    uploaded_at = row.get("uploaded_at") or row.get("updated_at")
     parsed_uploaded = parse_document_timestamp(uploaded_at)
     preview_limit = 8
     chunk_count = int(metadata.get("chunk_count") or 0)
@@ -241,6 +256,8 @@ async def preview_document(
         "is_notice": bool((metadata or {}).get("notice_type") == "served"),
         "notice_title": str((metadata or {}).get("notice_title") or "").strip() or None,
         "notice_message": str((metadata or {}).get("notice_message") or "").strip() or None,
+        "attachment_document_id": str((metadata or {}).get("attachment_document_id") or "").strip() or None,
+        "attachment_filename": str((metadata or {}).get("attachment_filename") or "").strip() or None,
     }
 
 @router.post("/admin/notices/serve")
@@ -249,6 +266,7 @@ async def serve_notice(
     user: AuthenticatedUser = Depends(require_roles(UserRole.ADMIN, UserRole.FACULTY)),
 ):
     ensure_supabase_available()
+    supabase = get_supabase_admin()
     title = str(body.title or "").strip()
     message = str(body.message or "").strip()
     if len(title) < 3:
@@ -263,11 +281,36 @@ async def serve_notice(
             detail="Faculty can send notices to students only.",
         )
 
+    attachment_document_id = str(body.attachment_document_id or "").strip() or None
+    attachment_filename: Optional[str] = None
+    if attachment_document_id:
+        try:
+            attachment_res = (
+                supabase.table("documents")
+                .select("id,filename,doc_type,department,course")
+                .eq("id", attachment_document_id)
+                .limit(1)
+                .execute()
+            )
+        except Exception as exc:
+            if is_network_error(exc):
+                raise HTTPException(
+                    status_code=503,
+                    detail="Cannot reach Supabase. Check SUPABASE_URL, DNS/VPN, or your internet connection.",
+                )
+            raise
+        attachment_rows = attachment_res.data or []
+        if not attachment_rows:
+            raise HTTPException(status_code=400, detail="Attachment document not found.")
+        attachment_row = attachment_rows[0]
+        if not is_document_relevant_for_user(attachment_row, user):
+            raise HTTPException(status_code=403, detail="Attachment is outside your access scope.")
+        attachment_filename = str(attachment_row.get("filename") or "Attachment")
+
     selected_doc_types = notice_doc_types_for_target(target)
     department = str(body.department or user.department or "").strip()
     course = str(body.course or "").strip()
     manual_tags = [str(tag).strip() for tag in (body.tags or []) if str(tag).strip()]
-    supabase = get_supabase_admin()
     audit_user_id = None if user.id.startswith("dummy-id-") else user.id
 
     created: list[dict[str, Any]] = []
@@ -306,6 +349,8 @@ async def serve_notice(
                 "served_by_email": user.email,
                 "served_at": now_iso,
                 "route_targets": route_targets,
+                "attachment_document_id": attachment_document_id,
+                "attachment_filename": attachment_filename,
             },
             "mime_type": "text/notice",
         }
@@ -374,22 +419,32 @@ async def list_served_notices(
     try:
         rows = (
             supabase.table("documents")
-            .select("id,filename,doc_type,department,course,tags,uploaded_at,created_at,metadata,uploader_id")
+            .select("id,filename,doc_type,department,course,tags,uploaded_at,updated_at,metadata,uploader_id")
             .contains("tags", ["served_notice"])
             .order("uploaded_at", desc=True)
             .limit(limit)
             .execute()
         ).data or []
     except Exception as exc:
-        if "uploaded_at" in str(exc).lower():
-            rows = (
-                supabase.table("documents")
-                .select("id,filename,doc_type,department,course,tags,uploaded_at,created_at,metadata,uploader_id")
-                .contains("tags", ["served_notice"])
-                .order("created_at", desc=True)
-                .limit(limit)
-                .execute()
-            ).data or []
+        lower = str(exc).lower()
+        if "uploaded_at" in lower or "created_at" in lower:
+            try:
+                rows = (
+                    supabase.table("documents")
+                    .select("id,filename,doc_type,department,course,tags,uploaded_at,updated_at,metadata,uploader_id")
+                    .contains("tags", ["served_notice"])
+                    .order("updated_at", desc=True)
+                    .limit(limit)
+                    .execute()
+                ).data or []
+            except Exception:
+                rows = (
+                    supabase.table("documents")
+                    .select("id,filename,doc_type,department,course,tags,uploaded_at,updated_at,metadata,uploader_id")
+                    .contains("tags", ["served_notice"])
+                    .limit(limit)
+                    .execute()
+                ).data or []
         else:
             raise
 
@@ -405,7 +460,9 @@ async def list_served_notices(
                 "doc_type": str(row.get("doc_type") or ""),
                 "department": row.get("department"),
                 "course": row.get("course"),
-                "uploaded_at": str(row.get("uploaded_at") or row.get("created_at") or ""),
+                "uploaded_at": str(row.get("uploaded_at") or row.get("updated_at") or ""),
+                "attachment_document_id": str(metadata.get("attachment_document_id") or "").strip() or None,
+                "attachment_filename": str(metadata.get("attachment_filename") or "").strip() or None,
             }
         )
 
@@ -782,12 +839,12 @@ async def list_documents(
             try:
                 res = query.range(offset, offset + per_page - 1).execute()
             except Exception as exc:
-                if "uploaded_at" in str(exc).lower():
+                if "uploaded_at" in str(exc).lower() or "created_at" in str(exc).lower():
                     fallback_query = (
                         supabase.table("documents")
                         .select("*", count="exact")
                         .in_("doc_type", allowed_types)
-                        .order("created_at", desc=True)
+                        .order("updated_at", desc=True)
                     )
                     if selected_doc_type:
                         fallback_query = fallback_query.eq("doc_type", selected_doc_type)
@@ -804,7 +861,7 @@ async def list_documents(
             rows_all = query.limit(1500).execute().data or []
             scoped_rows = [row for row in rows_all if is_document_relevant_for_user(row, user)]
             scoped_rows.sort(
-                key=lambda row: parse_document_timestamp(row.get("uploaded_at") or row.get("created_at"))
+                key=lambda row: parse_document_timestamp(row.get("uploaded_at") or row.get("updated_at"))
                 or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc),
                 reverse=True,
             )
@@ -824,7 +881,7 @@ async def list_documents(
             id=d["id"], filename=d["filename"], doc_type=DocType(d["doc_type"]),
             department=d.get("department"), course=d.get("course"), tags=d.get("tags", []),
             visibility=bool(d.get("visibility", True)),
-            uploaded_at=str(d.get("uploaded_at") or d.get("created_at") or "")
+            uploaded_at=str(d.get("uploaded_at") or d.get("updated_at") or "")
         ) for d in rows
     ]
 

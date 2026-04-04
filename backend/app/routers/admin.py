@@ -325,7 +325,7 @@ async def get_admin_metrics(
     except Exception:
         pass
 
-    doc_type_counts = {"public": 0, "student": 0, "faculty": 0, "admin": 0}
+    doc_type_counts = {"student": 0, "faculty": 0, "admin": 0}
     try:
         doc_rows = supabase.table("documents").select("doc_type").execute().data or []
         for d in doc_rows:
