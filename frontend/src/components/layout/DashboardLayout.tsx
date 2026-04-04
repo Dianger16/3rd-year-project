@@ -7,7 +7,7 @@ import { useLocation, useNavigate, Outlet } from 'react-router-dom';
 import {
     LayoutDashboard, LogOut, Bell,
     MessageSquare, FileText, Users, Shield, Settings,
-    BookOpen, ChevronRight, GraduationCap, ShieldAlert
+    BookOpen, ChevronRight, GraduationCap, ShieldAlert, Megaphone, CalendarDays
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/store/authStore';
@@ -30,7 +30,14 @@ export default function DashboardLayout() {
     const navigate = useNavigate();
 
     const role = user?.role || 'student';
-    const firstName = user?.full_name?.split(' ')[0] || 'there';
+    const normalizeDisplayName = (fullName?: string | null) => {
+        const raw = String(fullName || '').trim();
+        if (!raw) return 'there';
+        const stripped = raw.replace(/^(dr|mr|mrs|ms|prof)\.?\s+/i, '').trim();
+        const token = stripped.split(/\s+/).filter(Boolean)[0];
+        return token || 'there';
+    };
+    const firstName = normalizeDisplayName(user?.full_name);
 
     const navigation: Record<string, { label: string; href: string; icon: React.ReactNode }[]> = {
         student: [
@@ -44,10 +51,9 @@ export default function DashboardLayout() {
         faculty: [
             { label: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard className="w-5 h-5 shrink-0" /> },
             { label: 'Faculty AI', href: '/dashboard/chat', icon: <MessageSquare className="w-5 h-5 shrink-0" /> },
+            { label: 'Timetable', href: '/dashboard/timetable', icon: <CalendarDays className="w-5 h-5 shrink-0" /> },
             { label: 'Documents', href: '/dashboard/documents', icon: <FileText className="w-5 h-5 shrink-0" /> },
-            { label: 'Notices', href: '/dashboard/notices', icon: <Bell className="w-5 h-5 shrink-0" /> },
-            { label: 'Courses', href: '/dashboard/courses', icon: <BookOpen className="w-5 h-5 shrink-0" /> },
-            { label: 'Faculty', href: '/dashboard/faculty', icon: <GraduationCap className="w-5 h-5 shrink-0" /> },
+            { label: 'Notices', href: '/dashboard/notices', icon: <Megaphone className="w-5 h-5 shrink-0" /> },
             { label: 'Notifications', href: '/dashboard/notifications', icon: <Bell className="w-5 h-5 shrink-0" /> },
             { label: 'Settings', href: '/dashboard/settings', icon: <Settings className="w-5 h-5 shrink-0" /> },
         ],
@@ -56,7 +62,7 @@ export default function DashboardLayout() {
             { label: 'Admin AI', href: '/dashboard/chat', icon: <MessageSquare className="w-5 h-5 shrink-0" /> },
             { label: 'Users', href: '/dashboard/users', icon: <Users className="w-5 h-5 shrink-0" /> },
             { label: 'Documents', href: '/dashboard/documents', icon: <FileText className="w-5 h-5 shrink-0" /> },
-            { label: 'Notices', href: '/dashboard/notices', icon: <Bell className="w-5 h-5 shrink-0" /> },
+            { label: 'Notices', href: '/dashboard/notices', icon: <Megaphone className="w-5 h-5 shrink-0" /> },
             { label: 'Audit Logs', href: '/dashboard/audit', icon: <Shield className="w-5 h-5 shrink-0" /> },
             { label: 'Dean Desk', href: '/dashboard/dean', icon: <ShieldAlert className="w-5 h-5 shrink-0" /> },
             { label: 'Notifications', href: '/dashboard/notifications', icon: <Bell className="w-5 h-5 shrink-0" /> },
@@ -87,6 +93,7 @@ export default function DashboardLayout() {
         '/dashboard/documents': 'Upload, route, and manage document access',
         '/dashboard/upload': 'Upload, route, and manage document access',
         '/dashboard/notices': 'Send role-targeted notices to students and faculty',
+        '/dashboard/timetable': 'Weekly teaching schedule and class slots',
         '/dashboard/users': 'Manage accounts, roles, and status',
         '/dashboard/audit': 'Track platform activity and events',
         '/dashboard/dean': 'Review moderation appeals and restore user chat access',
@@ -179,30 +186,32 @@ export default function DashboardLayout() {
                 <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shrink-0 shadow-lg shadow-white/10">
                     <BrandLogo className="w-6 h-6 text-black" />
                 </div>
-                <motion.span
-                    initial={false}
-                    animate={{
-                        opacity: hovered ? 1 : 0,
-                        x: hovered ? 0 : -10,
-                        width: hovered ? 'auto' : 0,
-                    }}
-                    className="text-xl font-extrabold text-white tracking-tight leading-none whitespace-nowrap overflow-hidden"
-                    style={{ fontFamily: '"Bricolage Grotesque", sans-serif' }}
-                >
-                    Univ<span className="text-orange-500">GPT</span>
-                </motion.span>
+                <AnimatePresence initial={false}>
+                    {hovered && (
+                        <motion.span
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -10 }}
+                            transition={{ duration: 0.16 }}
+                            className="text-xl font-extrabold text-white tracking-tight leading-none whitespace-nowrap overflow-hidden pointer-events-none"
+                            style={{ fontFamily: '"Bricolage Grotesque", sans-serif' }}
+                        >
+                            Univ<span className="text-orange-500">GPT</span>
+                        </motion.span>
+                    )}
+                </AnimatePresence>
             </div>
         );
     };
 
     return (
-        <div className="flex min-h-screen w-full bg-[#050507] text-white">
+        <div className="flex h-screen w-full bg-[#050507] text-white overflow-hidden">
             {/* Sticky Sidebar */}
-            <div className="sticky top-0 h-screen shrink-0 z-50 bg-black">
+            <div className="sticky top-0 h-screen shrink-0 z-50 bg-black border-r border-white/[0.07]">
                 <Sidebar open={sidebarOpen} setOpen={setSidebarOpen}>
                     <SidebarBody className="justify-between gap-6 py-2">
                         {/* Top: Logo + Nav */}
-                        <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden scrollbar-none">
+                        <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden scrollbar-none" data-lenis-prevent="true">
                             {/* Brand Logo - Fixed at top of sidebar, Desktop Only */}
                             <SidebarBrand />
 
@@ -244,14 +253,17 @@ export default function DashboardLayout() {
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 flex flex-col min-w-0 pt-2 lg:pt-0 bg-black">
-                <div className="flex-1 flex flex-col min-w-0 bg-black overflow-hidden border-l border-t border-white/[0.07] relative">
-                    <header className="h-20 flex items-center justify-between px-6 md:px-8 shrink-0 relative z-40 border-b border-white/[0.06] bg-black">
+            <div className="flex-1 flex flex-col min-w-0 min-h-0 pt-0 bg-[#050507] overflow-hidden md:pr-2 md:pb-2">
+                <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-[#06070a] overflow-hidden relative md:rounded-tl-[30px] md:border-l md:border-t md:border-white/[0.07]">
+                    <header className="h-20 flex items-center justify-between px-6 md:px-8 shrink-0 relative z-40 lg:border-b lg:border-white/[0.06] bg-[#06070a]">
                         <div className="flex items-center gap-4">
                             {/* Mobile Brand Toggle */}
                             <button
                                 onClick={() => setSidebarOpen((prev) => !prev)}
-                                className="md:hidden flex items-center gap-3 shrink-0 active:scale-95 transition-all"
+                                className={cn(
+                                    "md:hidden flex items-center gap-3 shrink-0 active:scale-95 transition-all min-w-0",
+                                    sidebarOpen && "opacity-0 pointer-events-none",
+                                )}
                             >
                                 <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shrink-0 shadow-lg shadow-white/10">
                                     <BrandLogo className="w-6 h-6 text-black" />
@@ -303,7 +315,7 @@ export default function DashboardLayout() {
                                             initial={{ opacity: 0, y: 8, scale: 0.96 }}
                                             animate={{ opacity: 1, y: 0, scale: 1 }}
                                             exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                                            className="fixed sm:absolute right-4 left-4 sm:left-auto sm:right-0 top-20 sm:top-[calc(100%+0.5rem)] w-80 bg-zinc-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-[100] origin-top-right"
+                                            className="fixed sm:absolute left-0 right-0 sm:left-auto sm:right-0 top-20 sm:top-[calc(100%+0.5rem)] sm:w-80 bg-zinc-900 border-y border-white/10 sm:border sm:rounded-2xl shadow-2xl overflow-hidden z-[120] origin-top-right"
                                             data-lenis-prevent
                                         >
                                             <div className="px-4 py-3 border-b border-white/[0.06] flex items-center justify-between">
@@ -391,7 +403,10 @@ export default function DashboardLayout() {
                     </header>
 
                     {/* Native Scrollable Content */}
-                    <div className="flex-1 w-full mx-auto relative z-10">
+                    <div
+                        className="flex-1 min-h-0 w-full mx-auto relative z-10 overflow-y-auto overflow-x-hidden"
+                        data-lenis-prevent="true"
+                    >
                         <AnimatePresence mode="wait">
                             <motion.div
                                 key={location.pathname}
@@ -399,7 +414,7 @@ export default function DashboardLayout() {
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
                                 transition={{ duration: 0.15 }}
-                                className="h-full"
+                                className="min-h-full"
                             >
                                 <Outlet />
                             </motion.div>
