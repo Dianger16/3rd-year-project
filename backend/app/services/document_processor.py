@@ -119,6 +119,20 @@ def derive_route_targets(doc_type: str) -> list[str]:
     return ["admin"]
 
 
+def derive_route_targets_from_metadata(doc_type: str, metadata: dict | None = None) -> list[str]:
+    payload = metadata if isinstance(metadata, dict) else {}
+    raw_targets = payload.get("route_targets")
+    if isinstance(raw_targets, list):
+        normalized = []
+        for value in raw_targets:
+            text = str(value or "").strip().lower()
+            if text and text not in normalized:
+                normalized.append(text)
+        if normalized:
+            return normalized
+    return derive_route_targets(doc_type)
+
+
 # â”€â”€â”€ Text Chunking â”€â”€â”€
 
 
@@ -225,7 +239,7 @@ async def process_document(
         tags=tags,
         metadata=metadata,
     )
-    route_targets = derive_route_targets(doc_type)
+    route_targets = derive_route_targets_from_metadata(doc_type, metadata)
 
     # 1. Extract & Chunk text
     try:
