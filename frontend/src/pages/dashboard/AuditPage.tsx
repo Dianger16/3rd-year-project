@@ -88,6 +88,7 @@ const AuditPage = () => {
 
     const loadAuditLogs = async (page = currentPage) => {
         if (!token) return;
+        const startedAt = Date.now();
         setIsLoading(true);
         try {
             const response = await adminApi.getAuditLogs(token, page, ITEMS_PER_PAGE);
@@ -117,7 +118,9 @@ const AuditPage = () => {
             setLogs([]);
             setTotalLogs(0);
         } finally {
-            setIsLoading(false);
+            const elapsed = Date.now() - startedAt;
+            const remaining = Math.max(0, 220 - elapsed);
+            window.setTimeout(() => setIsLoading(false), remaining);
         }
     };
 
@@ -125,6 +128,13 @@ const AuditPage = () => {
         loadAuditLogs(currentPage);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [token, currentPage]);
+
+    const goToPage = (nextPage: number) => {
+        if (isLoading) return;
+        if (nextPage < 1 || nextPage > totalPages) return;
+        setIsLoading(true);
+        setCurrentPage(nextPage);
+    };
 
     const statusIcons: Record<string, React.ReactNode> = {
         success: <div className="w-2 h-2 rounded-full bg-emerald-500" />,
@@ -299,8 +309,8 @@ const AuditPage = () => {
                     </span>
                     <div className="flex items-center gap-1.5">
                         <button
-                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                            disabled={currentPage === 1}
+                            onClick={() => goToPage(currentPage - 1)}
+                            disabled={currentPage === 1 || isLoading}
                             className="h-7 px-2 rounded-lg border border-white/[0.08] bg-white/[0.02] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] text-xs font-medium"
                         >
                             Prev
@@ -312,8 +322,8 @@ const AuditPage = () => {
                         </HoverTooltip>
                         <span className="text-zinc-600">/ {totalPages}</span>
                         <button
-                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                            disabled={currentPage === totalPages}
+                            onClick={() => goToPage(currentPage + 1)}
+                            disabled={currentPage === totalPages || isLoading}
                             className="h-7 px-2 rounded-lg border border-white/[0.08] bg-white/[0.02] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] text-xs font-medium"
                         >
                             Next

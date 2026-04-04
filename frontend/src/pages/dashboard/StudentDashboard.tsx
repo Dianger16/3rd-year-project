@@ -65,6 +65,14 @@ const toRelativeTime = (value?: string) => {
     return `${days}d ago`;
 };
 
+const normalizeDisplayName = (fullName?: string | null) => {
+    const raw = String(fullName || '').trim();
+    if (!raw) return 'Student';
+    const stripped = raw.replace(/^(dr|mr|mrs|ms|prof)\.?\s+/i, '').trim();
+    if (!stripped) return 'Student';
+    return stripped;
+};
+
 const isNoticeDoc = (doc: DocumentResponse) => {
     const name = (doc.filename || '').toLowerCase();
     const tags = (doc.tags || []).map((tag) => tag.toLowerCase());
@@ -112,7 +120,7 @@ const buildFallbackFacultyCards = (program?: string | null): FacultyCard[] => {
 export default function StudentDashboard() {
     const { user, token } = useAuthStore();
     const navigate = useNavigate();
-    const firstName = user?.full_name?.split(' ')[0] || 'Student';
+    const displayName = normalizeDisplayName(user?.full_name);
 
     const [exportData, setExportData] = useState<UserExportData | null>(null);
     const [documents, setDocuments] = useState<DocumentResponse[]>([]);
@@ -214,17 +222,24 @@ export default function StudentDashboard() {
         },
         {
             label: 'Query Count',
-            value: exportData ? String(exportData.queries) : '--',
+            value: exportData ? String(exportData.queries) : '0',
             hint: 'From your account history',
             icon: Activity,
             color: 'text-orange-400',
         },
         {
             label: 'Accessible Docs',
-            value: exportData ? String(exportData.documents) : '--',
-            hint: 'Role-based document access',
+            value: String(Math.max(Number(exportData?.documents || 0), documents.length)),
+            hint: 'Live role-scoped documents',
             icon: FileText,
             color: 'text-sky-400',
+        },
+        {
+            label: 'Recent Notices',
+            value: String(Math.max(Number(exportData?.notices || 0), notices.length)),
+            hint: 'Last 30-day notice feed',
+            icon: Bell,
+            color: 'text-violet-400',
         },
         {
             label: 'Profile Semester',
@@ -246,13 +261,10 @@ export default function StudentDashboard() {
                             <GraduationCap className="w-3.5 h-3.5 text-orange-400" /> Student Workspace
                         </div>
                         <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-tight">
-                            Welcome, <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-300">{firstName}</span>
+                            Welcome <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-300">{displayName}</span>
                         </h1>
                         <p className="text-zinc-400 text-sm max-w-xl">
                             Live academic dashboard for notices, faculty contacts, and assistant-driven study actions.
-                        </p>
-                        <p className="text-zinc-500 text-xs max-w-xl">
-                            Welcome back, {firstName}. Your latest academic snapshot is ready.
                         </p>
                     </div>
 

@@ -13,17 +13,20 @@ import { useToastStore } from '@/store/toastStore';
 type AppealFilter = 'pending' | 'approved' | 'rejected' | 'all';
 
 export default function DeanAppealsPage() {
-    const { token } = useAuthStore();
+    const { token, user } = useAuthStore();
     const { showToast } = useToastStore();
     const [filter, setFilter] = useState<AppealFilter>('pending');
     const [appeals, setAppeals] = useState<DeanAppealItem[]>([]);
     const [loading, setLoading] = useState(false);
+    const [isPaginating, setIsPaginating] = useState(false);
     const [actingUserId, setActingUserId] = useState<string | null>(null);
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 6;
 
     const loadAppeals = async () => {
         if (!token) return;
+        if ((user?.role || '').toLowerCase() !== 'admin') return;
+        const startedAt = Date.now();
         try {
             setLoading(true);
             const res = await adminApi.getDeanAppeals(token, filter, 200);
@@ -31,14 +34,27 @@ export default function DeanAppealsPage() {
         } catch (err) {
             showToast((err as Error)?.message || 'Failed to load appeals.', 'error');
         } finally {
-            setLoading(false);
+            const elapsed = Date.now() - startedAt;
+            const remaining = Math.max(0, 220 - elapsed);
+            window.setTimeout(() => setLoading(false), remaining);
         }
     };
 
     useEffect(() => {
+        if ((user?.role || '').toLowerCase() !== 'admin') return;
         loadAppeals();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [token, filter]);
+    }, [token, filter, user?.role]);
+
+    if ((user?.role || '').toLowerCase() !== 'admin') {
+        return (
+            <div className="h-full overflow-y-auto px-4 sm:px-8 py-5 sm:py-8">
+                <div className="max-w-5xl mx-auto rounded-2xl border border-white/10 bg-zinc-900/50 p-6 text-sm text-zinc-400">
+                    Admin access required.
+                </div>
+            </div>
+        );
+    }
 
     useEffect(() => {
         setCurrentPage(1);
@@ -57,6 +73,16 @@ export default function DeanAppealsPage() {
             ),
         [appeals, currentPage],
     );
+
+    const goToPage = (nextPage: number) => {
+        if (loading || isPaginating) return;
+        if (nextPage < 1 || nextPage > totalPages) return;
+        setIsPaginating(true);
+        window.setTimeout(() => {
+            setCurrentPage(nextPage);
+            setIsPaginating(false);
+        }, 140);
+    };
 
     const runAction = async (userId: string, action: 'approve' | 'reject' | 'reset') => {
         if (!token) return;
@@ -127,7 +153,7 @@ export default function DeanAppealsPage() {
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-black/30 overflow-hidden">
-                    {loading ? (
+                    {(loading || isPaginating) ? (
                         <div className="px-6 py-6 space-y-4">
                             {Array.from({ length: 4 }).map((_, idx) => (
                                 <div key={`appeal-skeleton-${idx}`} className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 space-y-3">
@@ -259,8 +285,8 @@ export default function DeanAppealsPage() {
                         </span>
                         <div className="flex items-center gap-1.5">
                             <button
-                                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                                disabled={currentPage === 1}
+                                onClick={() => goToPage(currentPage - 1)}
+                                disabled={currentPage === 1 || loading || isPaginating}
                                 className="h-7 px-2 rounded-lg border border-white/[0.08] bg-white/[0.02] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] text-xs font-medium"
                             >
                                 Prev
@@ -270,8 +296,8 @@ export default function DeanAppealsPage() {
                             </button>
                             <span className="text-zinc-600">/ {totalPages}</span>
                             <button
-                                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                                disabled={currentPage === totalPages}
+                                onClick={() => goToPage(currentPage + 1)}
+                                disabled={currentPage === totalPages || loading || isPaginating}
                                 className="h-7 px-2 rounded-lg border border-white/[0.08] bg-white/[0.02] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] text-xs font-medium"
                             >
                                 Next

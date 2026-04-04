@@ -12,6 +12,7 @@ import { HoverTooltip } from '@/components/ui/tooltip';
 import { adminApi, type UserProfile, type UserActivityReportNoticeResponse, type UserActivityReportPreviewResponse } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
+import { useNavigate } from 'react-router-dom';
 
 type RoleType = 'student' | 'faculty' | 'admin';
 
@@ -47,11 +48,13 @@ const statusFromProfile = (profile: UserProfile): 'active' | 'inactive' => {
 };
 
 const UsersPage = () => {
-    const { token } = useAuthStore();
+    const { token, user } = useAuthStore();
     const { showToast } = useToastStore();
+    const navigate = useNavigate();
     const [users, setUsers] = useState<UserProfile[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [isPaginating, setIsPaginating] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
@@ -70,6 +73,7 @@ const UsersPage = () => {
 
     const loadUsers = async () => {
         if (!token) return;
+        if ((user?.role || '').toLowerCase() !== 'admin') return;
         setIsLoading(true);
         try {
             const res = await adminApi.getUsers(token, 1, 100);
@@ -83,9 +87,24 @@ const UsersPage = () => {
     };
 
     useEffect(() => {
+        if ((user?.role || '').toLowerCase() !== 'admin') {
+            navigate('/dashboard', { replace: true });
+            return;
+        }
+        if ((user?.role || '').toLowerCase() !== 'admin') return;
         loadUsers();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [token]);
+    }, [token, user?.role, navigate]);
+
+    if ((user?.role || '').toLowerCase() !== 'admin') {
+        return (
+            <div className="h-full overflow-y-auto p-5 md:p-8">
+                <div className="max-w-4xl mx-auto rounded-2xl border border-white/[0.08] bg-zinc-900/50 p-6 text-sm text-zinc-400">
+                    Admin access required.
+                </div>
+            </div>
+        );
+    }
 
     const filtered = useMemo(() => {
         const q = searchQuery.trim().toLowerCase();
@@ -113,6 +132,16 @@ const UsersPage = () => {
         (currentPage - 1) * ITEMS_PER_PAGE,
         currentPage * ITEMS_PER_PAGE,
     );
+
+    const goToPage = (nextPage: number) => {
+        if (isLoading || isPaginating) return;
+        if (nextPage < 1 || nextPage > totalPages) return;
+        setIsPaginating(true);
+        window.setTimeout(() => {
+            setCurrentPage(nextPage);
+            setIsPaginating(false);
+        }, 140);
+    };
 
     const stats = useMemo(() => {
         const base = users;
@@ -214,7 +243,7 @@ const UsersPage = () => {
                         {isLoading ? 'Syncing users...' : `${filtered.length} users found`}
                     </p>
                 </div>
-                <div className="flex flex-col xs:flex-row items-stretch xs:items-center gap-2 w-full sm:w-auto">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                     <div className="relative group/search">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600 group-focus-within/search:text-orange-400 transition-colors" />
                         <input
@@ -255,12 +284,12 @@ const UsersPage = () => {
                             Generate a user activity report from live query logs and send a dynamic notice email to all users.
                         </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full sm:w-auto sm:min-w-0">
                         <Button
                             onClick={handlePreviewRecipients}
                             disabled={isPreviewingReport}
                             variant="outline"
-                            className="h-10 rounded-xl border-white/15 bg-white/[0.03] hover:bg-white/[0.07] text-xs font-bold px-4 text-white"
+                            className="h-10 rounded-xl border-white/15 bg-white/[0.03] hover:bg-white/[0.07] text-xs font-bold px-4 text-white w-full whitespace-nowrap"
                         >
                             <Eye className="w-4 h-4 mr-2" />
                             {isPreviewingReport ? 'Previewing...' : 'Preview Recipients'}
@@ -268,7 +297,7 @@ const UsersPage = () => {
                         <Button
                             onClick={handleGenerateNotice}
                             disabled={isGeneratingReport}
-                            className="h-10 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-bold px-5 transition-all hover:shadow-lg hover:shadow-orange-500/20 active:scale-95 text-white"
+                            className="h-10 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-bold px-5 transition-all hover:shadow-lg hover:shadow-orange-500/20 active:scale-95 text-white w-full whitespace-nowrap"
                         >
                             <BarChart3 className="w-4 h-4 mr-2" />
                             {isGeneratingReport ? 'Generating...' : 'Generate & Send'}
@@ -328,7 +357,7 @@ const UsersPage = () => {
                             <div>
                                 <p className="text-xs font-semibold text-white">Recipient Preview</p>
                                 <p className="text-[11px] text-zinc-500">
-                                    {reportPreview.recipients_total} total recipients â€¢ showing first {reportPreview.preview_recipients.length}
+                                    {reportPreview.recipients_total} total recipients - showing first {reportPreview.preview_recipients.length}
                                 </p>
                             </div>
                             <div className="text-[11px] text-zinc-500">
@@ -388,7 +417,7 @@ const UsersPage = () => {
                     <span>Actions</span>
                 </div>
                 <div className="divide-y divide-white/[0.04]">
-                    {isLoading && (
+                    {(isLoading || isPaginating) && (
                         <div className="px-5 py-4 space-y-3">
                             {Array.from({ length: 6 }).map((_, idx) => (
                                 <div key={`users-skeleton-${idx}`} className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_80px_80px_90px_70px] gap-2 sm:gap-3 items-center py-2.5">
@@ -408,10 +437,10 @@ const UsersPage = () => {
                             ))}
                         </div>
                     )}
-                    {!isLoading && filtered.length === 0 && (
+                    {!isLoading && !isPaginating && filtered.length === 0 && (
                         <div className="px-5 py-10 text-sm text-zinc-500">No users found in the database.</div>
                     )}
-                    {!isLoading && paginatedUsers.map((user, idx) => {
+                    {!isLoading && !isPaginating && paginatedUsers.map((user, idx) => {
                         const role = roleValue(user.role);
                         const status = statusFromProfile(user);
                         const avatar =
@@ -429,7 +458,64 @@ const UsersPage = () => {
                                 transition={{ delay: idx * 0.02 }}
                                 className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_80px_80px_90px_70px] gap-2 sm:gap-3 items-center px-5 py-3 hover:bg-white/[0.02] transition-colors"
                             >
-                                <div className="flex items-center gap-3 min-w-0">
+                                <div className="sm:hidden rounded-xl border border-white/[0.06] bg-black/30 p-3 space-y-2.5">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-500/20 to-amber-500/20 flex items-center justify-center shrink-0">
+                                                {avatar ? (
+                                                    <img
+                                                        src={avatar}
+                                                        alt="User avatar"
+                                                        className="w-full h-full rounded-full object-cover"
+                                                    />
+                                                ) : (
+                                                    <span className="text-[10px] font-bold text-orange-400">
+                                                        {(user.full_name || user.email || 'U').charAt(0).toUpperCase()}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="text-xs font-medium text-white truncate">{user.full_name || 'User'}</div>
+                                                <div className="text-[10px] text-zinc-600 truncate">{user.email || 'No email'}</div>
+                                            </div>
+                                        </div>
+                                        <HoverTooltip content="Edit user">
+                                            <button
+                                                onClick={() => openEditModal(user)}
+                                                className="w-8 h-8 rounded-lg border border-white/10 hover:border-orange-500/40 hover:bg-white/5 flex items-center justify-center text-zinc-500 hover:text-orange-400 transition-colors shrink-0"
+                                            >
+                                                <Edit2 className="w-3.5 h-3.5" />
+                                            </button>
+                                        </HoverTooltip>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="text-[10px] text-zinc-500">
+                                            Department
+                                            <div className="text-zinc-300 mt-0.5 truncate">{user.department || 'Not set'}</div>
+                                        </div>
+                                        <div className="text-[10px] text-zinc-500">
+                                            Joined
+                                            <div className="text-zinc-300 mt-0.5">{formatJoined(user.created_at)}</div>
+                                        </div>
+                                        <div className="text-[10px] text-zinc-500">
+                                            Role
+                                            <div className="mt-1">
+                                                <Badge className={`text-[9px] font-semibold px-2 py-0.5 border capitalize w-fit ${roleColors[role]}`}>
+                                                    {role}
+                                                </Badge>
+                                            </div>
+                                        </div>
+                                        <div className="text-[10px] text-zinc-500">
+                                            Status
+                                            <div className="flex items-center gap-1.5 mt-1">
+                                                <div className={`w-1.5 h-1.5 rounded-full ${status === 'active' ? 'bg-emerald-500' : 'bg-zinc-600'}`} />
+                                                <span className="text-[10px] text-zinc-300 capitalize">{status}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="hidden sm:flex items-center gap-3 min-w-0">
                                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500/20 to-amber-500/20 flex items-center justify-center shrink-0">
                                         {avatar ? (
                                             <img
@@ -448,16 +534,16 @@ const UsersPage = () => {
                                         <div className="text-[10px] text-zinc-600 truncate">{user.email || 'No email'}</div>
                                     </div>
                                 </div>
-                                <span className="text-xs text-zinc-400 truncate">{user.department || 'Not set'}</span>
-                                <Badge className={`text-[9px] font-semibold px-2 py-0.5 border capitalize w-fit ${roleColors[role]}`}>
+                                <span className="hidden sm:inline text-xs text-zinc-400 truncate">{user.department || 'Not set'}</span>
+                                <Badge className={`hidden sm:inline-flex text-[9px] font-semibold px-2 py-0.5 border capitalize w-fit ${roleColors[role]}`}>
                                     {role}
                                 </Badge>
-                                <div className="flex items-center gap-1.5">
+                                <div className="hidden sm:flex items-center gap-1.5">
                                     <div className={`w-1.5 h-1.5 rounded-full ${status === 'active' ? 'bg-emerald-500' : 'bg-zinc-600'}`} />
                                     <span className="text-[10px] text-zinc-500 capitalize">{status}</span>
                                 </div>
-                                <span className="text-[10px] text-zinc-600">{formatJoined(user.created_at)}</span>
-                                <div className="flex items-center gap-1">
+                                <span className="hidden sm:inline text-[10px] text-zinc-600">{formatJoined(user.created_at)}</span>
+                                <div className="hidden sm:flex items-center gap-1">
                                     <HoverTooltip content="Edit user">
                                         <button
                                             onClick={() => openEditModal(user)}
@@ -486,8 +572,8 @@ const UsersPage = () => {
                     </span>
                     <div className="flex items-center gap-1.5">
                         <button
-                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                            disabled={currentPage === 1}
+                            onClick={() => goToPage(currentPage - 1)}
+                            disabled={currentPage === 1 || isPaginating}
                             className="h-7 px-2 rounded-lg border border-white/[0.08] bg-white/[0.02] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] text-xs font-medium"
                         >
                             Prev
@@ -501,8 +587,8 @@ const UsersPage = () => {
                         </HoverTooltip>
                         <span className="text-zinc-600">/ {totalPages}</span>
                         <button
-                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                            disabled={currentPage === totalPages}
+                            onClick={() => goToPage(currentPage + 1)}
+                            disabled={currentPage === totalPages || isPaginating}
                             className="h-7 px-2 rounded-lg border border-white/[0.08] bg-white/[0.02] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] text-xs font-medium"
                         >
                             Next
