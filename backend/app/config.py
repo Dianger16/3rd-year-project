@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     supabase_anon_key: str = ""
     supabase_service_role_key: str = ""
     supabase_jwt_secret: str = ""
+    supabase_storage_bucket: str = "documents"
     supabase_offline_mode: bool = False
     enable_dummy_auth: bool = False
 
