@@ -352,6 +352,17 @@ def normalize_user_settings(raw: Any) -> UserSettingsPayload:
     )
 
 
+def normalize_route_targets(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for entry in value:
+        text = str(entry or "").strip().lower()
+        if text and text not in result:
+            result.append(text)
+    return result
+
+
 def parse_timestamp(raw: Any) -> datetime | None:
     if not raw:
         return None
@@ -373,11 +384,46 @@ def slugify_course(value: str) -> str:
     return text.strip("-") or "general"
 
 
+def build_scope_variants(raw: Any) -> set[str]:
+    text = str(raw or "").strip().lower()
+    if not text:
+        return set()
+    normalized = "".join(ch if ch.isalnum() else " " for ch in text)
+    collapsed = " ".join(normalized.split())
+    if not collapsed:
+        return set()
+    parts = [part for part in collapsed.split(" ") if part]
+    variants = {collapsed, collapsed.replace(" ", "")}
+    if len(parts) > 1:
+        variants.add("".join(part[0] for part in parts))
+    return {variant for variant in variants if variant}
+
+
+def scope_matches(user_value: Any, doc_value: Any) -> bool:
+    user_variants = build_scope_variants(user_value)
+    doc_variants = build_scope_variants(doc_value)
+    if not user_variants or not doc_variants:
+        return False
+    if user_variants & doc_variants:
+        return True
+    for user_variant in user_variants:
+        for doc_variant in doc_variants:
+            if len(user_variant) >= 2 and len(doc_variant) >= 2 and (
+                user_variant in doc_variant or doc_variant in user_variant
+            ):
+                return True
+    return False
+
+
 def is_document_relevant_for_user(doc: dict[str, Any], user: AuthenticatedUser) -> bool:
     doc_type = str(doc.get("doc_type") or "").strip().lower()
     role = str(user.role or "").strip().lower()
+    metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+    route_targets = normalize_route_targets(metadata.get("route_targets"))
     if role == UserRole.ADMIN.value:
         allowed = True
+    elif route_targets:
+        allowed = role in route_targets
     elif role == UserRole.FACULTY.value:
         allowed = doc_type in {UserRole.FACULTY.value, UserRole.STUDENT.value}
     else:
@@ -385,20 +431,19 @@ def is_document_relevant_for_user(doc: dict[str, Any], user: AuthenticatedUser) 
     if not allowed:
         return False
 
-    def _normalize_scope_value(raw: Any) -> str:
-        text = str(raw or "").strip().lower()
-        if not text:
-            return ""
-        normalized = "".join(ch if ch.isalnum() else " " for ch in text)
-        return " ".join(normalized.split())
-
-    user_dept = _normalize_scope_value(user.department)
-    user_program = _normalize_scope_value(user.program)
-    doc_dept = _normalize_scope_value(doc.get("department"))
-    doc_course = _normalize_scope_value(doc.get("course"))
+    user_dept = str(user.department or "").strip()
+    user_program = str(user.program or "").strip()
+    doc_dept = str(doc.get("department") or "").strip()
+    doc_course = str(doc.get("course") or "").strip()
 
     if role == UserRole.ADMIN.value:
         return True
+
+    if route_targets:
+        if role not in route_targets:
+            return False
+        if not doc_dept and not doc_course:
+            return True
 
     # Faculty-scoped documents should remain visible to faculty even when
     # department/course metadata is missing or not normalized.
@@ -409,9 +454,13 @@ def is_document_relevant_for_user(doc: dict[str, Any], user: AuthenticatedUser) 
     if not doc_dept and not doc_course:
         return True
 
-    if user_dept and doc_dept and (user_dept == doc_dept or user_dept in doc_dept or doc_dept in user_dept):
+    if scope_matches(user_dept, doc_dept):
         return True
-    if user_program and doc_course and (user_program in doc_course or doc_course in user_program):
+    if scope_matches(user_program, doc_course):
+        return True
+    if scope_matches(user_dept, doc_course):
+        return True
+    if scope_matches(user_program, doc_dept):
         return True
     return False
 
