@@ -23,6 +23,13 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 type ChatRole = 'student' | 'faculty' | 'admin';
 
+const normalizeGreetingName = (fullName?: string | null, role?: ChatRole) => {
+    const raw = String(fullName || '').trim();
+    if (!raw) return role === 'faculty' ? 'Faculty' : 'there';
+    if (role === 'faculty') return raw;
+    return raw.split(/\s+/).filter(Boolean)[0] || 'there';
+};
+
 const CHAT_ROLE_UI: Record<ChatRole, {
     assistantTitle: string;
     emptySubtitle: string;
@@ -315,8 +322,8 @@ export default function ChatPage() {
         }
     };
 
-    const firstName = user?.full_name?.split(' ')[0] || 'there';
     const role = ((user?.role || 'student') as ChatRole);
+    const greetingName = normalizeGreetingName(user?.full_name, role);
     const chatScope = `dashboard-chat:${user?.id || 'anon'}:${role}`;
     const roleUI = CHAT_ROLE_UI[role] || CHAT_ROLE_UI.student;
     const isChatBlocked = Boolean(moderationState?.blocked);
@@ -362,7 +369,7 @@ export default function ChatPage() {
                             {/* Greeting */}
                             <div>
                                 <h2 className="text-3xl font-extrabold tracking-tight mb-3">
-                                    Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-400">{firstName}</span>
+                                    Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-400">{greetingName}</span>
                                 </h2>
                                 <p className="text-zinc-500 text-sm leading-relaxed max-w-md mx-auto">
                                     {roleUI.emptySubtitle}
