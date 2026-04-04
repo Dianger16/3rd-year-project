@@ -6,7 +6,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion';
 import { Upload, FileText, X, Check, AlertCircle, CloudUpload, Loader2, Pencil, Trash2, RefreshCw, Layers, FileUp, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Select } from '@/components/ui/auth-fuse';
+import { MultiSelect, Select } from '@/components/ui/auth-fuse';
 import { Skeleton } from '@/components/ui/skeleton';
 import { HoverTooltip } from '@/components/ui/tooltip';
 import { useAuthStore } from '@/store/authStore';
@@ -41,7 +41,7 @@ const UploadPage = () => {
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
     const [etaSeconds, setEtaSeconds] = useState<number | null>(null);
 
-    const [docType, setDocType] = useState('student');
+    const [selectedAudiences, setSelectedAudiences] = useState<string[]>(['student']);
     const [department, setDepartment] = useState(user?.department || '');
     const [course, setCourse] = useState('');
     const [tagsInput, setTagsInput] = useState('');
@@ -78,16 +78,18 @@ const UploadPage = () => {
     }, [files]);
 
     const docTypeOptions = useMemo(() => {
-        if (role === 'admin') return ['student', 'faculty', 'admin'];
+        if (role === 'admin') return ['student', 'faculty'];
         if (role === 'faculty') return ['student'];
         return ['student'];
     }, [role]);
 
     useEffect(() => {
-        if (!docTypeOptions.includes(docType)) {
-            setDocType(docTypeOptions[0]);
-        }
-    }, [docType, docTypeOptions]);
+        setSelectedAudiences((prev) => {
+            const next = prev.filter((value) => docTypeOptions.includes(value));
+            if (next.length > 0) return next;
+            return [docTypeOptions[0]];
+        });
+    }, [docTypeOptions]);
 
     useEffect(() => {
         setDepartment(user?.department || '');
@@ -222,6 +224,12 @@ const UploadPage = () => {
             .map((t) => t.trim())
             .filter(Boolean);
 
+    const primaryDocType = useMemo(() => {
+        if (selectedAudiences.includes('student')) return 'student';
+        if (selectedAudiences.includes('faculty')) return 'faculty';
+        return docTypeOptions[0];
+    }, [selectedAudiences, docTypeOptions]);
+
     const loadDocuments = useCallback(async () => {
         if (!token) return;
         setIsLoadingDocs(true);
@@ -264,7 +272,11 @@ const UploadPage = () => {
             showToast('Only admin and faculty can upload documents.', 'error');
             return;
         }
-        if (!docTypeOptions.includes(docType)) {
+        if (!selectedAudiences.length) {
+            showToast('Select at least one audience.', 'error');
+            return;
+        }
+        if (selectedAudiences.some((value) => !docTypeOptions.includes(value))) {
             showToast('Selected audience is not allowed for your role.', 'error');
             return;
         }
@@ -318,20 +330,17 @@ const UploadPage = () => {
 
             const formData = new FormData();
             formData.append('file', fileObj.file);
-            formData.append('doc_type', docType);
+            formData.append('doc_type', primaryDocType);
             formData.append('department', department);
             formData.append('course', course);
             formData.append('tags', JSON.stringify(tags));
+            formData.append('audiences', JSON.stringify(selectedAudiences));
             formData.append(
                 'metadata',
-                    JSON.stringify({
-                        upload_mode: mode,
-                        uploader_role: role,
-                    route_targets: docType === 'student'
-                        ? ['student', 'admin']
-                        : docType === 'faculty'
-                            ? ['faculty', 'admin']
-                            : ['admin'],
+                JSON.stringify({
+                    upload_mode: mode,
+                    uploader_role: role,
+                    route_targets: selectedAudiences,
                 })
             );
 
@@ -521,10 +530,11 @@ const UploadPage = () => {
                                 <div className="space-y-3">
                                     <label className="text-xs text-zinc-400 block">
                                     Audience
-                                    <Select
+                                    <MultiSelect
                                         id="upload-audience"
-                                        value={docType}
-                                        onValueChange={setDocType}
+                                        value={selectedAudiences}
+                                        onValueChange={setSelectedAudiences}
+                                        placeholder="Select audiences"
                                         className="mt-1.5 h-10 rounded-xl bg-black/40"
                                         options={docTypeOptions.map((opt) => ({
                                             value: opt,
@@ -941,6 +951,7 @@ const UploadPage = () => {
 
                 <DocumentPreviewModal
                     isOpen={isPreviewOpen}
+                    token={token}
                     previewDoc={previewDoc}
                     isLoading={isPreviewLoading}
                     pendingTitle={previewPendingTitle}
