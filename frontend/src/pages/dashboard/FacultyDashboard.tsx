@@ -66,6 +66,14 @@ const normalizeDisplayName = (fullName?: string | null) => {
     return stripped;
 };
 
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+const groupSlotsByDay = (slots: TimetableSlot[]) =>
+    DAYS.map((day) => ({
+        day,
+        slots: slots.filter((slot) => slot.day === day),
+    })).filter((entry) => entry.slots.length > 0);
+
 const isNoticeLike = (doc: DocumentResponse) => {
     const name = (doc.filename || '').toLowerCase();
     const tags = (doc.tags || []).map((tag) => tag.toLowerCase());
@@ -187,6 +195,8 @@ export default function FacultyDashboard() {
         return withDelta[0]?.slot || null;
     }, []);
 
+    const groupedTimetable = useMemo(() => groupSlotsByDay(WEEKLY_TIMETABLE), []);
+
     const metrics = [
         {
             label: 'Accessible Docs',
@@ -284,22 +294,50 @@ export default function FacultyDashboard() {
                             ))}
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {WEEKLY_TIMETABLE.map((slot) => (
-                                <div key={`${slot.day}-${slot.start}-${slot.course}`} className="rounded-xl border border-white/[0.06] bg-black/30 p-3">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-[10px] uppercase tracking-wider text-zinc-500">{slot.day}</span>
-                                        <span className="text-[11px] text-zinc-400 font-semibold">
-                                            {slot.start} - {slot.end}
-                                        </span>
+                        <>
+                            <div className="hidden md:grid md:grid-cols-2 xl:grid-cols-3 gap-3">
+                                {groupedTimetable.map((group) => (
+                                    <div key={group.day} className="rounded-2xl border border-white/[0.06] bg-black/25 p-3">
+                                        <div className="mb-3 flex items-center justify-between">
+                                            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{group.day}</span>
+                                            <span className="text-[10px] font-semibold text-zinc-600">{group.slots.length} class{group.slots.length > 1 ? 'es' : ''}</span>
+                                        </div>
+                                        <div className="space-y-2">
+                                            {group.slots.map((slot) => (
+                                                <div key={`${slot.day}-${slot.start}-${slot.course}`} className="rounded-xl border border-orange-500/15 bg-gradient-to-br from-orange-500/10 to-amber-500/5 p-3">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <p className="truncate text-sm font-semibold text-white">{slot.course}</p>
+                                                        <span className="shrink-0 text-[10px] font-semibold text-zinc-300">{slot.start}-{slot.end}</span>
+                                                    </div>
+                                                    <p className="mt-1 text-[11px] text-zinc-500">{slot.room} | {slot.type}</p>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
-                                    <p className="text-sm font-semibold text-white mt-1 truncate">{slot.course}</p>
-                                    <p className="text-[11px] text-zinc-500 mt-1">
-                                        {slot.room} - {slot.type}
-                                    </p>
-                                </div>
-                            ))}
-                        </div>
+                                ))}
+                            </div>
+                            <div className="flex gap-3 overflow-x-auto pb-2 md:hidden snap-x snap-mandatory">
+                                {groupedTimetable.map((group) => (
+                                    <div key={group.day} className="min-w-[260px] snap-start rounded-2xl border border-white/[0.06] bg-black/25 p-3">
+                                        <div className="mb-3 flex items-center justify-between">
+                                            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{group.day}</span>
+                                            <span className="text-[10px] font-semibold text-zinc-600">{group.slots.length} class{group.slots.length > 1 ? 'es' : ''}</span>
+                                        </div>
+                                        <div className="space-y-2">
+                                            {group.slots.map((slot) => (
+                                                <div key={`${slot.day}-${slot.start}-${slot.course}`} className="rounded-xl border border-orange-500/15 bg-gradient-to-br from-orange-500/10 to-amber-500/5 p-3">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <p className="truncate text-sm font-semibold text-white">{slot.course}</p>
+                                                        <span className="shrink-0 text-[10px] font-semibold text-zinc-300">{slot.start}-{slot.end}</span>
+                                                    </div>
+                                                    <p className="mt-1 text-[11px] text-zinc-500">{slot.room} | {slot.type}</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </>
                     )}
                 </section>
 
