@@ -12,6 +12,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DocumentPreviewModal } from '@/components/ui/DocumentPreviewModal';
+import { NoticePreviewModal } from '@/components/ui/NoticePreviewModal';
 
 const formatDate = (value?: string | null) => {
     if (!value) return 'Unknown time';
@@ -28,6 +29,12 @@ const formatDate = (value?: string | null) => {
 
 const isUuidLike = (value: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
+const looksLikeNoticeItem = (item: UserNotificationItem) => {
+    const title = String(item.title || '').trim().toLowerCase();
+    if (!title) return false;
+    return !/\.(pdf|docx|txt|md|png|jpg|jpeg|webp|gif)$/i.test(title);
+};
 
 export default function NotificationsPage() {
     const { token, user } = useAuthStore();
@@ -53,6 +60,7 @@ export default function NotificationsPage() {
     const [isAttachmentLoading, setIsAttachmentLoading] = useState(false);
     const [previewPendingTitle, setPreviewPendingTitle] = useState('');
     const [previewPendingSubtitle, setPreviewPendingSubtitle] = useState('');
+    const [previewMode, setPreviewMode] = useState<'notice' | 'document'>('document');
     const [currentPage, setCurrentPage] = useState(1);
     const hasLoadedOnceRef = useRef(false);
     const ITEMS_PER_PAGE = 8;
@@ -64,13 +72,13 @@ export default function NotificationsPage() {
         currentPage * ITEMS_PER_PAGE,
     );
 
-    const loadNotifications = useCallback(async (force = false) => {
+    const loadNotifications = useCallback(async (force = false, silent = false) => {
         if (!token) {
             setItems([]);
             setIsLoading(false);
             return;
         }
-        if (!hasLoadedOnceRef.current || force) {
+        if (!silent && (!hasLoadedOnceRef.current || force)) {
             setIsLoading(!cachedNotifications || force);
         }
         try {
@@ -81,21 +89,26 @@ export default function NotificationsPage() {
             });
             setItems(filtered);
         } catch (err: any) {
-            showToast(err?.message || 'Failed to load notifications.', 'error');
-            setItems([]);
+            if (!silent || !items.length) {
+                showToast(err?.message || 'Failed to load notifications.', 'error');
+            }
+            if (!silent && !items.length) {
+                setItems([]);
+            }
         } finally {
-            setIsLoading(false);
+            if (!silent) setIsLoading(false);
             hasLoadedOnceRef.current = true;
         }
-    }, [token, showToast, user?.role]);
+    }, [token, showToast, isAdmin, cachedNotifications, items.length]);
 
     useEffect(() => {
         if (cachedNotifications) {
             hasLoadedOnceRef.current = true;
+            void loadNotifications(true, true);
             return;
         }
         loadNotifications();
-    }, [loadNotifications]);
+    }, [loadNotifications, cachedNotifications]);
 
     useEffect(() => {
         if (!token || unread <= 0) return;
@@ -176,6 +189,8 @@ export default function NotificationsPage() {
             openNotificationInChat(item);
             return;
         }
+        const nextMode = looksLikeNoticeItem(item) ? 'notice' : 'document';
+        setPreviewMode(nextMode);
         setPreviewPendingTitle(item.title);
         setPreviewPendingSubtitle(`${item.course || 'General'} · ${item.department || 'No department'} · notification`);
         setIsPreviewOpen(true);
@@ -266,7 +281,7 @@ export default function NotificationsPage() {
                                                 onClick={() => openNotification(item)}
                                                 className="shrink-0 h-8 px-3 rounded-lg border border-white/[0.12] bg-white/[0.03] hover:bg-white/[0.07] text-[11px] font-semibold text-orange-300 hover:text-orange-200 transition-colors"
                                             >
-                                                {item.id.startsWith('appeal') || item.id.startsWith('report:')
+                                                {item.id.startsWith('appeal') || item.id.startsWith('report:') || looksLikeNoticeItem(item)
                                                     ? 'Open Notice'
                                                     : 'Preview Document'}
                                             </button>
@@ -321,10 +336,10 @@ export default function NotificationsPage() {
                     </div>
                 )}
 
-                <DocumentPreviewModal
-                    isOpen={isPreviewOpen}
+                <NoticePreviewModal
+                    isOpen={isPreviewOpen && previewMode === 'notice'}
                     previewDoc={previewDoc}
-                    isLoading={isPreviewLoading}
+                    isLoading={isPreviewLoading && previewMode === 'notice'}
                     pendingTitle={previewPendingTitle}
                     pendingSubtitle={previewPendingSubtitle}
                     onClose={() => {
@@ -332,6 +347,48 @@ export default function NotificationsPage() {
                         setPreviewDoc(null);
                         setPreviewPendingTitle('');
                         setPreviewPendingSubtitle('');
+                        setPreviewMode('document');
+                    }}
+                    isAttachmentLoading={isAttachmentLoading}
+                    onOpenAttachment={
+                        previewDoc?.attachment_document_id
+                            ? async () => {
+                                  if (
+                                      !token ||
+                                      !previewDoc.attachment_document_id ||
+                                      isAttachmentLoading ||
+                                      !isUuidLike(previewDoc.attachment_document_id)
+                                  ) {
+                                      return;
+                                  }
+                                  setIsAttachmentLoading(true);
+                                  try {
+                                      setPreviewMode('document');
+                                      const attached = await documentsApi.preview(token, previewDoc.attachment_document_id);
+                                      setPreviewDoc(attached);
+                                  } catch (err: any) {
+                                      showToast(err?.message || 'Attachment preview is not available.', 'error');
+                                  } finally {
+                                      setIsAttachmentLoading(false);
+                                  }
+                              }
+                            : undefined
+                    }
+                />
+
+                <DocumentPreviewModal
+                    isOpen={isPreviewOpen && previewMode === 'document'}
+                    token={token}
+                    previewDoc={previewDoc}
+                    isLoading={isPreviewLoading && previewMode === 'document'}
+                    pendingTitle={previewPendingTitle}
+                    pendingSubtitle={previewPendingSubtitle}
+                    onClose={() => {
+                        setIsPreviewOpen(false);
+                        setPreviewDoc(null);
+                        setPreviewPendingTitle('');
+                        setPreviewPendingSubtitle('');
+                        setPreviewMode('document');
                     }}
                     isAttachmentLoading={isAttachmentLoading}
                     onOpenAttachment={
