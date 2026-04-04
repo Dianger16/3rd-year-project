@@ -109,6 +109,8 @@ const ProfilePage = () => {
     const isStudent = role === 'student';
     const isFaculty = role === 'faculty';
     const isAdmin = role === 'admin';
+    const cachedExport = token ? authApi.peekExportUserData(token) : null;
+    const cachedDocs = token ? documentsApi.peekList(token, { page: 1, per_page: 120 }) : null;
 
     const [isEditing, setIsEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -118,10 +120,12 @@ const ProfilePage = () => {
     const [formSemester, setFormSemester] = useState(user?.semester || '');
     const [formSection, setFormSection] = useState(user?.section || '');
     const [formRollNumber, setFormRollNumber] = useState(user?.roll_number || '');
-    const [exportData, setExportData] = useState<UserExportData | null>(null);
-    const [liveDocCount, setLiveDocCount] = useState(0);
-    const [liveNoticeCount, setLiveNoticeCount] = useState(0);
-    const [isLoadingStats, setIsLoadingStats] = useState(false);
+    const [exportData, setExportData] = useState<UserExportData | null>(cachedExport ?? null);
+    const [liveDocCount, setLiveDocCount] = useState(cachedDocs?.total || cachedDocs?.documents?.length || 0);
+    const [liveNoticeCount, setLiveNoticeCount] = useState(
+        (cachedDocs?.documents || []).filter(isNoticeLike).length,
+    );
+    const [isLoadingStats, setIsLoadingStats] = useState(!(cachedExport || cachedDocs));
 
     const profileImage = (user as any)?.profileImage || null;
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -139,7 +143,8 @@ const ProfilePage = () => {
         let alive = true;
         const loadStats = async () => {
             if (!token) return;
-            setIsLoadingStats(true);
+            const shouldShowLoading = !(cachedExport || cachedDocs);
+            if (shouldShowLoading) setIsLoadingStats(true);
             try {
                 const [exportResult, docsResult] = await Promise.allSettled([
                     authApi.exportUserData(token),
@@ -404,13 +409,12 @@ const ProfilePage = () => {
                     </div>
                 </motion.div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-                    <div className="space-y-5">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.05 }}
-                        className="rounded-2xl border border-white/[0.08] bg-zinc-900/50 p-5"
+                        className="rounded-2xl border border-white/[0.08] bg-zinc-900/50 p-5 lg:col-span-7"
                     >
                         <h2 className="text-sm font-semibold text-white mb-4">Personal Information</h2>
                         <div className="space-y-3">
@@ -534,13 +538,12 @@ const ProfilePage = () => {
                             ))}
                         </div>
                     </motion.div>
-                    </div>
 
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.1 }}
-                        className="space-y-5"
+                        className="space-y-5 lg:col-span-5"
                     >
                         <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/50 p-5">
                             <h2 className="text-sm font-semibold text-white mb-4">{detailPanelTitle}</h2>
@@ -574,11 +577,11 @@ const ProfilePage = () => {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
-                            <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/50 p-5">
+                        <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/50 p-5 space-y-5">
+                            <div>
                                 <h2 className="text-sm font-semibold text-white mb-4">Account Activity Snapshot</h2>
-                                <div className="grid grid-cols-1 gap-3">
-                                {statItems(exportData, liveDocCount, liveNoticeCount).map((stat) => (
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    {statItems(exportData, liveDocCount, liveNoticeCount).map((stat) => (
                                         <div
                                             key={stat.label}
                                             className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3"
@@ -597,9 +600,9 @@ const ProfilePage = () => {
                                 </div>
                             </div>
 
-                            <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/50 p-5">
+                            <div>
                                 <h2 className="text-sm font-semibold text-white mb-4">Account Presence</h2>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 content-start">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
                                         <div className="flex items-center gap-2 text-[11px] text-zinc-500">
                                             <span className={`w-5 h-5 rounded-md border flex items-center justify-center ${iconToneByLabel['Member Since']}`}>
@@ -651,33 +654,34 @@ const ProfilePage = () => {
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/50 p-5">
-                            <h2 className="text-sm font-semibold text-white mb-4">Role Snapshot</h2>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
-                                    <div className="text-[11px] text-zinc-500 uppercase tracking-wider">Workspace</div>
-                                    <div className="text-sm font-semibold text-white mt-1.5 capitalize">
-                                        {isAdmin ? 'Admin Operations' : isFaculty ? 'Faculty Operations' : 'Student Workspace'}
+                            <div>
+                                <h2 className="text-sm font-semibold text-white mb-4">Role Snapshot</h2>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
+                                        <div className="text-[11px] text-zinc-500 uppercase tracking-wider">Workspace</div>
+                                        <div className="text-sm font-semibold text-white mt-1.5 capitalize">
+                                            {isAdmin ? 'Admin Operations' : isFaculty ? 'Faculty Operations' : 'Student Workspace'}
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
-                                    <div className="text-[11px] text-zinc-500 uppercase tracking-wider">Primary Scope</div>
-                                    <div className="text-sm font-semibold text-white mt-1.5">
-                                        {user?.department || user?.program || 'Not specified'}
+                                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
+                                        <div className="text-[11px] text-zinc-500 uppercase tracking-wider">Primary Scope</div>
+                                        <div className="text-sm font-semibold text-white mt-1.5">
+                                            {user?.department || user?.program || 'Not specified'}
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3 sm:col-span-2">
-                                    <div className="text-[11px] text-zinc-500 uppercase tracking-wider">Role Status</div>
-                                    <div className="text-sm font-semibold text-white mt-1.5">
-                                        {user?.academic_verified
-                                            ? 'Account verified and active.'
-                                            : 'Verification pending. Limited actions may apply.'}
+                                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3 sm:col-span-2">
+                                        <div className="text-[11px] text-zinc-500 uppercase tracking-wider">Role Status</div>
+                                        <div className="text-sm font-semibold text-white mt-1.5">
+                                            {user?.academic_verified
+                                                ? 'Account verified and active.'
+                                                : 'Verification pending. Limited actions may apply.'}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
+
                     </motion.div>
                 </div>
             </div>
