@@ -138,20 +138,24 @@ export default function StudentDashboard() {
             const needsExport = !cachedExport;
             const needsDocs = !cachedDocs || suspiciousDocsCache;
             const needsFaculty = !cachedFaculty;
+            const shouldSilentRefresh = !needsExport && !needsDocs && !needsFaculty;
 
-            if (!needsExport && !needsDocs && !needsFaculty) {
-                setFacultyLoading(false);
-                return;
-            }
-
-            if (needsFaculty) setFacultyLoading(true);
+            if (needsFaculty || shouldSilentRefresh) setFacultyLoading(needsFaculty);
             try {
                 const [exportResult, docsResult, facultyResult] = await Promise.allSettled([
-                    needsExport ? authApi.exportUserData(token) : Promise.resolve(cachedExport),
+                    (needsExport || shouldSilentRefresh)
+                        ? authApi.exportUserData(token, { force: shouldSilentRefresh })
+                        : Promise.resolve(cachedExport),
                     needsDocs
                         ? documentsApi.list(token, { page: 1, per_page: 24 }, { force: suspiciousDocsCache })
-                        : Promise.resolve(cachedDocs),
-                    needsFaculty ? authApi.getFacultyDirectory(token, 12) : Promise.resolve(cachedFaculty),
+                        : shouldSilentRefresh
+                            ? documentsApi.list(token, { page: 1, per_page: 24 }, { force: true })
+                            : Promise.resolve(cachedDocs),
+                    needsFaculty
+                        ? authApi.getFacultyDirectory(token, 12)
+                        : shouldSilentRefresh
+                            ? authApi.getFacultyDirectory(token, 12, { force: true })
+                            : Promise.resolve(cachedFaculty),
                 ]);
 
                 if (!alive) return;
@@ -164,14 +168,14 @@ export default function StudentDashboard() {
                 }
                 if (facultyResult.status === 'fulfilled' && facultyResult.value) {
                     setFacultyMembers(facultyResult.value.faculty || []);
-                } else if (needsFaculty) {
+                } else if (needsFaculty && !shouldSilentRefresh) {
                     setFacultyMembers([]);
                 }
             } catch {
                 if (!alive) return;
-                if (needsExport && !cachedExport) setExportData(null);
-                if (needsDocs && !cachedDocs) setDocuments([]);
-                if (needsFaculty && !cachedFaculty) setFacultyMembers([]);
+                if (needsExport && !cachedExport && !shouldSilentRefresh) setExportData(null);
+                if (needsDocs && !cachedDocs && !shouldSilentRefresh) setDocuments([]);
+                if (needsFaculty && !cachedFaculty && !shouldSilentRefresh) setFacultyMembers([]);
             } finally {
                 if (alive) setFacultyLoading(false);
             }

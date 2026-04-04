@@ -98,21 +98,21 @@ export default function FacultyDashboard() {
             if (!token) return;
             const needsExport = !cachedExport;
             const needsDocs = !cachedDocs || suspiciousDocsCache;
-
-            if (!needsExport && !needsDocs) {
-                setIsLoading(false);
-                return;
-            }
+            const shouldSilentRefresh = !needsExport && !needsDocs;
 
             if (!cachedExport && !cachedDocs) {
                 setIsLoading(true);
             }
             try {
                 const [exportResult, docsResult] = await Promise.allSettled([
-                    needsExport ? authApi.exportUserData(token) : Promise.resolve(cachedExport),
+                    (needsExport || shouldSilentRefresh)
+                        ? authApi.exportUserData(token, { force: shouldSilentRefresh })
+                        : Promise.resolve(cachedExport),
                     needsDocs
                         ? documentsApi.list(token, { page: 1, per_page: 60 }, { force: suspiciousDocsCache })
-                        : Promise.resolve(cachedDocs),
+                        : shouldSilentRefresh
+                            ? documentsApi.list(token, { page: 1, per_page: 60 }, { force: true })
+                            : Promise.resolve(cachedDocs),
                 ]);
                 if (!alive) return;
 
@@ -124,8 +124,8 @@ export default function FacultyDashboard() {
                 }
             } catch {
                 if (!alive) return;
-                if (needsExport && !cachedExport) setExportData(null);
-                if (needsDocs && !cachedDocs) setDocuments([]);
+                if (needsExport && !cachedExport && !shouldSilentRefresh) setExportData(null);
+                if (needsDocs && !cachedDocs && !shouldSilentRefresh) setDocuments([]);
             } finally {
                 if (alive) setIsLoading(false);
             }
