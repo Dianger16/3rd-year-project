@@ -3,7 +3,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Upload, FileText, X, Check, AlertCircle, CloudUpload, Loader2, Pencil, Trash2, RefreshCw, Layers, FileUp, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/auth-fuse';
@@ -52,7 +52,12 @@ const UploadPage = () => {
     const [editDraft, setEditDraft] = useState<Partial<DocumentResponse>>({});
     const [isSaving, setIsSaving] = useState(false);
     const [previewDoc, setPreviewDoc] = useState<DocumentPreviewResponse | null>(null);
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+    const [previewPendingTitle, setPreviewPendingTitle] = useState('');
+    const [previewPendingSubtitle, setPreviewPendingSubtitle] = useState('');
+    const [deleteTarget, setDeleteTarget] = useState<DocumentResponse | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
     const [docsPage, setDocsPage] = useState(1);
     const DOCS_PER_PAGE = 8;
     const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -404,31 +409,45 @@ const UploadPage = () => {
         }
     };
 
-    const deleteDoc = async (id: string) => {
+    const requestDeleteDoc = (id: string) => {
+        const targetDoc = documents.find((doc) => doc.id === id) || null;
+        setDeleteTarget(targetDoc);
+    };
+
+    const deleteDoc = async () => {
         if (!token) return;
-        const targetDoc = documents.find((doc) => doc.id === id);
-        if (!window.confirm(`Delete "${targetDoc?.filename || 'this document'}"? This will remove it from listings and notices.`)) {
-            return;
-        }
+        if (!deleteTarget?.id) return;
+        setIsDeleting(true);
         try {
-            await documentsApi.delete(token, id);
-            setDocuments((prev) => prev.filter((doc) => doc.id !== id));
-            if (previewDoc?.id === id || previewDoc?.attachment_document_id === id) {
+            await documentsApi.delete(token, deleteTarget.id);
+            setDocuments((prev) => prev.filter((doc) => doc.id !== deleteTarget.id));
+            if (previewDoc?.id === deleteTarget.id || previewDoc?.attachment_document_id === deleteTarget.id) {
                 setPreviewDoc(null);
             }
+            setDeleteTarget(null);
             showToast('Document deleted.', 'success');
         } catch (err: any) {
             showToast(err.message || 'Failed to delete document.', 'error');
+        } finally {
+            setIsDeleting(false);
         }
     };
 
     const previewDocById = async (id: string) => {
         if (!token || isPreviewLoading) return;
+        const sourceDoc = documents.find((doc) => doc.id === id);
+        setPreviewPendingTitle(sourceDoc?.filename || 'Loading document...');
+        setPreviewPendingSubtitle(
+            `${sourceDoc?.course || 'General'} · ${sourceDoc?.department || 'No department'} · ${sourceDoc?.doc_type || 'document'}`,
+        );
+        setPreviewDoc(null);
+        setIsPreviewOpen(true);
         setIsPreviewLoading(true);
         try {
             const doc = await documentsApi.preview(token, id);
             setPreviewDoc(doc);
         } catch (err: any) {
+            setIsPreviewOpen(false);
             showToast(err.message || 'Preview is not available for this document yet.', 'error');
         } finally {
             setIsPreviewLoading(false);
@@ -769,7 +788,7 @@ const UploadPage = () => {
                                                 {canDeleteDocs && (
                                                     <HoverTooltip content="Delete document and remove it from live listings">
                                                         <button
-                                                            onClick={() => deleteDoc(doc.id)}
+                                                            onClick={() => requestDeleteDoc(doc.id)}
                                                             className="w-7 h-7 rounded-lg border border-white/10 hover:border-red-500/40 text-zinc-400 hover:text-red-300 flex items-center justify-center transition-all"
                                                         >
                                                             <Trash2 className="w-3.5 h-3.5" />
@@ -857,10 +876,81 @@ const UploadPage = () => {
                     )}
                 </div>
 
+                <AnimatePresence>
+                    {deleteTarget && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[210] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+                            onClick={() => !isDeleting && setDeleteTarget(null)}
+                        >
+                            <motion.div
+                                initial={{ scale: 0.96, y: 10 }}
+                                animate={{ scale: 1, y: 0 }}
+                                exit={{ scale: 0.96, y: 10 }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-6 space-y-5"
+                            >
+                                <div className="flex items-start gap-3">
+                                    <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center shrink-0">
+                                        <Trash2 className="w-5 h-5 text-red-400" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base font-bold text-white">Delete document?</h3>
+                                        <p className="text-sm text-zinc-400 mt-1 leading-relaxed">
+                                            Are you sure you want to delete <span className="text-white font-semibold break-all">{deleteTarget.filename}</span>?
+                                            This will remove it from listings, notices, and preview access.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-2">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        disabled={isDeleting}
+                                        onClick={() => setDeleteTarget(null)}
+                                        className="flex-1 h-10 rounded-xl border-white/10 text-white hover:bg-white/[0.08]"
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        disabled={isDeleting}
+                                        onClick={deleteDoc}
+                                        className="flex-1 h-10 rounded-xl bg-red-600 hover:bg-red-500 text-white"
+                                    >
+                                        {isDeleting ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                Deleting...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Trash2 className="w-4 h-4 mr-2" />
+                                                Delete
+                                            </>
+                                        )}
+                                    </Button>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
                 <DocumentPreviewModal
+                    isOpen={isPreviewOpen}
                     previewDoc={previewDoc}
                     isLoading={isPreviewLoading}
-                    onClose={() => setPreviewDoc(null)}
+                    pendingTitle={previewPendingTitle}
+                    pendingSubtitle={previewPendingSubtitle}
+                    onClose={() => {
+                        setIsPreviewOpen(false);
+                        setPreviewDoc(null);
+                        setPreviewPendingTitle('');
+                        setPreviewPendingSubtitle('');
+                    }}
                     onOpenAttachment={
                         previewDoc?.attachment_document_id
                             ? () => previewDocById(previewDoc.attachment_document_id as string)
