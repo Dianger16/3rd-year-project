@@ -13,6 +13,21 @@ const inflightCache = new Map<string, Promise<unknown>>();
 const API_CACHE_STORAGE_KEY = 'unigpt-api-response-cache-v1';
 let persistedCacheHydrated = false;
 
+const CACHE_TTL = {
+    userMe: 30 * 60_000,
+    userSettings: 20 * 60_000,
+    userNotifications: 15 * 60_000,
+    userFaculty: 30 * 60_000,
+    userCourses: 30 * 60_000,
+    userExportData: 30 * 60_000,
+    documentsList: 15 * 60_000,
+    servedNotices: 15 * 60_000,
+    adminUsers: 15 * 60_000,
+    adminAudit: 10 * 60_000,
+    adminDeanAppeals: 10 * 60_000,
+    adminMetrics: 15 * 60_000,
+} as const;
+
 interface RequestOptions {
     method?: string;
     body?: unknown;
@@ -211,7 +226,7 @@ export const authApi = {
     getMe: async (token: string) =>
         normalizeUserProfile(await cachedGet(
             buildCacheKey('user-me', token),
-            20_000,
+            CACHE_TTL.userMe,
             () => request<UserProfile>('/user/me', { token, timeoutMs: 20_000 }),
         )),
     updateProfile: async (
@@ -230,7 +245,7 @@ export const authApi = {
     getSettings: (token: string) =>
         cachedGet(
             buildCacheKey('user-settings', token),
-            30_000,
+            CACHE_TTL.userSettings,
             () => request<UserSettingsResponse>('/user/settings', { token }),
         ),
     peekSettings: (token: string) =>
@@ -249,7 +264,7 @@ export const authApi = {
         }
         return cachedGet(
             buildCacheKey('user-notifications', token, String(limit)),
-            25_000,
+            CACHE_TTL.userNotifications,
             () => request<UserNotificationListResponse>(endpoint, { token, timeoutMs: 30_000 }),
         );
     },
@@ -261,7 +276,7 @@ export const authApi = {
     getFacultyDirectory: (token: string, limit = 20) =>
         cachedGet(
             buildCacheKey('user-faculty', token, String(limit)),
-            60_000,
+            CACHE_TTL.userFaculty,
             async () => {
                 const res = await request<FacultyListResponse>(
                     `/user/faculty?limit=${encodeURIComponent(String(limit))}`,
@@ -279,7 +294,7 @@ export const authApi = {
     getCourseDirectory: (token: string, limit = 50) =>
         cachedGet(
             buildCacheKey('user-courses', token, String(limit)),
-            60_000,
+            CACHE_TTL.userCourses,
             () =>
                 request<CourseDirectoryResponse>(
                     `/user/courses?limit=${encodeURIComponent(String(limit))}`,
@@ -301,7 +316,7 @@ export const authApi = {
         }
         return cachedGet(
             buildCacheKey('user-export-data', token),
-            45_000,
+            CACHE_TTL.userExportData,
             () => request<UserExportData>('/user/export-data', { token, timeoutMs: 20_000 }),
         );
     },
@@ -330,7 +345,7 @@ export const documentsApi = {
         const endpoint = `/documents?${query.toString()}`;
         return cachedGet(
             buildCacheKey('documents-list', token, endpoint),
-            25_000,
+            CACHE_TTL.documentsList,
             () => request<DocumentListResponse>(endpoint, { token, timeoutMs: 25_000 }),
         );
     },
@@ -400,7 +415,7 @@ export const noticesApi = {
     listServed: (token: string, limit = 120) =>
         cachedGet(
             buildCacheKey('served-notices', token, String(limit)),
-            20_000,
+            CACHE_TTL.servedNotices,
             () =>
                 request<NoticeListResponse>(
                     `/admin/notices/served?limit=${encodeURIComponent(String(limit))}`,
@@ -428,7 +443,7 @@ export const adminApi = {
     getUsers: (token: string, page = 1, perPage = 100) =>
         cachedGet(
             buildCacheKey('admin-users', token, `${page}:${perPage}`),
-            45_000,
+            CACHE_TTL.adminUsers,
             async () => {
                 const res = await request<{ users: UserProfile[]; total: number; page: number; per_page: number }>(
                     `/admin/users?page=${encodeURIComponent(String(page))}&per_page=${encodeURIComponent(String(perPage))}`,
@@ -463,7 +478,7 @@ export const adminApi = {
     getAuditLogs: (token: string, page = 1, perPage = 20) =>
         cachedGet(
             buildCacheKey('admin-audit', token, `${page}:${perPage}`),
-            25_000,
+            CACHE_TTL.adminAudit,
             () => request<AuditLogListResponse>(
                 `/admin/audit?page=${encodeURIComponent(String(page))}&per_page=${encodeURIComponent(String(perPage))}`,
                 { token, timeoutMs: 25_000 },
@@ -476,7 +491,7 @@ export const adminApi = {
     getDeanAppeals: (token: string, status: 'pending' | 'approved' | 'rejected' | 'all' = 'pending', limit = 100) =>
         cachedGet(
             buildCacheKey('admin-dean-appeals', token, `${status}:${limit}`),
-            20_000,
+            CACHE_TTL.adminDeanAppeals,
             () => request<{ appeals: DeanAppealItem[]; total: number; status: string }>(
                 `/admin/dean/appeals?status=${encodeURIComponent(status)}&limit=${encodeURIComponent(String(limit))}`,
                 { token, timeoutMs: 25_000 },
@@ -552,7 +567,7 @@ export const systemApi = {
     metrics: (token: string) =>
         cachedGet(
             buildCacheKey('admin-metrics', token),
-            30_000,
+            CACHE_TTL.adminMetrics,
             () => request<MetricsResponse>('/admin/metrics', { token, timeoutMs: 25_000 }),
         ),
     peekMetrics: (token: string) =>
@@ -686,6 +701,9 @@ export interface DocumentPreviewResponse {
     course?: string | null;
     tags: string[];
     uploaded_at?: string | null;
+    mime_type?: string | null;
+    file_url?: string | null;
+    file_size?: number | null;
     chunk_count: number;
     chunks: DocumentPreviewChunk[];
     has_preview: boolean;
