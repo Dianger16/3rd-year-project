@@ -72,7 +72,7 @@ const Landing = () => {
 
     const testimonials = [
         {
-            quote: "UnivGPT changed how I study. Instead of spending hours digging through course portals, I just ask a question and get exactly what I need â€” with sources.",
+            quote: "UnivGPT changed how I study. Instead of spending hours digging through course portals, I just ask a question and get exactly what I need - with sources.",
             author: "Sarah Chen",
             role: "Computer Science, Class of 2026"
         },
@@ -266,8 +266,8 @@ const Landing = () => {
                             variants={fadeUp} initial="hidden" animate="visible" custom={0.2}
                             className="text-lg md:text-xl text-zinc-400 max-w-2xl mx-auto mb-10 leading-relaxed"
                         >
-                            UnivGPT connects students and faculty with institutional knowledge â€”
-                            course materials, policies, research papers â€” all through a single intelligent assistant.
+                            UnivGPT connects students and faculty with institutional knowledge -
+                            course materials, policies, research papers - all through a single intelligent assistant.
                         </motion.p>
 
                         <motion.div
@@ -358,7 +358,7 @@ const Landing = () => {
                                 Built for the modern campus
                             </h2>
                             <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
-                                From course guidance to research â€” UnivGPT is the single platform
+                                From course guidance to research - UnivGPT is the single platform
                                 that understands your entire university ecosystem.
                             </p>
                         </motion.div>
@@ -788,7 +788,7 @@ const Landing = () => {
                     </div>
 
                     <div className="pt-12 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-10">
-                        <p className="text-zinc-600 text-sm font-medium">Â© 2026 UnivGPT. Crafted for academics worldwide.</p>
+                        <p className="text-zinc-600 text-sm font-medium">© 2026 UnivGPT. Crafted for academics worldwide.</p>
 
                         <div className="flex items-center gap-4">
                             <div className="flex items-center gap-3 px-4 py-2 bg-emerald-500/5 rounded-full border border-emerald-500/10">

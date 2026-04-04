@@ -13,6 +13,7 @@ import AuthCallback from '@/pages/auth/AuthCallback';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import StudentDashboard from '@/pages/dashboard/StudentDashboard';
 import FacultyDashboard from '@/pages/dashboard/FacultyDashboard';
+import FacultyTimetablePage from '@/pages/dashboard/FacultyTimetablePage';
 import AdminDashboard from '@/pages/dashboard/AdminDashboard';
 import ChatPage from '@/pages/dashboard/ChatPage';
 import CoursesPage from '@/pages/dashboard/CoursesPage';
@@ -52,7 +53,8 @@ function RoleRoute({
 }) {
   const { user } = useAuthStore();
   if (!user) return <Navigate to="/auth/login" replace />;
-  if (!allowedRoles.includes((user.role as any) || 'student')) {
+  const role = String(user.role || 'student').toLowerCase() as 'student' | 'faculty' | 'admin';
+  if (!allowedRoles.includes(role)) {
     return <Navigate to="/dashboard" replace />;
   }
   return <>{children}</>;
@@ -69,8 +71,29 @@ function DashboardHome() {
 }
 
 export default function App() {
-  const { setSession, clearSession, isInitializing, finishInitializing } = useAuthStore();
+  const { setSession, clearSession, token, isInitializing, finishInitializing } = useAuthStore();
   const lastSyncedTokenRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+
+    const hardSyncProfile = async () => {
+      try {
+        const user = await authApi.getMe(token);
+        if (cancelled) return;
+        setSession(token, user);
+      } catch {
+        if (cancelled) return;
+        clearSession();
+      }
+    };
+
+    hardSyncProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, setSession, clearSession]);
 
   useEffect(() => {
     const syncSessionToBackend = async (session: any, fallbackName: string) => {
@@ -165,7 +188,14 @@ export default function App() {
             >
               <Route index element={<DashboardHome />} />
               <Route path="chat" element={<ChatPage />} />
-              <Route path="courses" element={<CoursesPage />} />
+              <Route
+                path="courses"
+                element={
+                  <RoleRoute allowedRoles={['student', 'admin']}>
+                    <CoursesPage />
+                  </RoleRoute>
+                }
+              />
               <Route
                 path="documents"
                 element={
@@ -191,6 +221,14 @@ export default function App() {
                 }
               />
               <Route
+                path="timetable"
+                element={
+                  <RoleRoute allowedRoles={['faculty']}>
+                    <FacultyTimetablePage />
+                  </RoleRoute>
+                }
+              />
+              <Route
                 path="users"
                 element={
                   <RoleRoute allowedRoles={['admin']}>
@@ -209,8 +247,22 @@ export default function App() {
               <Route path="settings" element={<SettingsPage />} />
               <Route path="profile" element={<ProfilePage />} />
               <Route path="notifications" element={<NotificationsPage />} />
-              <Route path="faculty" element={<FacultyDirectoryPage />} />
-              <Route path="faculty/:id" element={<FacultyProfilePage />} />
+              <Route
+                path="faculty"
+                element={
+                  <RoleRoute allowedRoles={['student']}>
+                    <FacultyDirectoryPage />
+                  </RoleRoute>
+                }
+              />
+              <Route
+                path="faculty/:id"
+                element={
+                  <RoleRoute allowedRoles={['student']}>
+                    <FacultyProfilePage />
+                  </RoleRoute>
+                }
+              />
               <Route
                 path="dean"
                 element={

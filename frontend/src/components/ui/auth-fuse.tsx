@@ -430,15 +430,15 @@ export function AuthUI({ signInContent = {}, signUpContent = {}, isSignIn, onTog
                     <div className="mb-12" />
                     <blockquote className="space-y-6 max-w-lg">
                         <p className="text-4xl md:text-5xl font-extrabold tracking-tight text-white leading-[1.1]" style={{ fontFamily: 'Bricolage Grotesque, sans-serif' }}>
-                            â€œ<Typewriter
+                            <Typewriter
                                 key={currentContent.quote.text}
                                 text={currentContent.quote.text}
                                 speed={40}
                                 className="inline"
-                            />â€
+                            />
                         </p>
                         <cite className="block text-[10px] font-bold tracking-[0.3em] uppercase text-orange-500/60 not-italic">
-                            â€” UnivGPT Platform
+                            - UnivGPT Platform
                         </cite>
                     </blockquote>
                 </div>
