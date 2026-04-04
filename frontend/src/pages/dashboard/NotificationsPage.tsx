@@ -11,6 +11,7 @@ import { useToastStore } from '@/store/toastStore';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
+import { DocumentPreviewModal } from '@/components/ui/DocumentPreviewModal';
 
 const formatDate = (value?: string | null) => {
     if (!value) return 'Unknown time';
@@ -25,13 +26,25 @@ const formatDate = (value?: string | null) => {
     });
 };
 
+const isUuidLike = (value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
 export default function NotificationsPage() {
     const { token, user } = useAuthStore();
     const { showToast } = useToastStore();
     const navigate = useNavigate();
     const location = useLocation();
-    const [items, setItems] = useState<UserNotificationItem[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
+    const role = String(user?.role || 'student').toLowerCase();
+    const isAdmin = role === 'admin';
+    const cachedNotifications = token ? authApi.peekNotifications(token, 100) : null;
+    const [items, setItems] = useState<UserNotificationItem[]>(
+        () =>
+            (cachedNotifications?.notifications || []).filter((item) => {
+                if (isAdmin) return true;
+                return !(item.id.startsWith('report:') || item.id.startsWith('appeal'));
+            }),
+    );
+    const [isLoading, setIsLoading] = useState(!cachedNotifications);
     const [isPaginating, setIsPaginating] = useState(false);
     const [focusedNotificationId, setFocusedNotificationId] = useState<string | null>(null);
     const [previewDoc, setPreviewDoc] = useState<DocumentPreviewResponse | null>(null);
@@ -55,15 +68,13 @@ export default function NotificationsPage() {
             return;
         }
         if (!hasLoadedOnceRef.current || force) {
-            setIsLoading(true);
+            setIsLoading(!cachedNotifications || force);
         }
         try {
             const data = await authApi.getNotifications(token, 100, { force });
-            const role = String(user?.role || 'student').toLowerCase();
-            const isAdmin = role === 'admin';
             const filtered = (data.notifications || []).filter((item) => {
                 if (isAdmin) return true;
-                return !(item.id.startsWith('report:') || item.id.startsWith('appeal:'));
+                return !(item.id.startsWith('report:') || item.id.startsWith('appeal'));
             });
             setItems(filtered);
         } catch (err: any) {
@@ -136,7 +147,7 @@ export default function NotificationsPage() {
     const openNotification = async (item: UserNotificationItem) => {
         const role = String(user?.role || 'student').toLowerCase();
         const isAdmin = role === 'admin';
-        if (item.id.startsWith('appeal:')) {
+        if (item.id.startsWith('appeal')) {
             if (!isAdmin) {
                 showToast('This notice is restricted to admin workflows.', 'error');
                 openNotificationInChat(item);
@@ -154,7 +165,7 @@ export default function NotificationsPage() {
             navigate('/dashboard/users');
             return;
         }
-        if (!token) {
+        if (!token || !isUuidLike(item.id)) {
             openNotificationInChat(item);
             return;
         }
@@ -244,7 +255,7 @@ export default function NotificationsPage() {
                                                 onClick={() => openNotification(item)}
                                                 className="shrink-0 h-8 px-3 rounded-lg border border-white/[0.12] bg-white/[0.03] hover:bg-white/[0.07] text-[11px] font-semibold text-orange-300 hover:text-orange-200 transition-colors"
                                             >
-                                                {item.id.startsWith('appeal:') || item.id.startsWith('report:')
+                                                {item.id.startsWith('appeal') || item.id.startsWith('report:')
                                                     ? 'Open Notice'
                                                     : 'Preview Document'}
                                             </button>
@@ -299,102 +310,35 @@ export default function NotificationsPage() {
                     </div>
                 )}
 
-                {previewDoc && (
-                    <div className="fixed inset-0 z-[180] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-                        <div className="w-full max-w-3xl rounded-2xl border border-white/[0.12] bg-zinc-950 shadow-2xl shadow-black/60 overflow-hidden">
-                            <div className="px-5 py-4 border-b border-white/[0.08] flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                    <p className="text-sm font-bold text-white truncate">
-                                        {previewDoc.notice_title || previewDoc.filename}
-                                    </p>
-                                    <p className="text-[11px] text-zinc-500 mt-0.5">
-                                        {previewDoc.course || 'General'} - {previewDoc.department || 'No department'} - {previewDoc.doc_type}
-                                    </p>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setPreviewDoc(null)}
-                                    className="h-8 px-3 rounded-lg border border-white/[0.12] bg-white/[0.03] hover:bg-white/[0.08] text-xs text-white"
-                                >
-                                    Close
-                                </button>
-                            </div>
-                            <div className="px-5 py-4">
-                                {isPreviewLoading ? (
-                                    <div className="space-y-3">
-                                        <Skeleton className="h-20 w-full rounded-xl" />
-                                        <Skeleton className="h-20 w-full rounded-xl" />
-                                        <Skeleton className="h-20 w-full rounded-xl" />
-                                    </div>
-                                ) : previewDoc.notice_message ? (
-                                    <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/8 px-4 py-4">
-                                        <div className="text-[10px] uppercase tracking-wider text-emerald-300 mb-2">Notice Message</div>
-                                        <p className="text-sm leading-relaxed text-zinc-100 whitespace-pre-wrap break-words">
-                                            {previewDoc.notice_message}
-                                        </p>
-                                    </div>
-                                ) : previewDoc.has_preview && previewDoc.chunks.length > 0 ? (
-                                    <div className="space-y-3 max-h-[58vh] overflow-y-auto pr-1">
-                                        {previewDoc.chunks.map((chunk) => (
-                                            <div key={`${previewDoc.id}-${chunk.chunk_index}`} className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
-                                                <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-1.5">Chunk {chunk.chunk_index + 1}</div>
-                                                <p className="text-sm leading-relaxed text-zinc-200 whitespace-pre-wrap break-words">{chunk.content}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-4">
-                                        <p className="text-sm text-zinc-300">Preview is not available for this document yet.</p>
-                                        <p className="text-xs text-zinc-500 mt-1">You can still open chat to summarize this notice.</p>
-                                    </div>
-                                )}
-                                <div className="mt-4 flex justify-end">
-                                    <div className="flex flex-wrap justify-end gap-2">
-                                        {previewDoc.attachment_document_id && (
-                                            <button
-                                                type="button"
-                                                onClick={async () => {
-                                                    if (!token || !previewDoc.attachment_document_id || isAttachmentLoading) return;
-                                                    setIsAttachmentLoading(true);
-                                                    try {
-                                                        const attached = await documentsApi.preview(token, previewDoc.attachment_document_id);
-                                                        setPreviewDoc(attached);
-                                                    } catch {
-                                                        showToast('Attachment preview is not available for your role scope.', 'error');
-                                                    } finally {
-                                                        setIsAttachmentLoading(false);
-                                                    }
-                                                }}
-                                                className="h-9 px-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/15 text-xs font-semibold text-cyan-200"
-                                            >
-                                                {isAttachmentLoading ? 'Opening...' : `Open Attachment${previewDoc.attachment_filename ? `: ${previewDoc.attachment_filename}` : ''}`}
-                                            </button>
-                                        )}
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const fakeItem: UserNotificationItem = {
-                                                    id: previewDoc.id,
-                                                    title: previewDoc.filename,
-                                                    message: `Summarize key points from ${previewDoc.filename}`,
-                                                    uploaded_at: previewDoc.uploaded_at || null,
-                                                    unread: false,
-                                                    course: previewDoc.course || null,
-                                                    department: previewDoc.department || null,
-                                                };
-                                                setPreviewDoc(null);
-                                                openNotificationInChat(fakeItem);
-                                            }}
-                                            className="h-9 px-3 rounded-lg border border-orange-500/30 bg-orange-500/10 hover:bg-orange-500/15 text-xs font-semibold text-orange-200"
-                                        >
-                                            Summarize in Chat
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <DocumentPreviewModal
+                    previewDoc={previewDoc}
+                    isLoading={isPreviewLoading}
+                    onClose={() => setPreviewDoc(null)}
+                    isAttachmentLoading={isAttachmentLoading}
+                    onOpenAttachment={
+                        previewDoc?.attachment_document_id
+                            ? async () => {
+                                  if (
+                                      !token ||
+                                      !previewDoc.attachment_document_id ||
+                                      isAttachmentLoading ||
+                                      !isUuidLike(previewDoc.attachment_document_id)
+                                  ) {
+                                      return;
+                                  }
+                                  setIsAttachmentLoading(true);
+                                  try {
+                                      const attached = await documentsApi.preview(token, previewDoc.attachment_document_id);
+                                      setPreviewDoc(attached);
+                                  } catch (err: any) {
+                                      showToast(err?.message || 'Attachment preview is not available.', 'error');
+                                  } finally {
+                                      setIsAttachmentLoading(false);
+                                  }
+                              }
+                            : undefined
+                    }
+                />
             </div>
         </div>
     );

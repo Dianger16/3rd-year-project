@@ -167,6 +167,13 @@ async def preview_document(
     user: AuthenticatedUser = Depends(get_current_user),
 ):
     ensure_supabase_available()
+    try:
+        uuid.UUID(str(document_id))
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid document id for preview.",
+        )
     allowed_types = get_allowed_doc_types(user.role)
     supabase = get_supabase_admin()
 
@@ -766,13 +773,19 @@ async def update_document(
 @router.delete("/admin/documents/{document_id}")
 async def delete_document(
     document_id: str,
-    user: AuthenticatedUser = Depends(require_roles(UserRole.ADMIN)),
+    user: AuthenticatedUser = Depends(require_roles(UserRole.ADMIN, UserRole.FACULTY)),
 ):
     ensure_supabase_available()
     audit_user_id = None if user.id.startswith("dummy-id-") else user.id
     supabase = get_supabase_admin()
     try:
-        existing = supabase.table("documents").select("id,filename,doc_type").eq("id", document_id).limit(1).execute()
+        existing = (
+            supabase.table("documents")
+            .select("id,filename,doc_type,department,course,uploader_id,metadata")
+            .eq("id", document_id)
+            .limit(1)
+            .execute()
+        )
     except Exception as exc:
         if is_network_error(exc):
             raise HTTPException(
@@ -784,6 +797,24 @@ async def delete_document(
         raise HTTPException(status_code=404, detail="Document not found")
 
     doc = existing.data[0]
+    if user.role == UserRole.FACULTY.value:
+        uploader_id = str(doc.get("uploader_id") or "").strip()
+        metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+        served_by_email = str(metadata.get("served_by_email") or "").strip().lower()
+        if not (
+            (uploader_id and uploader_id == user.id)
+            or (served_by_email and served_by_email == str(user.email or "").strip().lower())
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Faculty can delete only documents or notices they uploaded.",
+            )
+        if not is_document_relevant_for_user(doc, user):
+            raise HTTPException(
+                status_code=403,
+                detail="This document is outside your role scope.",
+            )
+
     try:
         supabase.table("documents").delete().eq("id", document_id).execute()
     except Exception as exc:

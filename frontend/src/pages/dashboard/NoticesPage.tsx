@@ -4,13 +4,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Megaphone, RefreshCw, Send, Clock3, Users } from 'lucide-react';
+import { Megaphone, RefreshCw, Send, Clock3, Users, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/auth-fuse';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
-import { documentsApi, noticesApi, type DocumentResponse, type ServedNoticeItem } from '@/lib/api';
+import { documentsApi, noticesApi, type DocumentPreviewResponse, type DocumentResponse, type ServedNoticeItem } from '@/lib/api';
+import { DocumentPreviewModal } from '@/components/ui/DocumentPreviewModal';
 
 const formatDate = (value?: string | null) => {
     if (!value) return 'Unknown time';
@@ -24,6 +25,9 @@ const formatDate = (value?: string | null) => {
         minute: '2-digit',
     });
 };
+
+const isUuidLike = (value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 
 export default function NoticesPage() {
     const { token, user } = useAuthStore();
@@ -44,6 +48,8 @@ export default function NoticesPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [items, setItems] = useState<ServedNoticeItem[]>([]);
     const [attachmentOptions, setAttachmentOptions] = useState<DocumentResponse[]>([]);
+    const [previewDoc, setPreviewDoc] = useState<DocumentPreviewResponse | null>(null);
+    const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
     const targetOptions = useMemo(
         () =>
@@ -64,12 +70,12 @@ export default function NoticesPage() {
     }, [role, target]);
 
     const loadNotices = useCallback(
-        async (force = false) => {
+        async (force = false, silent = false) => {
             if (!token || !canServe) {
                 setItems([]);
                 return;
             }
-            setIsLoading(true);
+            if (!silent) setIsLoading(true);
             try {
                 const res = await noticesApi.listServed(token, 180);
                 const sorted = [...(res.items || [])].sort((a, b) => {
@@ -80,15 +86,28 @@ export default function NoticesPage() {
                 setItems(sorted);
             } catch (err: any) {
                 if (force) showToast(err?.message || 'Failed to load notices.', 'error');
-                setItems([]);
+                if (!silent) setItems([]);
             } finally {
-                setIsLoading(false);
+                if (!silent) setIsLoading(false);
             }
         },
         [token, canServe, showToast],
     );
 
     useEffect(() => {
+        if (!token || !canServe) return;
+        const cachedNotices = noticesApi.peekListServed(token, 180);
+        if (cachedNotices?.items?.length) {
+            const sorted = [...(cachedNotices.items || [])].sort((a, b) => {
+                const aa = new Date(a.uploaded_at || 0).getTime();
+                const bb = new Date(b.uploaded_at || 0).getTime();
+                return bb - aa;
+            });
+            setItems(sorted);
+            setIsLoading(false);
+            loadNotices(false, true);
+            return;
+        }
         loadNotices();
     }, [loadNotices]);
 
@@ -96,6 +115,10 @@ export default function NoticesPage() {
         let active = true;
         const loadAttachmentOptions = async () => {
             if (!token || !canServe) return;
+            const cachedDocs = documentsApi.peekList(token, { page: 1, per_page: 120 });
+            if (active && cachedDocs?.documents?.length) {
+                setAttachmentOptions((cachedDocs.documents || []).slice(0, 120));
+            }
             try {
                 const response = await documentsApi.list(token, { page: 1, per_page: 120 });
                 if (!active) return;
@@ -110,6 +133,24 @@ export default function NoticesPage() {
             active = false;
         };
     }, [token, canServe]);
+
+    const previewDocument = useCallback(async (documentId: string) => {
+        if (!token || isPreviewLoading || !isUuidLike(documentId)) {
+            if (documentId && !isUuidLike(documentId)) {
+                showToast('This notice is not linked to a previewable document.', 'error');
+            }
+            return;
+        }
+        setIsPreviewLoading(true);
+        try {
+            const res = await documentsApi.preview(token, documentId);
+            setPreviewDoc(res);
+        } catch (err: any) {
+            showToast(err?.message || 'Preview is not available for this notice yet.', 'error');
+        } finally {
+            setIsPreviewLoading(false);
+        }
+    }, [token, isPreviewLoading, showToast]);
 
     const handleServeNotice = async () => {
         if (!token || !canServe || isSending) return;
@@ -323,8 +364,29 @@ export default function NoticesPage() {
                                                 </div>
                                             )}
                                         </div>
-                                        <div className="text-[10px] text-zinc-500 shrink-0 inline-flex items-center gap-1">
-                                            <Clock3 className="w-3 h-3" /> {formatDate(item.uploaded_at)}
+                                        <div className="shrink-0 flex flex-col items-end gap-2">
+                                            <div className="text-[10px] text-zinc-500 inline-flex items-center gap-1">
+                                                <Clock3 className="w-3 h-3" /> {formatDate(item.uploaded_at)}
+                                            </div>
+                                            <div className="flex flex-wrap justify-end gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => previewDocument(item.id)}
+                                                    className="h-8 px-3 rounded-lg border border-white/[0.12] bg-white/[0.03] hover:bg-white/[0.07] text-[11px] font-semibold text-orange-300 hover:text-orange-200 transition-colors inline-flex items-center gap-1.5"
+                                                >
+                                                    <Eye className="w-3.5 h-3.5" />
+                                                    Open Notice
+                                                </button>
+                                                {item.attachment_document_id && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => previewDocument(item.attachment_document_id as string)}
+                                                        className="h-8 px-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/15 text-[11px] font-semibold text-cyan-200 transition-colors"
+                                                    >
+                                                        View Attachment
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -332,6 +394,17 @@ export default function NoticesPage() {
                         </div>
                     )}
                 </div>
+
+                <DocumentPreviewModal
+                    previewDoc={previewDoc}
+                    isLoading={isPreviewLoading}
+                    onClose={() => setPreviewDoc(null)}
+                    onOpenAttachment={
+                        previewDoc?.attachment_document_id
+                            ? () => previewDocument(previewDoc.attachment_document_id as string)
+                            : undefined
+                    }
+                />
             </motion.div>
         </div>
     );

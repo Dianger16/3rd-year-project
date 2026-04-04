@@ -4,14 +4,15 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, FileText, X, Check, AlertCircle, CloudUpload, Loader2, Pencil, Trash2, RefreshCw, Layers, FileUp } from 'lucide-react';
+import { Upload, FileText, X, Check, AlertCircle, CloudUpload, Loader2, Pencil, Trash2, RefreshCw, Layers, FileUp, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/auth-fuse';
 import { Skeleton } from '@/components/ui/skeleton';
 import { HoverTooltip } from '@/components/ui/tooltip';
 import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
-import { documentsApi, type DocumentResponse } from '@/lib/api';
+import { documentsApi, type DocumentPreviewResponse, type DocumentResponse } from '@/lib/api';
+import { DocumentPreviewModal } from '@/components/ui/DocumentPreviewModal';
 
 type UploadStatus = 'pending' | 'uploading' | 'done' | 'error';
 type UploadMode = 'single' | 'batch';
@@ -50,6 +51,8 @@ const UploadPage = () => {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editDraft, setEditDraft] = useState<Partial<DocumentResponse>>({});
     const [isSaving, setIsSaving] = useState(false);
+    const [previewDoc, setPreviewDoc] = useState<DocumentPreviewResponse | null>(null);
+    const [isPreviewLoading, setIsPreviewLoading] = useState(false);
     const [docsPage, setDocsPage] = useState(1);
     const DOCS_PER_PAGE = 8;
     const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -60,6 +63,7 @@ const UploadPage = () => {
     const role = user?.role || 'student';
     const canUpload = role === 'admin' || role === 'faculty';
     const canAdminCrud = role === 'admin';
+    const canDeleteDocs = role === 'admin' || role === 'faculty';
     const queueStats = useMemo(() => {
         const total = files.length;
         const pending = files.filter((f) => f.status === 'pending').length;
@@ -402,12 +406,32 @@ const UploadPage = () => {
 
     const deleteDoc = async (id: string) => {
         if (!token) return;
+        const targetDoc = documents.find((doc) => doc.id === id);
+        if (!window.confirm(`Delete "${targetDoc?.filename || 'this document'}"? This will remove it from listings and notices.`)) {
+            return;
+        }
         try {
             await documentsApi.delete(token, id);
+            setDocuments((prev) => prev.filter((doc) => doc.id !== id));
+            if (previewDoc?.id === id || previewDoc?.attachment_document_id === id) {
+                setPreviewDoc(null);
+            }
             showToast('Document deleted.', 'success');
-            await loadDocuments();
         } catch (err: any) {
             showToast(err.message || 'Failed to delete document.', 'error');
+        }
+    };
+
+    const previewDocById = async (id: string) => {
+        if (!token || isPreviewLoading) return;
+        setIsPreviewLoading(true);
+        try {
+            const doc = await documentsApi.preview(token, id);
+            setPreviewDoc(doc);
+        } catch (err: any) {
+            showToast(err.message || 'Preview is not available for this document yet.', 'error');
+        } finally {
+            setIsPreviewLoading(false);
         }
     };
 
@@ -712,6 +736,14 @@ const UploadPage = () => {
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-1.5">
+                                                <HoverTooltip content="Preview document content">
+                                                    <button
+                                                        onClick={() => previewDocById(doc.id)}
+                                                        className="w-7 h-7 rounded-lg border border-white/10 hover:border-cyan-500/40 text-zinc-400 hover:text-cyan-300 flex items-center justify-center transition-all"
+                                                    >
+                                                        <Eye className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </HoverTooltip>
                                                 {canAdminCrud && (
                                                     <>
                                                         {!isEditing ? (
@@ -732,15 +764,17 @@ const UploadPage = () => {
                                                                 Save
                                                             </Button>
                                                         )}
-                                                        <HoverTooltip content="Delete document">
-                                                            <button
-                                                                onClick={() => deleteDoc(doc.id)}
-                                                                className="w-7 h-7 rounded-lg border border-white/10 hover:border-red-500/40 text-zinc-400 hover:text-red-300 flex items-center justify-center transition-all"
-                                                            >
-                                                                <Trash2 className="w-3.5 h-3.5" />
-                                                            </button>
-                                                        </HoverTooltip>
                                                     </>
+                                                )}
+                                                {canDeleteDocs && (
+                                                    <HoverTooltip content="Delete document and remove it from live listings">
+                                                        <button
+                                                            onClick={() => deleteDoc(doc.id)}
+                                                            className="w-7 h-7 rounded-lg border border-white/10 hover:border-red-500/40 text-zinc-400 hover:text-red-300 flex items-center justify-center transition-all"
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </HoverTooltip>
                                                 )}
                                             </div>
                                         </div>
@@ -822,6 +856,17 @@ const UploadPage = () => {
                         </div>
                     )}
                 </div>
+
+                <DocumentPreviewModal
+                    previewDoc={previewDoc}
+                    isLoading={isPreviewLoading}
+                    onClose={() => setPreviewDoc(null)}
+                    onOpenAttachment={
+                        previewDoc?.attachment_document_id
+                            ? () => previewDocById(previewDoc.attachment_document_id as string)
+                            : undefined
+                    }
+                />
             </motion.div>
         </div>
     );
