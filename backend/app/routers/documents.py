@@ -7,6 +7,7 @@ Hybrid: Supabase (Metadata) + Pinecone (Vectors).
 """
 
 import uuid
+import asyncio
 import json
 import datetime
 import httpx
@@ -28,11 +29,13 @@ from app.services.document_processor import (
     SUPPORTED_EXTENSIONS,
     derive_document_tags,
     derive_route_targets,
+    derive_route_targets_from_metadata,
     is_supported_document,
     process_document,
 )
 from app.services.pinecone_client import pinecone_client
 from app.services.audit import log_audit_event
+from app.services.email_service import EmailService
 
 router = APIRouter(tags=["Documents"])
 
@@ -64,7 +67,7 @@ class ServeNoticeRequest(BaseModel):
 
 def get_allowed_upload_doc_types(role: str) -> list[str]:
     if role == UserRole.ADMIN.value:
-        return [DocType.STUDENT.value, DocType.FACULTY.value, DocType.ADMIN.value]
+        return [DocType.STUDENT.value, DocType.FACULTY.value]
     if role == UserRole.FACULTY.value:
         # Faculty can only serve student-facing documents.
         return [DocType.STUDENT.value]
@@ -89,6 +92,42 @@ def parse_document_timestamp(raw: Any) -> Optional[datetime.datetime]:
         return None
 
 
+def is_served_notice_row(row: dict[str, Any]) -> bool:
+    tags = {
+        str(tag).strip().lower()
+        for tag in (row.get("tags") or [])
+        if str(tag).strip()
+    }
+    metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+    notice_type = str(metadata.get("notice_type") or "").strip().lower()
+    filename = str(row.get("filename") or "").strip().lower()
+    return (
+        "served-notice" in tags
+        or "served_notice" in tags
+        or notice_type == "served"
+        or filename.startswith("notice_")
+    )
+
+
+def can_view_served_notice_console_row(row: dict[str, Any], user: AuthenticatedUser) -> bool:
+    role = str(user.role or "").strip().lower()
+    if role == UserRole.ADMIN.value:
+        return True
+
+    if role != UserRole.FACULTY.value:
+        return False
+
+    metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+    uploader_id = str(row.get("uploader_id") or "").strip()
+    served_by_email = str(metadata.get("served_by_email") or "").strip().lower()
+    user_email = str(user.email or "").strip().lower()
+
+    return bool(
+        (uploader_id and uploader_id == str(user.id or "").strip())
+        or (served_by_email and served_by_email == user_email)
+    )
+
+
 def normalize_scope_value(raw: Any) -> str:
     text = str(raw or "").strip().lower()
     if not text:
@@ -97,11 +136,57 @@ def normalize_scope_value(raw: Any) -> str:
     return " ".join(normalized.split())
 
 
+def build_scope_variants(raw: Any) -> set[str]:
+    collapsed = normalize_scope_value(raw)
+    if not collapsed:
+        return set()
+    parts = [part for part in collapsed.split(" ") if part]
+    variants = {collapsed, collapsed.replace(" ", "")}
+    if len(parts) > 1:
+        variants.add("".join(part[0] for part in parts))
+    return {variant for variant in variants if variant}
+
+
+def scope_matches(user_value: Any, doc_value: Any) -> bool:
+    user_variants = build_scope_variants(user_value)
+    doc_variants = build_scope_variants(doc_value)
+    if not user_variants or not doc_variants:
+        return False
+    if user_variants & doc_variants:
+        return True
+    for user_variant in user_variants:
+        for doc_variant in doc_variants:
+            if len(user_variant) >= 2 and len(doc_variant) >= 2 and (
+                user_variant in doc_variant or doc_variant in user_variant
+            ):
+                return True
+    return False
+
+
+def normalize_route_targets(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    for entry in value:
+        text = str(entry or "").strip().lower()
+        if text and text not in result:
+            result.append(text)
+    return result
+
+
+def get_doc_route_targets(doc: dict[str, Any]) -> list[str]:
+    metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+    return normalize_route_targets(metadata.get("route_targets"))
+
+
 def is_document_relevant_for_user(doc: dict[str, Any], user: AuthenticatedUser) -> bool:
     doc_type = str(doc.get("doc_type") or "").strip().lower()
     role = str(user.role or "").strip().lower()
+    route_targets = get_doc_route_targets(doc)
     if role == UserRole.ADMIN.value:
         allowed = True
+    elif route_targets:
+        allowed = role in route_targets
     elif role == UserRole.FACULTY.value:
         allowed = doc_type in {UserRole.FACULTY.value, UserRole.STUDENT.value}
     else:
@@ -109,13 +194,19 @@ def is_document_relevant_for_user(doc: dict[str, Any], user: AuthenticatedUser) 
     if not allowed:
         return False
 
-    user_dept = normalize_scope_value(user.department)
-    user_program = normalize_scope_value(user.program)
-    doc_dept = normalize_scope_value(doc.get("department"))
-    doc_course = normalize_scope_value(doc.get("course"))
+    user_dept = str(user.department or "").strip()
+    user_program = str(user.program or "").strip()
+    doc_dept = str(doc.get("department") or "").strip()
+    doc_course = str(doc.get("course") or "").strip()
 
     if role == UserRole.ADMIN.value:
         return True
+
+    if route_targets:
+        if role not in route_targets:
+            return False
+        if not doc_dept and not doc_course:
+            return True
 
     # Faculty-scoped documents should remain visible to faculty even when
     # optional department/program metadata is missing or not normalized.
@@ -125,9 +216,13 @@ def is_document_relevant_for_user(doc: dict[str, Any], user: AuthenticatedUser) 
     if not doc_dept and not doc_course:
         return True
 
-    if user_dept and doc_dept and (user_dept == doc_dept or user_dept in doc_dept or doc_dept in user_dept):
+    if scope_matches(user_dept, doc_dept):
         return True
-    if user_program and doc_course and (user_program in doc_course or doc_course in user_program):
+    if scope_matches(user_program, doc_course):
+        return True
+    if scope_matches(user_dept, doc_course):
+        return True
+    if scope_matches(user_program, doc_dept):
         return True
     return False
 
@@ -213,6 +308,98 @@ def create_storage_signed_url(supabase, metadata: dict[str, Any] | None) -> str 
         return None
 
 
+def download_document_binary_from_storage(
+    supabase,
+    metadata: dict[str, Any] | None,
+) -> tuple[bytes | None, str | None]:
+    meta = metadata if isinstance(metadata, dict) else {}
+    bucket = str(meta.get("storage_bucket") or settings.supabase_storage_bucket or "").strip()
+    storage_path = str(meta.get("storage_path") or "").strip()
+    mime_type = str(meta.get("mime_type") or "").strip() or None
+    if not bucket or not storage_path:
+        return None, mime_type
+    try:
+        data = supabase.storage.from_(bucket).download(storage_path)
+        if isinstance(data, (bytes, bytearray)):
+            return bytes(data), mime_type
+    except Exception:
+        pass
+    return None, mime_type
+
+
+def build_notice_app_link(document_id: str) -> str:
+    base = str(settings.frontend_app_url or "").rstrip("/")
+    if not base:
+        return "/dashboard/notifications"
+    return f"{base}/dashboard/notifications"
+
+
+def fetch_notice_recipients(
+    supabase,
+    notice_rows: list[dict[str, Any]],
+    served_by_user_id: str | None = None,
+) -> list[dict[str, Any]]:
+    if not notice_rows:
+        return []
+    try:
+        rows = (
+            supabase.table("profiles")
+            .select("id,email,full_name,role,department,program,preferences")
+            .limit(2000)
+            .execute()
+        ).data or []
+    except Exception:
+        return []
+
+    recipients: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for row in rows:
+        profile_id = str(row.get("id") or "").strip()
+        role = str(row.get("role") or "").strip().lower()
+        email = str(row.get("email") or "").strip()
+        if not profile_id or not email or role not in {UserRole.STUDENT.value, UserRole.FACULTY.value, UserRole.ADMIN.value}:
+            continue
+        if served_by_user_id and profile_id == served_by_user_id:
+            # The sender already sees the served notice list; recipient fan-out is for targeted users.
+            pass
+        preferences = row.get("preferences") if isinstance(row.get("preferences"), dict) else {}
+        settings_payload = preferences.get("settings") if isinstance(preferences.get("settings"), dict) else {}
+        if settings_payload.get("emailNotifications") is False:
+            continue
+
+        pseudo_user = AuthenticatedUser(
+            id=profile_id,
+            email=email,
+            full_name=str(row.get("full_name") or "User").strip() or "User",
+            role=role,
+            department=str(row.get("department") or "").strip() or None,
+            program=str(row.get("program") or "").strip() or None,
+            semester=None,
+            section=None,
+            roll_number=None,
+            academic_verified=True,
+            created_at=None,
+            avatar_url=None,
+            identity_provider=None,
+        )
+        matched_notice = next((notice for notice in notice_rows if is_document_relevant_for_user(notice, pseudo_user)), None)
+        if not matched_notice or profile_id in seen_ids:
+            continue
+        seen_ids.add(profile_id)
+        recipients.append(
+            {
+                "id": profile_id,
+                "email": email,
+                "full_name": pseudo_user.full_name,
+                "role": role,
+                "department": pseudo_user.department,
+                "program": pseudo_user.program,
+                "notice": matched_notice,
+            }
+        )
+    return recipients
+
+
 def resolve_document_row_for_user(
     supabase,
     document_id: str,
@@ -240,7 +427,8 @@ def resolve_document_row_for_user(
 
     row = res.data[0]
     doc_type = str(row.get("doc_type") or "").strip().lower()
-    if doc_type not in {str(t).strip().lower() for t in allowed_types}:
+    route_targets = get_doc_route_targets(row)
+    if not route_targets and doc_type not in {str(t).strip().lower() for t in allowed_types}:
         raise HTTPException(status_code=403, detail="You are not allowed to preview this document.")
     if not is_document_relevant_for_user(row, user):
         raise HTTPException(status_code=403, detail="You are not allowed to preview this document.")
@@ -434,11 +622,13 @@ async def serve_notice(
 
     attachment_document_id = str(body.attachment_document_id or "").strip() or None
     attachment_filename: Optional[str] = None
+    attachment_bytes: bytes | None = None
+    attachment_mime_type: str | None = None
     if attachment_document_id:
         try:
             attachment_res = (
                 supabase.table("documents")
-                .select("id,filename,doc_type,department,course")
+                .select("id,filename,doc_type,department,course,metadata,mime_type")
                 .eq("id", attachment_document_id)
                 .limit(1)
                 .execute()
@@ -457,6 +647,9 @@ async def serve_notice(
         if not is_document_relevant_for_user(attachment_row, user):
             raise HTTPException(status_code=403, detail="Attachment is outside your access scope.")
         attachment_filename = str(attachment_row.get("filename") or "Attachment")
+        attachment_metadata = attachment_row.get("metadata") if isinstance(attachment_row.get("metadata"), dict) else {}
+        attachment_bytes, attachment_mime_type = download_document_binary_from_storage(supabase, attachment_metadata)
+        attachment_mime_type = str(attachment_row.get("mime_type") or attachment_mime_type or "").strip() or None
 
     selected_doc_types = notice_doc_types_for_target(target)
     department = str(body.department or user.department or "").strip()
@@ -465,6 +658,7 @@ async def serve_notice(
     audit_user_id = None if user.id.startswith("dummy-id-") else user.id
 
     created: list[dict[str, Any]] = []
+    created_rows: list[dict[str, Any]] = []
     failures: list[str] = []
     now_iso = utc_now_iso()
     for doc_type in selected_doc_types:
@@ -507,6 +701,7 @@ async def serve_notice(
         }
         try:
             supabase.table("documents").insert(payload_extended).execute()
+            created_rows.append(payload_extended)
             created.append(
                 {
                     "id": notice_id,
@@ -515,11 +710,12 @@ async def serve_notice(
                     "course": course or None,
                     "title": title,
                 }
-            )
+                )
         except Exception as exc:
             if any(marker in str(exc).lower() for marker in ("metadata", "mime_type")):
                 try:
                     supabase.table("documents").insert(payload_base).execute()
+                    created_rows.append(payload_extended)
                     created.append(
                         {
                             "id": notice_id,
@@ -551,12 +747,54 @@ async def serve_notice(
         },
     )
 
+    try:
+        from app.routers import auth as auth_router
+
+        auth_router._DOCUMENTS_FEED_CACHE.clear()
+        if audit_user_id:
+            auth_router._clear_user_runtime_caches(audit_user_id)
+        recipients = fetch_notice_recipients(
+            supabase,
+            notice_rows=created_rows,
+            served_by_user_id=audit_user_id,
+        )
+        for recipient in recipients:
+            auth_router._clear_user_runtime_caches(str(recipient.get("id") or ""))
+    except Exception:
+        recipients = []
+
+    if recipients:
+        app_link = build_notice_app_link(created[0]["id"])
+        await asyncio.gather(
+            *[
+                asyncio.to_thread(
+                    EmailService.send_served_notice_email,
+                    receiver_email=str(recipient.get("email") or "").strip(),
+                    user_name=str(recipient.get("full_name") or "User").strip() or "User",
+                    subject=title,
+                    message=message,
+                    served_by=user.email,
+                    served_at=now_iso,
+                    course=course or None,
+                    department=department or None,
+                    attachment_filename=attachment_filename,
+                    attachment_bytes=attachment_bytes,
+                    attachment_mime_type=attachment_mime_type,
+                    app_link=app_link,
+                )
+                for recipient in recipients
+                if str(recipient.get("email") or "").strip()
+            ],
+            return_exceptions=True,
+        )
+
     return {
         "status": "success",
         "message": f"Notice sent to {target}.",
         "target": target,
         "created": created,
         "failed": failures,
+        "recipients": len(recipients) if 'recipients' in locals() else 0,
     }
 
 
@@ -567,13 +805,13 @@ async def list_served_notices(
 ):
     ensure_supabase_available()
     supabase = get_supabase_admin()
+    fetch_limit = max(limit * 6, 240)
     try:
         rows = (
             supabase.table("documents")
             .select("id,filename,doc_type,department,course,tags,uploaded_at,updated_at,metadata,uploader_id")
-            .contains("tags", ["served_notice"])
             .order("uploaded_at", desc=True)
-            .limit(limit)
+            .limit(fetch_limit)
             .execute()
         ).data or []
     except Exception as exc:
@@ -583,23 +821,22 @@ async def list_served_notices(
                 rows = (
                     supabase.table("documents")
                     .select("id,filename,doc_type,department,course,tags,uploaded_at,updated_at,metadata,uploader_id")
-                    .contains("tags", ["served_notice"])
                     .order("updated_at", desc=True)
-                    .limit(limit)
+                    .limit(fetch_limit)
                     .execute()
                 ).data or []
             except Exception:
                 rows = (
                     supabase.table("documents")
                     .select("id,filename,doc_type,department,course,tags,uploaded_at,updated_at,metadata,uploader_id")
-                    .contains("tags", ["served_notice"])
-                    .limit(limit)
+                    .limit(fetch_limit)
                     .execute()
                 ).data or []
         else:
             raise
 
-    scoped_rows = [row for row in rows if is_document_relevant_for_user(row, user)]
+    served_rows = [row for row in rows if is_served_notice_row(row)]
+    scoped_rows = [row for row in served_rows if can_view_served_notice_console_row(row, user)]
     result: list[dict[str, Any]] = []
     for row in scoped_rows:
         metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
@@ -634,6 +871,7 @@ async def upload_document(
     course: str = Form(""),
     tags: str = Form("[]"),
     metadata: str = Form("{}"),
+    audiences: str = Form("[]"),
     user: AuthenticatedUser = Depends(require_roles(UserRole.ADMIN, UserRole.FACULTY)),
 ):
     ensure_supabase_available()
@@ -676,6 +914,21 @@ async def upload_document(
     parsed_metadata = parse_json_field(metadata, {})
     if not isinstance(parsed_metadata, dict):
         parsed_metadata = {}
+    parsed_audiences = parse_json_field(audiences, [])
+    if not isinstance(parsed_audiences, list):
+        parsed_audiences = []
+    normalized_audiences = normalize_route_targets(parsed_audiences)
+    if normalized_audiences:
+        invalid_targets = [target for target in normalized_audiences if target not in allowed_upload_types]
+        if invalid_targets:
+            raise HTTPException(
+                status_code=403,
+                detail=f"{user.role.title()} users cannot target: {', '.join(invalid_targets)}.",
+            )
+        route_targets = [*normalized_audiences]
+    else:
+        route_targets = derive_route_targets(validated_doc_type.value)
+    parsed_metadata["route_targets"] = route_targets
 
     derived_tags = derive_document_tags(
         filename=filename,
@@ -685,7 +938,6 @@ async def upload_document(
         tags=[str(tag) for tag in parsed_tags],
         metadata=parsed_metadata,
     )
-    route_targets = derive_route_targets(validated_doc_type.value)
 
     # 1. Save metadata to Supabase Postgres
     supabase = get_supabase_admin()
