@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 XynaxDev
+﻿/* Copyright (c) 2026 XynaxDev
  * Contact: akashkumar.cs27@gmail.com
  */
 
@@ -6,12 +6,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Megaphone, RefreshCw, Send, Clock3, Users, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Select } from '@/components/ui/auth-fuse';
+import { MultiSelect, Select } from '@/components/ui/auth-fuse';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
 import { documentsApi, noticesApi, type DocumentPreviewResponse, type DocumentResponse, type ServedNoticeItem } from '@/lib/api';
 import { DocumentPreviewModal } from '@/components/ui/DocumentPreviewModal';
+import { NoticePreviewModal } from '@/components/ui/NoticePreviewModal';
 
 const formatDate = (value?: string | null) => {
     if (!value) return 'Unknown time';
@@ -37,9 +38,7 @@ export default function NoticesPage() {
 
     const [title, setTitle] = useState('');
     const [message, setMessage] = useState('');
-    const [target, setTarget] = useState<'students' | 'faculty' | 'both'>(
-        role === 'admin' ? 'students' : 'students',
-    );
+    const [targetSelection, setTargetSelection] = useState<string[]>(['students']);
     const [department, setDepartment] = useState(user?.department || '');
     const [course, setCourse] = useState('');
     const [tagsInput, setTagsInput] = useState('');
@@ -51,8 +50,10 @@ export default function NoticesPage() {
     const [previewDoc, setPreviewDoc] = useState<DocumentPreviewResponse | null>(null);
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+    const [isAttachmentLoading, setIsAttachmentLoading] = useState(false);
     const [previewPendingTitle, setPreviewPendingTitle] = useState('');
     const [previewPendingSubtitle, setPreviewPendingSubtitle] = useState('');
+    const [previewMode, setPreviewMode] = useState<'notice' | 'document'>('document');
 
     const targetOptions = useMemo(
         () =>
@@ -60,17 +61,30 @@ export default function NoticesPage() {
                 ? [
                     { value: 'students', label: 'Students' },
                     { value: 'faculty', label: 'Faculty' },
-                    { value: 'both', label: 'Students + Faculty' },
                 ]
                 : [{ value: 'students', label: 'Students' }],
         [role],
     );
 
     useEffect(() => {
-        if (role !== 'admin' && target !== 'students') {
-            setTarget('students');
+        if (role !== 'admin') {
+            setTargetSelection(['students']);
+            return;
         }
-    }, [role, target]);
+        setTargetSelection((prev) => {
+            if (prev.includes('both')) return ['students', 'faculty'];
+            const next = prev.filter((value) => targetOptions.some((option) => option.value === value));
+            return next.length ? next : ['students'];
+        });
+    }, [role, targetOptions]);
+
+    const target = useMemo<'students' | 'faculty' | 'both'>(() => {
+        const hasStudents = targetSelection.includes('students');
+        const hasFaculty = targetSelection.includes('faculty');
+        if (hasStudents && hasFaculty) return 'both';
+        if (hasFaculty) return 'faculty';
+        return 'students';
+    }, [targetSelection]);
 
     const loadNotices = useCallback(
         async (force = false, silent = false) => {
@@ -80,7 +94,7 @@ export default function NoticesPage() {
             }
             if (!silent) setIsLoading(true);
             try {
-                const res = await noticesApi.listServed(token, 180);
+                const res = await noticesApi.listServed(token, 180, { force });
                 const sorted = [...(res.items || [])].sort((a, b) => {
                     const aa = new Date(a.uploaded_at || 0).getTime();
                     const bb = new Date(b.uploaded_at || 0).getTime();
@@ -100,7 +114,7 @@ export default function NoticesPage() {
     useEffect(() => {
         if (!token || !canServe) return;
         const cachedNotices = noticesApi.peekListServed(token, 180);
-        if (cachedNotices?.items?.length) {
+        if (cachedNotices?.items) {
             const sorted = [...(cachedNotices.items || [])].sort((a, b) => {
                 const aa = new Date(a.uploaded_at || 0).getTime();
                 const bb = new Date(b.uploaded_at || 0).getTime();
@@ -108,10 +122,11 @@ export default function NoticesPage() {
             });
             setItems(sorted);
             setIsLoading(false);
+            void loadNotices(true, true);
             return;
         }
         loadNotices();
-    }, [loadNotices]);
+    }, [loadNotices, token, canServe]);
 
     useEffect(() => {
         let active = true;
@@ -137,13 +152,18 @@ export default function NoticesPage() {
         };
     }, [token, canServe]);
 
-    const previewDocument = useCallback(async (documentId: string, pending?: { title?: string; subtitle?: string }) => {
+    const previewDocument = useCallback(async (
+        documentId: string,
+        pending?: { title?: string; subtitle?: string },
+        mode: 'notice' | 'document' = 'document',
+    ) => {
         if (!token || isPreviewLoading || !isUuidLike(documentId)) {
             if (documentId && !isUuidLike(documentId)) {
                 showToast('This notice is not linked to a previewable document.', 'error');
             }
             return;
         }
+        setPreviewMode(mode);
         setPreviewPendingTitle(pending?.title || 'Loading notice...');
         setPreviewPendingSubtitle(pending?.subtitle || 'Preparing preview...');
         setPreviewDoc(null);
@@ -168,6 +188,10 @@ export default function NoticesPage() {
         }
         if (message.trim().length < 8) {
             showToast('Please enter a meaningful notice message.', 'error');
+            return;
+        }
+        if (!targetSelection.length) {
+            showToast('Select at least one target audience.', 'error');
             return;
         }
 
@@ -255,10 +279,11 @@ export default function NoticesPage() {
                         </label>
                         <label className="text-xs text-zinc-400 block">
                             Target
-                            <Select
+                            <MultiSelect
                                 id="notice-target"
-                                value={target}
-                                onValueChange={(value) => setTarget(value as 'students' | 'faculty' | 'both')}
+                                value={targetSelection}
+                                onValueChange={setTargetSelection}
+                                placeholder="Select target audiences"
                                 className="mt-1 h-10 rounded-xl bg-black/40"
                                 options={targetOptions}
                             />
@@ -383,7 +408,7 @@ export default function NoticesPage() {
                                                         previewDocument(item.id, {
                                                             title: item.title,
                                                             subtitle: `${item.course || 'General'} · ${item.department || 'No department'} · ${item.doc_type}`,
-                                                        })
+                                                        }, 'notice')
                                                     }
                                                     className="h-8 px-3 rounded-lg border border-white/[0.12] bg-white/[0.03] hover:bg-white/[0.07] text-[11px] font-semibold text-orange-300 hover:text-orange-200 transition-colors inline-flex items-center gap-1.5"
                                                 >
@@ -397,7 +422,7 @@ export default function NoticesPage() {
                                                             previewDocument(item.attachment_document_id as string, {
                                                                 title: item.attachment_filename || 'Attachment',
                                                                 subtitle: `${item.course || 'General'} · ${item.department || 'No department'} · attachment`,
-                                                            })
+                                                            }, 'document')
                                                         }
                                                         className="h-8 px-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/15 text-[11px] font-semibold text-cyan-200 transition-colors"
                                                     >
@@ -413,10 +438,10 @@ export default function NoticesPage() {
                     )}
                 </div>
 
-                <DocumentPreviewModal
-                    isOpen={isPreviewOpen}
+                <NoticePreviewModal
+                    isOpen={isPreviewOpen && previewMode === 'notice'}
                     previewDoc={previewDoc}
-                    isLoading={isPreviewLoading}
+                    isLoading={isPreviewLoading && previewMode === 'notice'}
                     pendingTitle={previewPendingTitle}
                     pendingSubtitle={previewPendingSubtitle}
                     onClose={() => {
@@ -424,14 +449,46 @@ export default function NoticesPage() {
                         setPreviewDoc(null);
                         setPreviewPendingTitle('');
                         setPreviewPendingSubtitle('');
+                        setPreviewMode('document');
                     }}
+                    isAttachmentLoading={isAttachmentLoading}
                     onOpenAttachment={
                         previewDoc?.attachment_document_id
-                            ? () => previewDocument(previewDoc.attachment_document_id as string)
+                            ? async () => {
+                                if (!previewDoc.attachment_document_id || !isUuidLike(previewDoc.attachment_document_id) || !token) return;
+                                setIsAttachmentLoading(true);
+                                try {
+                                    setPreviewMode('document');
+                                    const attached = await documentsApi.preview(token, previewDoc.attachment_document_id);
+                                    setPreviewDoc(attached);
+                                } catch (err: any) {
+                                    showToast(err?.message || 'Attachment preview is not available.', 'error');
+                                } finally {
+                                    setIsAttachmentLoading(false);
+                                }
+                            }
                             : undefined
                     }
+                />
+                <DocumentPreviewModal
+                    isOpen={isPreviewOpen && previewMode === 'document'}
+                    token={token}
+                    previewDoc={previewDoc}
+                    isLoading={isPreviewLoading && previewMode === 'document'}
+                    pendingTitle={previewPendingTitle}
+                    pendingSubtitle={previewPendingSubtitle}
+                    onClose={() => {
+                        setIsPreviewOpen(false);
+                        setPreviewDoc(null);
+                        setPreviewPendingTitle('');
+                        setPreviewPendingSubtitle('');
+                        setPreviewMode('document');
+                    }}
+                    onOpenAttachment={undefined}
                 />
             </motion.div>
         </div>
     );
 }
+
+
