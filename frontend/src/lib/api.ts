@@ -21,7 +21,7 @@ interface RequestOptions {
 
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
     const { method = 'GET', body, token, isFormData = false } = options;
-    const timeoutMs = options.timeoutMs ?? (method === 'GET' ? 30_000 : 60_000);
+    const timeoutMs = options.timeoutMs ?? (method === 'GET' ? 45_000 : 90_000);
     const headers: Record<string, string> = {};
     const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
     if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -202,7 +202,7 @@ export const authApi = {
         return cachedGet(
             buildCacheKey('user-notifications', token, String(limit)),
             25_000,
-            () => request<UserNotificationListResponse>(endpoint, { token, timeoutMs: 15_000 }),
+            () => request<UserNotificationListResponse>(endpoint, { token, timeoutMs: 30_000 }),
         );
     },
     markNotificationsRead: (token: string) =>
@@ -217,7 +217,7 @@ export const authApi = {
             async () => {
                 const res = await request<FacultyListResponse>(
                     `/user/faculty?limit=${encodeURIComponent(String(limit))}`,
-                    { token, timeoutMs: 20_000 },
+                    { token, timeoutMs: 30_000 },
                 );
                 return {
                     ...res,
@@ -235,17 +235,13 @@ export const authApi = {
             () =>
                 request<CourseDirectoryResponse>(
                     `/user/courses?limit=${encodeURIComponent(String(limit))}`,
-                    { token, timeoutMs: 20_000 },
+                    { token, timeoutMs: 30_000 },
                 ),
         ),
     setRole: async (token: string, role: UserProfile['role']) =>
         normalizeUserProfile(await request<UserProfile>('/user/role', { method: 'PUT', token, body: { role } })),
     exportUserData: (token: string) =>
-        cachedGet(
-            buildCacheKey('user-export-data', token),
-            60_000,
-            () => request<UserExportData>('/user/export-data', { token, timeoutMs: 20_000 }),
-        ),
+        request<UserExportData>('/user/export-data', { token, timeoutMs: 20_000 }),
     listUsers: async (token: string) =>
         (await request<UserProfile[]>('/auth/users', { token })).map(normalizeUserProfile),
     inviteUser: (token: string, data: { email: string; full_name: string; role: string }) =>
@@ -269,6 +265,7 @@ export const documentsApi = {
         request<DocumentResponse>('/admin/documents', { method: 'POST', body: formData, token, isFormData: true, timeoutMs: 180_000 }).then((res) => {
             invalidateCacheByPrefix(`documents-list:${tokenSuffix(token)}`);
             invalidateCacheByPrefix(`user-notifications:${tokenSuffix(token)}`);
+            invalidateCacheByPrefix(`user-export-data:${tokenSuffix(token)}`);
             return res;
         }),
     update: (
@@ -279,16 +276,18 @@ export const documentsApi = {
         request<DocumentResponse>(`/admin/documents/${id}`, { method: 'PATCH', body: data, token }).then((res) => {
             invalidateCacheByPrefix(`documents-list:${tokenSuffix(token)}`);
             invalidateCacheByPrefix(`user-notifications:${tokenSuffix(token)}`);
+            invalidateCacheByPrefix(`user-export-data:${tokenSuffix(token)}`);
             return res;
         }),
     delete: (token: string, id: string) =>
         request<void>(`/admin/documents/${id}`, { method: 'DELETE', token }).then((res) => {
             invalidateCacheByPrefix(`documents-list:${tokenSuffix(token)}`);
             invalidateCacheByPrefix(`user-notifications:${tokenSuffix(token)}`);
+            invalidateCacheByPrefix(`user-export-data:${tokenSuffix(token)}`);
             return res;
         }),
     preview: (token: string, id: string) =>
-        request<DocumentPreviewResponse>(`/documents/${encodeURIComponent(id)}/preview`, { token, timeoutMs: 20_000 }),
+        request<DocumentPreviewResponse>(`/documents/${encodeURIComponent(id)}/preview`, { token, timeoutMs: 35_000 }),
 };
 
 export const noticesApi = {
@@ -301,6 +300,7 @@ export const noticesApi = {
             department?: string;
             course?: string;
             tags?: string[];
+            attachment_document_id?: string | null;
         },
     ) =>
         request<NoticeServeResponse>(
@@ -310,6 +310,7 @@ export const noticesApi = {
             invalidateCacheByPrefix(`documents-list:${tokenSuffix(token)}`);
             invalidateCacheByPrefix(`user-notifications:${tokenSuffix(token)}`);
             invalidateCacheByPrefix(`served-notices:${tokenSuffix(token)}`);
+            invalidateCacheByPrefix(`user-export-data:${tokenSuffix(token)}`);
             return res;
         }),
     listServed: (token: string, limit = 120) =>
@@ -326,7 +327,7 @@ export const noticesApi = {
 
 export const agentApi = {
     query: (token: string, data: { query: string; context?: { dept?: string }; conversation_id?: string }) =>
-        request<AgentQueryResponse>('/agent/query', { method: 'POST', body: data, token, timeoutMs: 90_000 }),
+        request<AgentQueryResponse>('/agent/query', { method: 'POST', body: data, token, timeoutMs: 120_000 }),
     getModerationState: (token: string) =>
         request<{ moderation: ModerationMeta }>('/agent/moderation-state', { token }),
     submitAppeal: (token: string, message: string) =>
@@ -588,6 +589,8 @@ export interface DocumentPreviewResponse {
     is_notice?: boolean;
     notice_title?: string | null;
     notice_message?: string | null;
+    attachment_document_id?: string | null;
+    attachment_filename?: string | null;
 }
 
 export interface ServedNoticeItem {
@@ -598,6 +601,8 @@ export interface ServedNoticeItem {
     department?: string | null;
     course?: string | null;
     uploaded_at?: string | null;
+    attachment_document_id?: string | null;
+    attachment_filename?: string | null;
 }
 
 export interface NoticeListResponse {
