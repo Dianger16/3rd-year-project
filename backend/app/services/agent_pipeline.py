@@ -1352,7 +1352,7 @@ async def run_agent_pipeline(
             "- audit and moderation review context\n"
             "- course/faculty directory summaries for governance\n\n"
             "Examples:\n"
-            "- \"Show todayâ€™s uploads and who uploaded them\"\n"
+            "- \"Show today's uploads and who uploaded them\"\n"
             "- \"How many students, faculty, and admins are active?\"\n"
             "- \"List recent audit actions for admin workflows\""
         )

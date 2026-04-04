@@ -110,8 +110,6 @@ def derive_route_targets(doc_type: str) -> list[str]:
     Defines which user roles can retrieve a document.
     """
     normalized = (doc_type or "").strip().lower()
-    if normalized == "public":
-        return ["student", "faculty", "admin"]
     if normalized == "student":
         return ["student", "admin"]
     if normalized == "faculty":

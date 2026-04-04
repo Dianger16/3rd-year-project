@@ -250,7 +250,7 @@ class EmailService:
                         
                         <p>Please review and take appropriate disciplinary action.</p>
                     </div>
-                    <div class="footer">Automated Moderation System â€¢ UnivGPT</div>
+                    <div class="footer">Automated Moderation System | UnivGPT</div>
                 </div>
             </body>
             </html>
