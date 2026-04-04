@@ -40,7 +40,7 @@ const UploadPage = () => {
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
     const [etaSeconds, setEtaSeconds] = useState<number | null>(null);
 
-    const [docType, setDocType] = useState('faculty');
+    const [docType, setDocType] = useState('student');
     const [department, setDepartment] = useState(user?.department || '');
     const [course, setCourse] = useState('');
     const [tagsInput, setTagsInput] = useState('');
@@ -69,9 +69,9 @@ const UploadPage = () => {
     }, [files]);
 
     const docTypeOptions = useMemo(() => {
-        if (role === 'admin') return ['public', 'student', 'faculty', 'admin'];
-        if (role === 'faculty') return ['public', 'student', 'faculty'];
-        return ['public'];
+        if (role === 'admin') return ['student', 'faculty', 'admin'];
+        if (role === 'faculty') return ['student'];
+        return ['student'];
     }, [role]);
 
     useEffect(() => {
@@ -315,16 +315,14 @@ const UploadPage = () => {
             formData.append('tags', JSON.stringify(tags));
             formData.append(
                 'metadata',
-                JSON.stringify({
-                    upload_mode: mode,
-                    uploader_role: role,
-                    route_targets: docType === 'public'
-                        ? ['student', 'faculty', 'admin']
-                        : docType === 'student'
-                            ? ['student', 'admin']
-                            : docType === 'faculty'
-                                ? ['faculty', 'admin']
-                                : ['admin'],
+                    JSON.stringify({
+                        upload_mode: mode,
+                        uploader_role: role,
+                    route_targets: docType === 'student'
+                        ? ['student', 'admin']
+                        : docType === 'faculty'
+                            ? ['faculty', 'admin']
+                            : ['admin'],
                 })
             );
 

@@ -302,7 +302,7 @@ export default function CoursesPage() {
 
     return (
         <div className="h-full overflow-y-auto">
-            <div className="p-6 md:p-8 space-y-8 pb-20 max-w-7xl mx-auto">
+            <div className="p-6 md:p-8 space-y-8 pb-20 w-full">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-gradient-to-br from-zinc-900/90 to-zinc-900/40 p-5 md:p-6">
                     <div>
                         <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
@@ -348,7 +348,7 @@ export default function CoursesPage() {
                 </div>
 
                 <div className="flex flex-col gap-3">
-                    <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3 items-center">
+                    <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-center">
                         <div className="relative w-full">
                             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
                             <input
@@ -369,7 +369,7 @@ export default function CoursesPage() {
                                 setSortBy('recent');
                             }}
                             title="Clear all filters"
-                            className="h-11 px-5 border-white/[0.08] bg-white/[0.03] text-zinc-300 hover:text-white rounded-xl flex items-center gap-2 font-semibold text-xs w-full lg:w-auto"
+                            className="h-11 px-5 border-white/[0.08] bg-white/[0.03] text-zinc-300 hover:text-white rounded-xl flex items-center justify-center gap-2 font-semibold text-xs w-full md:w-auto md:min-w-[170px]"
                         >
                             <Filter className="w-4 h-4" />
                             CLEAR FILTERS

@@ -32,9 +32,11 @@ export default function NotificationsPage() {
     const location = useLocation();
     const [items, setItems] = useState<UserNotificationItem[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [isPaginating, setIsPaginating] = useState(false);
     const [focusedNotificationId, setFocusedNotificationId] = useState<string | null>(null);
     const [previewDoc, setPreviewDoc] = useState<DocumentPreviewResponse | null>(null);
     const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+    const [isAttachmentLoading, setIsAttachmentLoading] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const hasLoadedOnceRef = useRef(false);
     const ITEMS_PER_PAGE = 8;
@@ -86,6 +88,16 @@ export default function NotificationsPage() {
     useEffect(() => {
         setCurrentPage(1);
     }, [items.length]);
+
+    const goToPage = (nextPage: number) => {
+        if (isLoading || isPaginating) return;
+        if (nextPage < 1 || nextPage > totalPages) return;
+        setIsPaginating(true);
+        window.setTimeout(() => {
+            setCurrentPage(nextPage);
+            setIsPaginating(false);
+        }, 140);
+    };
 
     useEffect(() => {
         const state = location.state as { focusNotificationId?: string } | null;
@@ -186,7 +198,7 @@ export default function NotificationsPage() {
                 </motion.div>
 
                 <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/35 overflow-hidden">
-                    {isLoading && (
+                    {(isLoading || isPaginating) && (
                         <div className="p-4 space-y-3">
                             {Array.from({ length: 5 }).map((_, idx) => (
                                 <div key={`notification-skeleton-${idx}`} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
@@ -204,10 +216,10 @@ export default function NotificationsPage() {
                             ))}
                         </div>
                     )}
-                    {!isLoading && items.length === 0 && (
+                    {!isLoading && !isPaginating && items.length === 0 && (
                         <div className="px-5 py-10 text-sm text-zinc-500">No notifications yet.</div>
                     )}
-                    {!isLoading &&
+                    {!isLoading && !isPaginating &&
                         paginatedItems.map((item) => (
                             <div
                                 key={item.id}
@@ -266,8 +278,8 @@ export default function NotificationsPage() {
                         </span>
                         <div className="flex items-center gap-1.5">
                             <button
-                                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                                disabled={currentPage === 1}
+                                onClick={() => goToPage(currentPage - 1)}
+                                disabled={currentPage === 1 || isPaginating}
                                 className="h-7 px-2 rounded-lg border border-white/[0.08] bg-white/[0.02] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] text-xs font-medium"
                             >
                                 Prev
@@ -277,8 +289,8 @@ export default function NotificationsPage() {
                             </button>
                             <span className="text-zinc-600">/ {totalPages}</span>
                             <button
-                                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                                disabled={currentPage === totalPages}
+                                onClick={() => goToPage(currentPage + 1)}
+                                disabled={currentPage === totalPages || isPaginating}
                                 className="h-7 px-2 rounded-lg border border-white/[0.08] bg-white/[0.02] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] text-xs font-medium"
                             >
                                 Next
@@ -296,7 +308,7 @@ export default function NotificationsPage() {
                                         {previewDoc.notice_title || previewDoc.filename}
                                     </p>
                                     <p className="text-[11px] text-zinc-500 mt-0.5">
-                                        {previewDoc.course || 'General'} â€¢ {previewDoc.department || 'No department'} â€¢ {previewDoc.doc_type}
+                                        {previewDoc.course || 'General'} - {previewDoc.department || 'No department'} - {previewDoc.doc_type}
                                     </p>
                                 </div>
                                 <button
@@ -337,25 +349,47 @@ export default function NotificationsPage() {
                                     </div>
                                 )}
                                 <div className="mt-4 flex justify-end">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            const fakeItem: UserNotificationItem = {
-                                                id: previewDoc.id,
-                                                title: previewDoc.filename,
-                                                message: `Summarize key points from ${previewDoc.filename}`,
-                                                uploaded_at: previewDoc.uploaded_at || null,
-                                                unread: false,
-                                                course: previewDoc.course || null,
-                                                department: previewDoc.department || null,
-                                            };
-                                            setPreviewDoc(null);
-                                            openNotificationInChat(fakeItem);
-                                        }}
-                                        className="h-9 px-3 rounded-lg border border-orange-500/30 bg-orange-500/10 hover:bg-orange-500/15 text-xs font-semibold text-orange-200"
-                                    >
-                                        Summarize in Chat
-                                    </button>
+                                    <div className="flex flex-wrap justify-end gap-2">
+                                        {previewDoc.attachment_document_id && (
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    if (!token || !previewDoc.attachment_document_id || isAttachmentLoading) return;
+                                                    setIsAttachmentLoading(true);
+                                                    try {
+                                                        const attached = await documentsApi.preview(token, previewDoc.attachment_document_id);
+                                                        setPreviewDoc(attached);
+                                                    } catch {
+                                                        showToast('Attachment preview is not available for your role scope.', 'error');
+                                                    } finally {
+                                                        setIsAttachmentLoading(false);
+                                                    }
+                                                }}
+                                                className="h-9 px-3 rounded-lg border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/15 text-xs font-semibold text-cyan-200"
+                                            >
+                                                {isAttachmentLoading ? 'Opening...' : `Open Attachment${previewDoc.attachment_filename ? `: ${previewDoc.attachment_filename}` : ''}`}
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const fakeItem: UserNotificationItem = {
+                                                    id: previewDoc.id,
+                                                    title: previewDoc.filename,
+                                                    message: `Summarize key points from ${previewDoc.filename}`,
+                                                    uploaded_at: previewDoc.uploaded_at || null,
+                                                    unread: false,
+                                                    course: previewDoc.course || null,
+                                                    department: previewDoc.department || null,
+                                                };
+                                                setPreviewDoc(null);
+                                                openNotificationInChat(fakeItem);
+                                            }}
+                                            className="h-9 px-3 rounded-lg border border-orange-500/30 bg-orange-500/10 hover:bg-orange-500/15 text-xs font-semibold text-orange-200"
+                                        >
+                                            Summarize in Chat
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>

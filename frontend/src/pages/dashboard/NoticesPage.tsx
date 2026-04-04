@@ -10,7 +10,7 @@ import { Select } from '@/components/ui/auth-fuse';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
-import { noticesApi, type ServedNoticeItem } from '@/lib/api';
+import { documentsApi, noticesApi, type DocumentResponse, type ServedNoticeItem } from '@/lib/api';
 
 const formatDate = (value?: string | null) => {
     if (!value) return 'Unknown time';
@@ -39,9 +39,11 @@ export default function NoticesPage() {
     const [department, setDepartment] = useState(user?.department || '');
     const [course, setCourse] = useState('');
     const [tagsInput, setTagsInput] = useState('');
+    const [attachmentDocumentId, setAttachmentDocumentId] = useState('__none__');
     const [isSending, setIsSending] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [items, setItems] = useState<ServedNoticeItem[]>([]);
+    const [attachmentOptions, setAttachmentOptions] = useState<DocumentResponse[]>([]);
 
     const targetOptions = useMemo(
         () =>
@@ -90,6 +92,25 @@ export default function NoticesPage() {
         loadNotices();
     }, [loadNotices]);
 
+    useEffect(() => {
+        let active = true;
+        const loadAttachmentOptions = async () => {
+            if (!token || !canServe) return;
+            try {
+                const response = await documentsApi.list(token, { page: 1, per_page: 120 });
+                if (!active) return;
+                setAttachmentOptions((response.documents || []).slice(0, 120));
+            } catch {
+                if (!active) return;
+                setAttachmentOptions([]);
+            }
+        };
+        loadAttachmentOptions();
+        return () => {
+            active = false;
+        };
+    }, [token, canServe]);
+
     const handleServeNotice = async () => {
         if (!token || !canServe || isSending) return;
         if (title.trim().length < 3) {
@@ -113,14 +134,16 @@ export default function NoticesPage() {
                 message: message.trim(),
                 target,
                 department: department.trim(),
-                course: course.trim(),
-                tags,
-            });
+            course: course.trim(),
+            tags,
+            attachment_document_id: attachmentDocumentId === '__none__' ? null : attachmentDocumentId,
+        });
             showToast(res.message || 'Notice sent successfully.', 'success');
             setTitle('');
             setMessage('');
             setCourse('');
             setTagsInput('');
+            setAttachmentDocumentId('__none__');
             await loadNotices(true);
         } catch (err: any) {
             showToast(err?.message || 'Failed to send notice.', 'error');
@@ -232,6 +255,22 @@ export default function NoticesPage() {
                                 className="mt-1 w-full h-10 rounded-xl border border-white/10 bg-black/40 px-3 text-sm text-white outline-none focus:border-orange-500/30"
                             />
                         </label>
+                        <label className="text-xs text-zinc-400 block md:col-span-3">
+                            Attachment (optional)
+                            <Select
+                                id="notice-attachment"
+                                value={attachmentDocumentId}
+                                onValueChange={setAttachmentDocumentId}
+                                className="mt-1 h-10 rounded-xl bg-black/40"
+                                options={[
+                                    { value: '__none__', label: 'No attachment' },
+                                    ...attachmentOptions.map((doc) => ({
+                                        value: doc.id,
+                                        label: `${doc.filename} (${doc.doc_type})`,
+                                    })),
+                                ]}
+                            />
+                        </label>
                     </div>
 
                     <div className="flex justify-end">
@@ -276,8 +315,13 @@ export default function NoticesPage() {
                                             <div className="text-xs font-semibold text-white truncate">{item.title}</div>
                                             <div className="text-[11px] text-zinc-400 mt-1 break-words">{item.message}</div>
                                             <div className="text-[10px] text-zinc-500 mt-2">
-                                                {item.doc_type} • {item.department || 'No department'} • {item.course || 'General'}
+                                                {item.doc_type} - {item.department || 'No department'} - {item.course || 'General'}
                                             </div>
+                                            {item.attachment_filename && (
+                                                <div className="text-[10px] text-cyan-300 mt-1.5">
+                                                    Attachment: {item.attachment_filename}
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="text-[10px] text-zinc-500 shrink-0 inline-flex items-center gap-1">
                                             <Clock3 className="w-3 h-3" /> {formatDate(item.uploaded_at)}
