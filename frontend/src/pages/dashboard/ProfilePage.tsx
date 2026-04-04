@@ -27,7 +27,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
-import { authApi, type UserExportData } from '@/lib/api';
+import { authApi, documentsApi, type DocumentResponse, type UserExportData } from '@/lib/api';
 
 const roleBadgeStyles: Record<string, string> = {
     student: 'bg-blue-500/15 text-blue-300 border-blue-500/30',
@@ -53,20 +53,33 @@ const iconToneByLabel: Record<string, string> = {
     'Recent Notices': 'text-violet-300 bg-violet-500/15 border-violet-500/30',
 };
 
-const statItems = (data: UserExportData | null) => [
+const isNoticeLike = (doc: DocumentResponse) => {
+    const name = String(doc.filename || '').toLowerCase();
+    const tags = (doc.tags || []).map((tag) => String(tag).toLowerCase());
+    return (
+        name.includes('notice') ||
+        name.includes('announcement') ||
+        name.includes('circular') ||
+        tags.includes('notice') ||
+        tags.includes('announcement') ||
+        tags.includes('circular')
+    );
+};
+
+const statItems = (data: UserExportData | null, liveDocs: number, liveNotices: number) => [
     {
         label: 'Total Queries',
-        value: data ? String(data.queries) : '--',
+        value: data ? String(data.queries) : '0',
         icon: BarChart3,
     },
     {
         label: 'Accessible Docs',
-        value: data ? String(data.documents) : '--',
+        value: String(Math.max(Number(data?.documents || 0), liveDocs)),
         icon: FileText,
     },
     {
         label: 'Recent Notices',
-        value: data ? String(data.notices) : '--',
+        value: String(Math.max(Number(data?.notices || 0), liveNotices)),
         icon: Bell,
     },
 ];
@@ -106,6 +119,8 @@ const ProfilePage = () => {
     const [formSection, setFormSection] = useState(user?.section || '');
     const [formRollNumber, setFormRollNumber] = useState(user?.roll_number || '');
     const [exportData, setExportData] = useState<UserExportData | null>(null);
+    const [liveDocCount, setLiveDocCount] = useState(0);
+    const [liveNoticeCount, setLiveNoticeCount] = useState(0);
     const [isLoadingStats, setIsLoadingStats] = useState(false);
 
     const profileImage = (user as any)?.profileImage || null;
@@ -126,11 +141,35 @@ const ProfilePage = () => {
             if (!token) return;
             setIsLoadingStats(true);
             try {
-                const payload = await authApi.exportUserData(token);
+                const [exportResult, docsResult] = await Promise.allSettled([
+                    authApi.exportUserData(token),
+                    documentsApi.list(token, { page: 1, per_page: 120 }),
+                ]);
+
+                const payload = exportResult.status === 'fulfilled' ? exportResult.value : null;
+                const docs = docsResult.status === 'fulfilled' ? docsResult.value : null;
+
                 if (!alive) return;
+
+                const docRows = docs?.documents || [];
+                const docsTotal = Number(docs?.total || docRows.length || 0);
+                const now = Date.now();
+                const notices30d = docRows.filter((doc) => {
+                    if (!isNoticeLike(doc)) return false;
+                    const raw = doc.uploaded_at || doc.created_at;
+                    if (!raw) return false;
+                    const when = new Date(raw).getTime();
+                    if (!Number.isFinite(when) || when <= 0) return false;
+                    return (now - when) <= 30 * 24 * 60 * 60 * 1000;
+                }).length;
+
+                setLiveDocCount(Math.max(0, docsTotal));
+                setLiveNoticeCount(Math.max(0, notices30d));
                 setExportData(payload);
             } catch {
                 if (!alive) return;
+                setLiveDocCount(0);
+                setLiveNoticeCount(0);
                 setExportData(null);
             } finally {
                 if (alive) setIsLoadingStats(false);
@@ -365,7 +404,8 @@ const ProfilePage = () => {
                     </div>
                 </motion.div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+                    <div className="space-y-5">
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -494,6 +534,7 @@ const ProfilePage = () => {
                             ))}
                         </div>
                     </motion.div>
+                    </div>
 
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
@@ -533,78 +574,106 @@ const ProfilePage = () => {
                             </div>
                         </div>
 
-                        <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/50 p-5">
-                            <h2 className="text-sm font-semibold text-white mb-4">Account Activity Snapshot</h2>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3 gap-3">
-                                {statItems(exportData).map((stat) => (
-                                    <div
-                                        key={stat.label}
-                                        className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3"
-                                    >
-                                        <div className="flex items-center gap-2 text-[11px] text-zinc-500">
-                                            <span className={`w-5 h-5 rounded-md border flex items-center justify-center ${iconToneByLabel[stat.label] || 'text-zinc-300 bg-white/10 border-white/15'}`}>
-                                                <stat.icon className="w-3 h-3" />
-                                            </span>
-                                            {stat.label}
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+                            <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/50 p-5">
+                                <h2 className="text-sm font-semibold text-white mb-4">Account Activity Snapshot</h2>
+                                <div className="grid grid-cols-1 gap-3">
+                                {statItems(exportData, liveDocCount, liveNoticeCount).map((stat) => (
+                                        <div
+                                            key={stat.label}
+                                            className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3"
+                                        >
+                                            <div className="flex items-center gap-2 text-[11px] text-zinc-500">
+                                                <span className={`w-5 h-5 rounded-md border flex items-center justify-center ${iconToneByLabel[stat.label] || 'text-zinc-300 bg-white/10 border-white/15'}`}>
+                                                    <stat.icon className="w-3 h-3" />
+                                                </span>
+                                                {stat.label}
+                                            </div>
+                                            <div className="text-xl font-extrabold text-white mt-2">
+                                                {isLoadingStats ? <Skeleton className="h-6 w-14" /> : stat.value}
+                                            </div>
                                         </div>
-                                        <div className="text-xl font-extrabold text-white mt-2">
-                                            {isLoadingStats ? <Skeleton className="h-6 w-14" /> : stat.value}
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/50 p-5">
+                                <h2 className="text-sm font-semibold text-white mb-4">Account Presence</h2>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 content-start">
+                                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
+                                        <div className="flex items-center gap-2 text-[11px] text-zinc-500">
+                                            <span className={`w-5 h-5 rounded-md border flex items-center justify-center ${iconToneByLabel['Member Since']}`}>
+                                                <Calendar className="w-3 h-3" />
+                                            </span>
+                                            Joined
+                                        </div>
+                                        <div className="text-sm font-semibold text-white mt-1.5">
+                                            {user?.created_at
+                                                ? new Date(user.created_at).toLocaleDateString('en-US', {
+                                                    year: 'numeric',
+                                                    month: 'short',
+                                                    day: 'numeric',
+                                                })
+                                                : 'Not available'}
                                         </div>
                                     </div>
-                                ))}
+
+                                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
+                                        <div className="flex items-center gap-2 text-[11px] text-zinc-500">
+                                            <span className={`w-5 h-5 rounded-md border flex items-center justify-center ${iconToneByLabel['Academic Verification']}`}>
+                                                <CheckCircle2 className="w-3 h-3" />
+                                            </span>
+                                            Verification
+                                        </div>
+                                        <div className="text-sm font-semibold text-white mt-1.5">
+                                            {user?.academic_verified ? 'Verified' : 'Pending'}
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3 sm:col-span-2">
+                                        <div className="flex items-center gap-2 text-[11px] text-zinc-500">
+                                            <span className={`w-5 h-5 rounded-md border flex items-center justify-center ${iconToneByLabel['Recent Notices']}`}>
+                                                <Bell className="w-3 h-3" />
+                                            </span>
+                                            Last Snapshot Refresh
+                                        </div>
+                                        <div className="text-sm font-semibold text-white mt-1.5">
+                                            {exportData?.exportDate
+                                                ? new Date(exportData.exportDate).toLocaleString('en-US', {
+                                                    year: 'numeric',
+                                                    month: 'short',
+                                                    day: 'numeric',
+                                                    hour: '2-digit',
+                                                    minute: '2-digit',
+                                                })
+                                                : 'Waiting for latest sync'}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
                         <div className="rounded-2xl border border-white/[0.08] bg-zinc-900/50 p-5">
-                            <h2 className="text-sm font-semibold text-white mb-4">Account Presence</h2>
+                            <h2 className="text-sm font-semibold text-white mb-4">Role Snapshot</h2>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
-                                    <div className="flex items-center gap-2 text-[11px] text-zinc-500">
-                                        <span className={`w-5 h-5 rounded-md border flex items-center justify-center ${iconToneByLabel['Member Since']}`}>
-                                            <Calendar className="w-3 h-3" />
-                                        </span>
-                                        Joined
-                                    </div>
-                                    <div className="text-sm font-semibold text-white mt-1.5">
-                                        {user?.created_at
-                                            ? new Date(user.created_at).toLocaleDateString('en-US', {
-                                                year: 'numeric',
-                                                month: 'short',
-                                                day: 'numeric',
-                                            })
-                                            : 'Not available'}
+                                    <div className="text-[11px] text-zinc-500 uppercase tracking-wider">Workspace</div>
+                                    <div className="text-sm font-semibold text-white mt-1.5 capitalize">
+                                        {isAdmin ? 'Admin Operations' : isFaculty ? 'Faculty Operations' : 'Student Workspace'}
                                     </div>
                                 </div>
-
                                 <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
-                                    <div className="flex items-center gap-2 text-[11px] text-zinc-500">
-                                        <span className={`w-5 h-5 rounded-md border flex items-center justify-center ${iconToneByLabel['Academic Verification']}`}>
-                                            <CheckCircle2 className="w-3 h-3" />
-                                        </span>
-                                        Verification
-                                    </div>
+                                    <div className="text-[11px] text-zinc-500 uppercase tracking-wider">Primary Scope</div>
                                     <div className="text-sm font-semibold text-white mt-1.5">
-                                        {user?.academic_verified ? 'Verified' : 'Pending'}
+                                        {user?.department || user?.program || 'Not specified'}
                                     </div>
                                 </div>
-
                                 <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3 sm:col-span-2">
-                                    <div className="flex items-center gap-2 text-[11px] text-zinc-500">
-                                        <span className={`w-5 h-5 rounded-md border flex items-center justify-center ${iconToneByLabel['Recent Notices']}`}>
-                                            <Bell className="w-3 h-3" />
-                                        </span>
-                                        Last Snapshot Refresh
-                                    </div>
+                                    <div className="text-[11px] text-zinc-500 uppercase tracking-wider">Role Status</div>
                                     <div className="text-sm font-semibold text-white mt-1.5">
-                                        {exportData?.exportDate
-                                            ? new Date(exportData.exportDate).toLocaleString('en-US', {
-                                                year: 'numeric',
-                                                month: 'short',
-                                                day: 'numeric',
-                                                hour: '2-digit',
-                                                minute: '2-digit',
-                                            })
-                                            : 'Waiting for latest sync'}
+                                        {user?.academic_verified
+                                            ? 'Account verified and active.'
+                                            : 'Verification pending. Limited actions may apply.'}
                                     </div>
                                 </div>
                             </div>
