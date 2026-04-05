@@ -360,21 +360,23 @@ function MessageBubble({ message, navigateTo, role }: { message: ChatMessage; na
                             </div>
                         )}
 
-                        {/* Copy Button */}
-                        <div className={cn(
-                            "absolute -bottom-7 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0",
-                            isUser ? "right-1" : "left-1"
-                        )}>
-                            <HoverTooltip content="Copy message" side={isUser ? "left" : "right"}>
-                                <button
-                                    onClick={handleCopy}
-                                    className="flex items-center gap-1 text-[10px] font-medium text-zinc-500 hover:text-orange-400 transition-colors px-1 py-1 rounded-lg"
-                                >
-                                    {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
-                                    {copied ? "Copied" : "Copy"}
-                                </button>
-                            </HoverTooltip>
-                        </div>
+                    </div>
+
+                    <div
+                        className={cn(
+                            "mt-3 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-1 group-hover:translate-y-0",
+                            isUser ? "justify-end self-end" : "justify-start self-start",
+                        )}
+                    >
+                        <HoverTooltip content="Copy message" side={isUser ? "left" : "right"}>
+                            <button
+                                onClick={handleCopy}
+                                className="flex items-center gap-1 text-[10px] font-medium text-zinc-500 hover:text-orange-400 transition-colors px-1 py-1 rounded-lg"
+                            >
+                                {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
+                                {copied ? "Copied" : "Copy"}
+                            </button>
+                        </HoverTooltip>
                     </div>
 
                     {!isUser && message.sources && message.sources.length > 0 && (
