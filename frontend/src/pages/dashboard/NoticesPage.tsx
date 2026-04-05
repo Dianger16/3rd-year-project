@@ -13,6 +13,7 @@ import { useToastStore } from '@/store/toastStore';
 import { documentsApi, noticesApi, type DocumentPreviewResponse, type DocumentResponse, type ServedNoticeItem } from '@/lib/api';
 import { DocumentPreviewModal } from '@/components/ui/DocumentPreviewModal';
 import { NoticePreviewModal } from '@/components/ui/NoticePreviewModal';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const formatDate = (value?: string | null) => {
     if (!value) return 'Unknown time';
@@ -47,6 +48,8 @@ const isNoticeLikeDocument = (doc: DocumentResponse) => {
 export default function NoticesPage() {
     const { token, user } = useAuthStore();
     const { showToast } = useToastStore();
+    const location = useLocation();
+    const navigate = useNavigate();
     const role = String(user?.role || 'student').toLowerCase();
     const canServe = role === 'admin' || role === 'faculty';
 
@@ -69,6 +72,8 @@ export default function NoticesPage() {
     const [previewPendingSubtitle, setPreviewPendingSubtitle] = useState('');
     const [previewMode, setPreviewMode] = useState<'notice' | 'document'>('document');
     const [noticesPage, setNoticesPage] = useState(1);
+    const [focusedNoticeId, setFocusedNoticeId] = useState<string | null>(null);
+    const [pendingOpenNoticeId, setPendingOpenNoticeId] = useState<string | null>(null);
     const NOTICES_PER_PAGE = 5;
 
     const targetOptions = useMemo(
@@ -138,7 +143,7 @@ export default function NoticesPage() {
             });
             setItems(sorted);
             setIsLoading(false);
-            void loadNotices(true, true);
+            void loadNotices(false, true);
             return;
         }
         loadNotices();
@@ -180,6 +185,32 @@ export default function NoticesPage() {
         setNoticesPage(1);
     }, [items.length]);
 
+    useEffect(() => {
+        const state = location.state as { focusNoticeDocumentId?: string; openNoticeDocumentId?: string } | null;
+        const nextId = state?.focusNoticeDocumentId || null;
+        const nextOpenId = state?.openNoticeDocumentId || null;
+        if (!nextId) return;
+        setFocusedNoticeId(nextId);
+        setPendingOpenNoticeId(nextOpenId);
+        const itemIndex = items.findIndex((item) => item.id === nextId);
+        if (itemIndex >= 0) {
+            setNoticesPage(Math.floor(itemIndex / NOTICES_PER_PAGE) + 1);
+        }
+        const timer = window.setTimeout(() => {
+            setFocusedNoticeId(null);
+            navigate(location.pathname, { replace: true, state: {} });
+        }, 2800);
+        return () => window.clearTimeout(timer);
+    }, [location.pathname, location.state, navigate, items]);
+
+    useEffect(() => {
+        if (!focusedNoticeId) return;
+        const el = document.querySelector(`[data-notice-id="${focusedNoticeId}"]`);
+        if (el instanceof HTMLElement) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }, [focusedNoticeId, noticesPage, items]);
+
     const previewDocument = useCallback(async (
         documentId: string,
         pending?: { title?: string; subtitle?: string },
@@ -207,6 +238,21 @@ export default function NoticesPage() {
             setIsPreviewLoading(false);
         }
     }, [token, isPreviewLoading, showToast]);
+
+    useEffect(() => {
+        if (!pendingOpenNoticeId || !items.length) return;
+        const match = items.find((item) => item.id === pendingOpenNoticeId);
+        if (!match) return;
+        setPendingOpenNoticeId(null);
+        void previewDocument(
+            match.id,
+            {
+                title: match.title,
+                subtitle: `${match.course || 'General'} · ${match.department || 'No department'} · ${match.doc_type}`,
+            },
+            'notice',
+        );
+    }, [pendingOpenNoticeId, items, previewDocument]);
 
     const handleServeNotice = async () => {
         if (!token || !canServe || isSending) return;
@@ -437,7 +483,15 @@ export default function NoticesPage() {
                     ) : (
                         <div className="space-y-2">
                             {paginatedItems.map((item) => (
-                                <div key={item.id} className="rounded-xl border border-white/[0.06] bg-black/40 p-3">
+                                <div
+                                    key={item.id}
+                                    data-notice-id={item.id}
+                                    className={`rounded-xl border p-3 transition-colors ${
+                                        focusedNoticeId === item.id
+                                            ? 'border-orange-400/50 bg-orange-500/10 shadow-[0_0_0_1px_rgba(251,146,60,0.15)]'
+                                            : 'border-white/[0.06] bg-black/40'
+                                    }`}
+                                >
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="min-w-0">
                                             <div className="text-xs font-semibold text-white truncate">{item.title}</div>

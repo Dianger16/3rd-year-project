@@ -38,6 +38,33 @@ interface ChatState {
     clearError: () => void;
 }
 
+const CHAT_STORAGE_KEY = 'unigpt-chat-scope-v1';
+
+function canUseSessionStorage() {
+    return typeof window !== 'undefined' && typeof window.sessionStorage !== 'undefined';
+}
+
+function readScopeCache(scope: string) {
+    if (!canUseSessionStorage()) return null;
+    try {
+        const raw = window.sessionStorage.getItem(`${CHAT_STORAGE_KEY}:${scope}`);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as Pick<ChatState, 'currentConversationId' | 'messages'>;
+        return parsed;
+    } catch {
+        return null;
+    }
+}
+
+function writeScopeCache(scope: string, payload: Pick<ChatState, 'currentConversationId' | 'messages'>) {
+    if (!canUseSessionStorage()) return;
+    try {
+        window.sessionStorage.setItem(`${CHAT_STORAGE_KEY}:${scope}`, JSON.stringify(payload));
+    } catch {
+        // Ignore cache persistence failures.
+    }
+}
+
 export const useChatStore = create<ChatState>()((set, get) => ({
     activeScope: 'default',
     conversations: [],
@@ -50,11 +77,12 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         const nextScope = String(scope || '').trim() || 'default';
         const currentScope = get().activeScope;
         if (currentScope === nextScope) return;
+        const cached = readScopeCache(nextScope);
         set({
             activeScope: nextScope,
             conversations: [],
-            currentConversationId: null,
-            messages: [],
+            currentConversationId: cached?.currentConversationId || null,
+            messages: cached?.messages || [],
             isQuerying: false,
             error: null,
         });
@@ -102,6 +130,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
             timestamp: new Date().toISOString(),
         };
         set({ messages: [...state.messages, userMessage], isQuerying: true, error: null });
+        writeScopeCache(state.activeScope, {
+            currentConversationId: state.currentConversationId,
+            messages: [...state.messages, userMessage],
+        });
 
         try {
             const res = await agentApi.query(token, {
@@ -126,7 +158,15 @@ export const useChatStore = create<ChatState>()((set, get) => ({
                 messages: [...get().messages, assistantMessage],
                 currentConversationId: res.conversation_id,
             });
+            writeScopeCache(get().activeScope, {
+                currentConversationId: res.conversation_id,
+                messages: [...get().messages, assistantMessage],
+            });
             await streamTextToMessage(assistantMessage.id, res.answer);
+            writeScopeCache(get().activeScope, {
+                currentConversationId: res.conversation_id,
+                messages: get().messages,
+            });
             set({ isQuerying: false });
         } catch (err: unknown) {
             set({ error: (err as Error).message || 'Query failed', isQuerying: false });
@@ -157,6 +197,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
                 timestamp: new Date().toISOString(),
             }));
             set({ currentConversationId: id, messages });
+            writeScopeCache(get().activeScope, { currentConversationId: id, messages });
         } catch (err: unknown) {
             set({ error: (err as Error).message });
         }
@@ -164,6 +205,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     newConversation: () => {
         set({ currentConversationId: null, messages: [], error: null });
+        writeScopeCache(get().activeScope, { currentConversationId: null, messages: [] });
     },
 
     clearError: () => set({ error: null }),

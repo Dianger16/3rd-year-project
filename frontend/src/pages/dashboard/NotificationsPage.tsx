@@ -62,6 +62,7 @@ export default function NotificationsPage() {
     const [previewPendingSubtitle, setPreviewPendingSubtitle] = useState('');
     const [previewMode, setPreviewMode] = useState<'notice' | 'document'>('document');
     const [currentPage, setCurrentPage] = useState(1);
+    const [pendingOpenDocumentId, setPendingOpenDocumentId] = useState<string | null>(null);
     const hasLoadedOnceRef = useRef(false);
     const ITEMS_PER_PAGE = 8;
 
@@ -104,7 +105,7 @@ export default function NotificationsPage() {
     useEffect(() => {
         if (cachedNotifications) {
             hasLoadedOnceRef.current = true;
-            void loadNotifications(true, true);
+            void loadNotifications(false, true);
             return;
         }
         loadNotifications();
@@ -131,10 +132,12 @@ export default function NotificationsPage() {
     };
 
     useEffect(() => {
-        const state = location.state as { focusNotificationId?: string } | null;
+        const state = location.state as { focusNotificationId?: string; openDocumentId?: string } | null;
         const nextId = state?.focusNotificationId || null;
+        const nextOpenId = state?.openDocumentId || null;
         if (!nextId) return;
         setFocusedNotificationId(nextId);
+        setPendingOpenDocumentId(nextOpenId);
         const itemIndex = items.findIndex((item) => item.id === nextId);
         if (itemIndex >= 0) {
             setCurrentPage(Math.floor(itemIndex / ITEMS_PER_PAGE) + 1);
@@ -147,6 +150,14 @@ export default function NotificationsPage() {
 
         return () => window.clearTimeout(timer);
     }, [location.pathname, location.state, navigate, items]);
+
+    useEffect(() => {
+        if (!pendingOpenDocumentId || !items.length) return;
+        const match = items.find((item) => item.id === pendingOpenDocumentId);
+        if (!match) return;
+        setPendingOpenDocumentId(null);
+        void openNotification(match);
+    }, [pendingOpenDocumentId, items]);
 
     useEffect(() => {
         if (!focusedNotificationId || items.length === 0) return;

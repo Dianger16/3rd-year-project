@@ -68,8 +68,42 @@ const CHAT_ROLE_UI: Record<ChatRole, {
     },
 };
 
-function SourceCard({ source }: { source: SourceCitation }) {
+type NavigateTarget =
+    | string
+    | {
+        path: string;
+        state?: Record<string, unknown>;
+    };
+
+function resolveCitationTarget(source: SourceCitation, role: ChatRole): NavigateTarget {
+    const navigationTarget = String(source.metadata?.navigation_target || '').trim().toLowerCase();
+    if (navigationTarget === 'notifications') {
+        return {
+            path: '/dashboard/notifications',
+            state: { focusNotificationId: source.document_id, openDocumentId: source.document_id },
+        };
+    }
+    if (navigationTarget === 'notices') {
+        return {
+            path: '/dashboard/notices',
+            state: { focusNoticeDocumentId: source.document_id, openNoticeDocumentId: source.document_id },
+        };
+    }
+    if (navigationTarget === 'courses') {
+        return '/dashboard/courses';
+    }
+    if (role === 'student') {
+        return '/dashboard/courses';
+    }
+    return {
+        path: '/dashboard/documents',
+        state: { focusDocumentId: source.document_id, openDocumentId: source.document_id },
+    };
+}
+
+function SourceCard({ source, role, navigateTo }: { source: SourceCitation; role: ChatRole; navigateTo: (target: NavigateTarget) => void }) {
     const [expanded, setExpanded] = useState(false);
+    const target = resolveCitationTarget(source, role);
     return (
         <div
             className="border border-white/[0.06] rounded-xl p-3 text-xs bg-white/[0.02] hover:border-orange-500/20 transition-all group cursor-pointer"
@@ -91,9 +125,16 @@ function SourceCard({ source }: { source: SourceCitation }) {
                                 <span className="text-[9px] bg-white/5 px-2 py-0.5 rounded-lg text-zinc-600 border border-white/5">
                                     REF: {source.document_id.slice(0, 8)}
                                 </span>
-                                <a href={`/dashboard/documents?id=${source.document_id}`} className="ml-auto text-[10px] flex items-center gap-1 text-orange-400 hover:text-orange-300 transition-colors">
+                                <button
+                                    type="button"
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        navigateTo(target);
+                                    }}
+                                    className="ml-auto text-[10px] flex items-center gap-1 text-orange-400 hover:text-orange-300 transition-colors"
+                                >
                                     View Source <ExternalLink className="w-3 h-3" />
-                                </a>
+                                </button>
                             </div>
                         </div>
                     </motion.div>
@@ -103,7 +144,7 @@ function SourceCard({ source }: { source: SourceCitation }) {
     );
 }
 
-function MessageBubble({ message, navigateTo }: { message: ChatMessage; navigateTo: (href: string) => void }) {
+function MessageBubble({ message, navigateTo, role }: { message: ChatMessage; navigateTo: (target: NavigateTarget) => void; role: ChatRole }) {
     const isUser = message.role === 'user';
     const { user } = useAuthStore();
     const [copied, setCopied] = useState(false);
@@ -307,7 +348,7 @@ function MessageBubble({ message, navigateTo }: { message: ChatMessage; navigate
                                 <Plus className="w-3 h-3 text-orange-400" /> Reference Citations
                             </div>
                             {message.sources.map((src, i) => (
-                                <SourceCard key={i} source={src} />
+                                <SourceCard key={i} source={src} role={role} navigateTo={navigateTo} />
                             ))}
                         </div>
                     )}
@@ -329,10 +370,27 @@ export default function ChatPage() {
     const { token, user } = useAuthStore();
     const location = useLocation();
     const navigate = useNavigate();
+    const [queryStartedAt, setQueryStartedAt] = useState<number | null>(null);
+    const [queryElapsedSeconds, setQueryElapsedSeconds] = useState(0);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
+
+    useEffect(() => {
+        if (!isQuerying) {
+            setQueryStartedAt(null);
+            setQueryElapsedSeconds(0);
+            return;
+        }
+        const started = Date.now();
+        setQueryStartedAt(started);
+        setQueryElapsedSeconds(0);
+        const interval = window.setInterval(() => {
+            setQueryElapsedSeconds(Math.max(0, Math.floor((Date.now() - started) / 1000)));
+        }, 250);
+        return () => window.clearInterval(interval);
+    }, [isQuerying]);
 
     useEffect(() => {
         if (!token) return;
@@ -395,6 +453,12 @@ export default function ChatPage() {
     const isChatBlocked = Boolean(moderationState?.blocked);
     const appealPending = String(moderationState?.appeal_status || '').toLowerCase() === 'pending';
     const hasStreamingAssistant = messages.some((m) => m.role === 'assistant' && m.isStreaming);
+    const thinkingHint =
+        queryElapsedSeconds >= 8
+            ? 'Still working through live scope data and references.'
+            : queryElapsedSeconds >= 3
+                ? 'Checking your role-bound context and the latest records.'
+                : 'Preparing a grounded reply from your UnivGPT workspace.';
 
     const handleSubmitAppeal = async () => {
         if (!token || !appealMessage.trim() || isSubmittingAppeal || !isChatBlocked) return;
@@ -415,6 +479,14 @@ export default function ChatPage() {
     useEffect(() => {
         setScope(chatScope);
     }, [chatScope, setScope]);
+
+    const handleNavigate = (target: NavigateTarget) => {
+        if (typeof target === 'string') {
+            navigate(target);
+            return;
+        }
+        navigate(target.path, { state: target.state });
+    };
 
     return (
         <div className="flex flex-col h-[calc(100vh-80px)]">
@@ -463,7 +535,7 @@ export default function ChatPage() {
                     /* â”€â”€â”€â”€â”€ Messages â”€â”€â”€â”€â”€ */
                     <div className="px-6 py-4">
                         {messages.map((msg, i) => (
-                            <MessageBubble key={i} message={msg} navigateTo={navigate} />
+                            <MessageBubble key={i} message={msg} navigateTo={handleNavigate} role={role} />
                         ))}
                         {isQuerying && !hasStreamingAssistant && (
                             <motion.div className="max-w-3xl mx-auto" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
@@ -481,7 +553,14 @@ export default function ChatPage() {
                                                 <div className="w-2 h-2 bg-orange-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                                                 <div className="w-2 h-2 bg-orange-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                                             </div>
-                                            <span className="text-xs text-zinc-600">Thinking...</span>
+                                            <div className="min-w-0">
+                                                <div className="text-xs text-zinc-400 font-medium">
+                                                    Thinking{queryStartedAt ? ` · ${queryElapsedSeconds}s` : '...'}
+                                                </div>
+                                                <div className="text-[11px] text-zinc-600 mt-1">
+                                                    {thinkingHint}
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
