@@ -16,6 +16,7 @@ import {
     Activity,
     Megaphone,
     ArrowUpRight,
+    Coffee,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
@@ -324,7 +325,11 @@ export default function FacultyDashboard() {
                             <div className="relative overflow-hidden rounded-2xl border border-fuchsia-300/10 bg-[radial-gradient(circle_at_top_left,rgba(216,180,254,0.10),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] p-6">
                                 <div className="pointer-events-none absolute inset-y-0 right-0 w-64">
                                     <div className="absolute right-[-26px] top-1/2 h-44 w-72 -translate-y-1/2 rounded-[44%_56%_42%_58%/58%_38%_62%_42%] border border-fuchsia-300/12 bg-[linear-gradient(135deg,rgba(192,132,252,0.18),rgba(217,70,239,0.08),rgba(255,255,255,0.02))]" />
-                                    <div className="absolute right-9 top-8 h-24 w-24 rounded-full border border-fuchsia-200/10 bg-[radial-gradient(circle,rgba(244,114,182,0.14),transparent_64%)]" />
+                                    <div className="absolute right-9 top-8 flex h-24 w-24 items-center justify-center rounded-full border border-fuchsia-200/10 bg-[radial-gradient(circle,rgba(244,114,182,0.14),transparent_64%)]">
+                                        <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-fuchsia-200/15 bg-white/[0.04] text-fuchsia-100">
+                                            <Coffee className="h-6 w-6" />
+                                        </div>
+                                    </div>
                                     <div className="absolute right-12 bottom-6 h-16 w-36 rounded-[999px] bg-fuchsia-300/10 blur-2xl" />
                                 </div>
                                 <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-fuchsia-200/70">
