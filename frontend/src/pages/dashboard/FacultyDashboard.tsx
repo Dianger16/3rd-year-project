@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Link, useNavigate } from 'react-router-dom';
 import { authApi, documentsApi, type CourseDirectoryItem, type DocumentResponse, type UserExportData } from '@/lib/api';
 import { Skeleton } from '@/components/ui/skeleton';
-import { buildLiveTimetableSlots, formatTimetableTime, getTodayWorkdayLabel, summarizeTimetable, type TimetableSlot } from '@/lib/timetable';
+import { buildLiveTimetableSlots, formatTimetableTime, getAcademicHoliday, getTodayWorkdayLabel, summarizeTimetable, type TimetableSlot } from '@/lib/timetable';
 
 const toRelativeTime = (value?: string) => {
     if (!value) return 'recently';
@@ -153,6 +153,7 @@ export default function FacultyDashboard() {
     }, [documents]);
 
     const todayLabel = useMemo(() => getTodayWorkdayLabel(), []);
+    const todayHoliday = useMemo(() => getAcademicHoliday(new Date()), []);
     const isWeekendToday = useMemo(
         () => ['sat', 'sun'].includes(todayLabel.toLowerCase()),
         [todayLabel],
@@ -319,13 +320,19 @@ export default function FacultyDashboard() {
                     ) : (
                         <div className="rounded-2xl border border-dashed border-white/[0.08] bg-[radial-gradient(circle_at_top_right,rgba(249,115,22,0.08),transparent_35%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.02))] p-5">
                             <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-zinc-500">
-                                {isWeekendToday ? 'Weekend Window' : 'Open Academic Window'}
+                                {todayHoliday ? 'Holiday Marker' : isWeekendToday ? 'Weekend Window' : 'Open Academic Window'}
                             </div>
                             <div className="mt-2 text-lg font-black text-white">
-                                {isWeekendToday ? 'No teaching blocks are scheduled today' : 'Today is clear on the teaching board'}
+                                {todayHoliday
+                                    ? `${todayHoliday.name} keeps the teaching board clear`
+                                    : isWeekendToday
+                                        ? 'No teaching blocks are scheduled today'
+                                        : 'Today is clear on the teaching board'}
                             </div>
                             <div className="mt-2 text-sm text-zinc-400">
-                                {isWeekendToday
+                                {todayHoliday
+                                    ? 'This date is marked as a named academic holiday. Use the quieter window for planning, assessment, or course preparation before the next live class block.'
+                                    : isWeekendToday
                                     ? 'Use the quieter weekend lane for prep, evaluation, and planning before the next workday starts.'
                                     : 'No mapped classes land on this date. You can review the full timetable or use the open time for mentoring, planning, and notices.'}
                             </div>

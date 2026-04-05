@@ -26,7 +26,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { authApi, documentsApi, type CourseDirectoryItem, type DocumentResponse, type UserExportData, type FacultySummary } from '@/lib/api';
-import { buildLiveTimetableSlots, formatTimetableTime, getTodayWorkdayLabel, summarizeTimetable } from '@/lib/timetable';
+import { buildLiveTimetableSlots, formatTimetableTime, getAcademicHoliday, getTodayWorkdayLabel, summarizeTimetable } from '@/lib/timetable';
 
 type DashboardNotice = {
     id: string;
@@ -239,6 +239,7 @@ export default function StudentDashboard() {
 
     const timetableSummary = useMemo(() => summarizeTimetable(timetableSlots), [timetableSlots]);
     const todayLabel = useMemo(() => getTodayWorkdayLabel(), []);
+    const todayHoliday = useMemo(() => getAcademicHoliday(new Date()), []);
     const isWeekendToday = useMemo(
         () => ['sat', 'sun'].includes(todayLabel.toLowerCase()),
         [todayLabel],
@@ -431,13 +432,19 @@ export default function StudentDashboard() {
                 {todaySlots.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-white/[0.08] bg-[radial-gradient(circle_at_top_right,rgba(249,115,22,0.08),transparent_35%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.02))] p-5">
                         <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-zinc-500">
-                            {isWeekendToday ? 'Weekend Snapshot' : 'Open Day Snapshot'}
+                            {todayHoliday ? 'Holiday Marker' : isWeekendToday ? 'Weekend Snapshot' : 'Open Day Snapshot'}
                         </div>
                         <div className="mt-2 text-lg font-black text-white">
-                            {isWeekendToday ? 'No class slots are scheduled today' : 'Your timetable is clear for today'}
+                            {todayHoliday
+                                ? `${todayHoliday.name} keeps the class board clear`
+                                : isWeekendToday
+                                    ? 'No class slots are scheduled today'
+                                    : 'Your timetable is clear for today'}
                         </div>
                         <div className="mt-2 text-sm text-zinc-400">
-                            {isWeekendToday
+                            {todayHoliday
+                                ? 'This date is marked as a named academic holiday, so your class lanes are paused. Use the day to catch up, plan ahead, or open the full timetable for the next live slot.'
+                                : isWeekendToday
                                 ? 'Enjoy the off-day rhythm, catch up on reading, and use the full timetable to plan the week ahead.'
                                 : 'Nothing is mapped into today’s class blocks. Check the full timetable to plan your next lecture or lab.'}
                         </div>
