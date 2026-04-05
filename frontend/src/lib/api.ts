@@ -817,6 +817,7 @@ export interface ModerationMeta {
     max_warnings: number;
     offense_total: number;
     appeal_required: boolean;
+    reason?: string | null;
     appeal_status?: string | null;
     appeal_submitted_at?: string | null;
     blocked_at?: string | null;

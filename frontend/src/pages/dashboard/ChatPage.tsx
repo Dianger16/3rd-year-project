@@ -103,7 +103,7 @@ function SourceCard({ source }: { source: SourceCitation }) {
     );
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({ message, navigateTo }: { message: ChatMessage; navigateTo: (href: string) => void }) {
     const isUser = message.role === 'user';
     const { user } = useAuthStore();
     const [copied, setCopied] = useState(false);
@@ -176,9 +176,25 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                             : "bg-white/[0.03] border border-white/[0.06] text-zinc-300"
                     )}>
                         {!isUser && isSafetyMessage && (
-                            <div className="mb-2 inline-flex items-center gap-1.5 rounded-md border border-red-400/40 bg-red-500/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-red-100">
-                                <AlertTriangle className="w-3 h-3" />
-                                Safety Warning
+                            <div className="mb-3 overflow-hidden rounded-2xl border border-red-400/30 bg-[linear-gradient(135deg,rgba(127,29,29,0.35),rgba(120,53,15,0.22))] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                                <div className="flex items-center gap-2 border-b border-red-400/20 px-3 py-2">
+                                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-red-500/20 text-red-100">
+                                        <AlertTriangle className="h-3.5 w-3.5" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-red-100">
+                                            Safety Intervention
+                                        </div>
+                                        <div className="text-[11px] text-red-100/75">
+                                            This message was moderated before a normal answer was returned.
+                                        </div>
+                                    </div>
+                                </div>
+                                {message.moderation?.reason && (
+                                    <div className="px-3 py-2 text-xs text-red-50/80">
+                                        <span className="font-semibold text-red-100">Reason:</span> {message.moderation.reason}
+                                    </div>
+                                )}
                             </div>
                         )}
                         {isUser ? (
@@ -192,7 +208,15 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                                             const isInternal = href.startsWith('/');
                                             if (isInternal) {
                                                 return (
-                                                    <Link to={href} className="text-orange-300 hover:text-orange-200 underline underline-offset-2" {...props}>
+                                                    <Link
+                                                        to={href}
+                                                        onClick={(event) => {
+                                                            event.preventDefault();
+                                                            navigateTo(href);
+                                                        }}
+                                                        className="text-orange-300 hover:text-orange-200 underline underline-offset-2"
+                                                        {...props}
+                                                    >
                                                         {children}
                                                     </Link>
                                                 );
@@ -220,14 +244,26 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                         )}
 
                         {!isUser && message.rationale && (
-                            <div className="mt-3 rounded-xl border border-white/[0.08] bg-white/[0.02] overflow-hidden">
+                            <div className="mt-3 overflow-hidden rounded-2xl border border-white/[0.08] bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                                 <button
                                     type="button"
                                     onClick={() => setShowReasoning((prev) => !prev)}
-                                    className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400 hover:text-zinc-200 transition-colors"
+                                    className="w-full px-4 py-3 text-left transition-colors hover:bg-white/[0.025]"
                                 >
-                                    <span>Model Reasoning</span>
-                                    {showReasoning ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="inline-flex items-center gap-2 rounded-full border border-orange-500/20 bg-orange-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-orange-200">
+                                                <Sparkles className="h-3 w-3" />
+                                                Model Reasoning
+                                            </div>
+                                            <p className="mt-2 text-xs leading-5 text-zinc-400">
+                                                Internal reasoning captured separately from the final answer.
+                                            </p>
+                                        </div>
+                                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.03] text-zinc-300">
+                                            {showReasoning ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                                        </div>
+                                    </div>
                                 </button>
                                 <AnimatePresence initial={false}>
                                     {showReasoning && (
@@ -237,8 +273,10 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                                             exit={{ height: 0, opacity: 0 }}
                                             className="overflow-hidden"
                                         >
-                                            <div className="border-t border-white/[0.06] px-3 py-3 text-xs leading-6 text-zinc-400 whitespace-pre-wrap">
-                                                {message.rationale}
+                                            <div className="border-t border-white/[0.06] bg-black/20 px-4 py-4">
+                                                <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-xs leading-6 text-zinc-300 whitespace-pre-wrap">
+                                                    {message.rationale}
+                                                </div>
                                             </div>
                                         </motion.div>
                                     )}
@@ -425,7 +463,7 @@ export default function ChatPage() {
                     /* â”€â”€â”€â”€â”€ Messages â”€â”€â”€â”€â”€ */
                     <div className="px-6 py-4">
                         {messages.map((msg, i) => (
-                            <MessageBubble key={i} message={msg} />
+                            <MessageBubble key={i} message={msg} navigateTo={navigate} />
                         ))}
                         {isQuerying && !hasStreamingAssistant && (
                             <motion.div className="max-w-3xl mx-auto" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
