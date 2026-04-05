@@ -22,7 +22,7 @@ const VerifyEmail = lazyWithPreload(() => import('@/pages/auth/VerifyEmail'));
 const AuthCallback = lazyWithPreload(() => import('@/pages/auth/AuthCallback'));
 const StudentDashboard = lazyWithPreload(() => import('@/pages/dashboard/StudentDashboard'));
 const FacultyDashboard = lazyWithPreload(() => import('@/pages/dashboard/FacultyDashboard'));
-const FacultyTimetablePage = lazyWithPreload(() => import('@/pages/dashboard/FacultyTimetablePage'));
+const TimetablePage = lazyWithPreload(() => import('@/pages/dashboard/TimetablePage'));
 const AdminDashboard = lazyWithPreload(() => import('@/pages/dashboard/AdminDashboard'));
 const ChatPage = lazyWithPreload(() => import('@/pages/dashboard/ChatPage'));
 const CoursesPage = lazyWithPreload(() => import('@/pages/dashboard/CoursesPage'));
@@ -97,6 +97,7 @@ function RouteSuspense({ children }: { children: React.ReactNode }) {
 export default function App() {
   const { setSession, clearSession, token, user, isInitializing, finishInitializing } = useAuthStore();
   const lastSyncedTokenRef = useRef<string | null>(null);
+  const getCurrentUser = () => useAuthStore.getState().user;
 
   useEffect(() => {
     if (!token) return;
@@ -104,9 +105,9 @@ export default function App() {
 
     const hardSyncProfile = async () => {
       try {
-        const user = await authApi.refreshMe(token);
+        const refreshedUser = await authApi.refreshMe(token, getCurrentUser() || undefined);
         if (cancelled) return;
-        setSession(token, user);
+        setSession(token, refreshedUser);
       } catch {
         if (cancelled) return;
         clearSession();
@@ -125,14 +126,13 @@ export default function App() {
       if (lastSyncedTokenRef.current === session.access_token) return;
 
       try {
-        const user = await authApi.refreshMe(session.access_token);
-        setSession(session.access_token, user);
+        const refreshedUser = await authApi.refreshMe(session.access_token, getCurrentUser() || undefined);
+        setSession(session.access_token, refreshedUser);
       } catch (err) {
         console.warn('Session sync failed, using metadata fallback:', err);
         const fallbackRole =
-          normalizeRole(user?.role) ||
+          normalizeRole(getCurrentUser()?.role) ||
           normalizeRole(session.user.user_metadata?.role as string) ||
-          normalizeRole(window.localStorage.getItem('unigpt:pending-role')) ||
           'student';
         setSession(session.access_token, {
           id: session.user.id,
@@ -252,8 +252,8 @@ export default function App() {
               <Route
                 path="timetable"
                 element={
-                  <RoleRoute allowedRoles={['faculty']}>
-                    <RouteSuspense><FacultyTimetablePage /></RouteSuspense>
+                  <RoleRoute allowedRoles={['student', 'faculty']}>
+                    <RouteSuspense><TimetablePage /></RouteSuspense>
                   </RoleRoute>
                 }
               />

@@ -216,7 +216,7 @@ export const useAuthStore = create<AuthState>()(
                 const token = get().token;
                 if (!token) return;
                 try {
-                    const user = await authApi.getMe(token);
+                    const user = await authApi.getMe(token, get().user || undefined);
                     set({ user: hydrateProfileImage({ ...get().user, ...user }) });
                 } catch {
                     set({ user: null, token: null });
