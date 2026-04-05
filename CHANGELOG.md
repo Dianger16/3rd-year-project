@@ -8,11 +8,40 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Planned / In Progress
-- Continue reducing dashboard latency and repeated background refetches.
-- Continue tightening role isolation across chat, notifications, and admin controls.
-- Continue polishing responsive layout behavior for sidebar, profile, and table-heavy pages.
-- Continue expanding test coverage around role-boundary and moderation workflows.
+### Added
+- Collapsible in-chat model reasoning view that preserves generated rationale separately from the final answer when providers emit explicit thinking blocks.
+
+### Fixed
+- Lightweight chat generation now avoids failing hard when providers leak reasoning before the final answer.
+
+## [0.12.0] - 2026-04-05
+
+### Added
+- Environment-driven model routing for intent, primary generation, and fallback generation providers, plus a local provider diagnostics script for intent/generation checks.
+- Dedicated notice preview flow with role-aware attachment handling across notifications, served notices, and document-linked notice cards.
+- Multi-audience document upload and notice targeting with shared multi-select controls and cleaner recipient selection UX.
+- Date-based timetable experience for both faculty and students, including dedicated timetable pages, daily dashboard previews, official timetable PDF downloads, and live role-scoped timetable document surfacing.
+- Holiday-aware timetable agenda states, mobile week navigation, themed month jump controls, and a stronger off-day/holiday experience on dashboard timetable previews.
+
+### Changed
+- Faculty and student dashboard timetable sections now focus on today's schedule, with full timetable detail moved into dedicated agenda pages.
+- Timetable UI was rebuilt around A-D academic blocks, lunch placement, faculty metadata, and role-aware day agendas rather than the earlier dense sheet mockup.
+- Shared select, tooltip, preview, and calendar controls were restyled to better match the dashboard theme across desktop and mobile.
+- Profile, chat, and timetable banners received another pass for better action alignment, calmer gradients, and clearer hierarchy.
+- Notice delivery and recipient flows now treat served notices as first-class objects instead of piggybacking on generic document preview behavior.
+
+### Fixed
+- Stale role fallback paths that could intermittently demote an admin session to student during auth bootstrap or callback hydration.
+- Served-notice sender visibility, faculty notice sender resolution, and null uploader insert failures in faculty notice delivery.
+- Notice attachment pickers incorrectly including previously served notice records instead of only real attachable documents.
+- Protected document preview failures that surfaced raw unauthenticated JSON instead of resolving a viewable file stream.
+- Leaked model planning text appearing in chat responses, dummy conversation UUID errors, and weak fallback handling when providers returned unusable reasoning output.
+- Warm-cache regressions that were forcing repeated dashboard/timetable reloads, extra banner skeletons, or stale route refresh behavior while navigating between sections.
+
+### Performance
+- Reduced repeated route-level refetching by reusing warm cache more consistently across dashboards, timetable pages, notices, and profile-linked stats.
+- Added safer generation failover with provider cooldowns and clearer downtime handling when primary or fallback models rate-limit or go temporarily unavailable.
+- Improved perceived document/notice responsiveness with viewer-first previews, attachment-aware notice opens, and more targeted cache invalidation after delivery mutations.
 
 ## [0.11.0] - 2026-04-04
 
