@@ -439,12 +439,9 @@ export default function StudentDashboard() {
                     <div className="overflow-hidden rounded-2xl border border-fuchsia-400/15 bg-[linear-gradient(135deg,rgba(88,28,135,0.18),rgba(24,25,31,0.98) 42%,rgba(124,58,237,0.12))] p-5">
                         <div className="relative overflow-hidden rounded-2xl border border-fuchsia-300/10 bg-[radial-gradient(circle_at_top_left,rgba(216,180,254,0.10),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] p-6">
                             <div className="pointer-events-none absolute inset-y-0 right-0 w-64">
-                                <div className="absolute right-[-54px] top-1/2 h-48 w-48 -translate-y-1/2 rounded-full border border-fuchsia-300/12 bg-[radial-gradient(circle,rgba(196,181,253,0.14),transparent_62%)]" />
-                                <div className="absolute right-8 top-8 h-24 w-24 rounded-[32px] border border-fuchsia-300/14 bg-fuchsia-300/8 blur-[2px]" />
-                                <div className="absolute right-14 bottom-8 h-20 w-40 rounded-[999px] border border-fuchsia-300/10 bg-[linear-gradient(90deg,rgba(168,85,247,0.12),rgba(244,114,182,0.04))]" />
-                                <div className="absolute right-5 top-14 h-40 w-40 rounded-full border border-fuchsia-300/10" />
-                                <div className="absolute right-20 top-20 h-28 w-28 rounded-full border border-fuchsia-200/10" />
-                                <div className="absolute right-10 top-10 h-40 w-20 rounded-[999px] bg-fuchsia-300/8 blur-2xl" />
+                                <div className="absolute right-[-26px] top-1/2 h-44 w-72 -translate-y-1/2 rounded-[44%_56%_42%_58%/58%_38%_62%_42%] border border-fuchsia-300/12 bg-[linear-gradient(135deg,rgba(192,132,252,0.18),rgba(217,70,239,0.08),rgba(255,255,255,0.02))]" />
+                                <div className="absolute right-9 top-8 h-24 w-24 rounded-full border border-fuchsia-200/10 bg-[radial-gradient(circle,rgba(244,114,182,0.14),transparent_64%)]" />
+                                <div className="absolute right-12 bottom-6 h-16 w-36 rounded-[999px] bg-fuchsia-300/10 blur-2xl" />
                             </div>
                             <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-fuchsia-200/70">
                                 {todayHoliday ? 'Holiday Window' : isWeekendToday ? 'Weekend Reset' : 'Open Study Window'}
