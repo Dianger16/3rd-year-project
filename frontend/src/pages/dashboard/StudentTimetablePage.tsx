@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 XynaxDev
+ï»¿/* Copyright (c) 2026 XynaxDev
  * Contact: akashkumar.cs27@gmail.com
  */
 
@@ -32,6 +32,8 @@ export default function StudentTimetablePage() {
     const displayName = normalizeDisplayName(user?.full_name);
     const cachedCourses = token ? authApi.peekCourseDirectory(token, 48) : null;
     const cachedDocs = token ? documentsApi.peekList(token, { page: 1, per_page: 80 }) : null;
+    const suspiciousDocsCache =
+        Number(cachedDocs?.total || cachedDocs?.documents?.length || 0) === 0;
 
     const [courses, setCourses] = useState<CourseDirectoryItem[]>(cachedCourses?.courses || []);
     const [documents, setDocuments] = useState<DocumentResponse[]>(cachedDocs?.documents || []);
@@ -44,37 +46,37 @@ export default function StudentTimetablePage() {
 
         const loadTimetableData = async () => {
             if (!token) return;
-            const shouldSilentRefresh = Boolean(cachedCourses || cachedDocs);
+
             if (!(cachedCourses || cachedDocs)) setIsLoading(true);
 
             try {
                 const [coursesResult, docsResult, facultyResult] = await Promise.allSettled([
-                    cachedCourses
-                        ? authApi.getCourseDirectory(token, 48, { force: true })
-                        : authApi.getCourseDirectory(token, 48),
-                    cachedDocs
-                        ? documentsApi.list(token, { page: 1, per_page: 80 }, { force: true })
-                        : documentsApi.list(token, { page: 1, per_page: 80 }),
-                    authApi.getFacultyDirectory(token, 60, { force: true }),
+                    authApi.getCourseDirectory(token, 48),
+                    documentsApi.list(
+                        token,
+                        { page: 1, per_page: 80 },
+                        suspiciousDocsCache ? { force: true } : undefined,
+                    ),
+                    authApi.getFacultyDirectory(token, 60),
                 ]);
 
                 if (!alive) return;
 
                 if (coursesResult.status === 'fulfilled') {
                     setCourses(coursesResult.value.courses || []);
-                } else if (!shouldSilentRefresh) {
+                } else if (!cachedCourses) {
                     setCourses([]);
                 }
 
                 if (docsResult.status === 'fulfilled') {
                     setDocuments(docsResult.value.documents || []);
-                } else if (!shouldSilentRefresh) {
+                } else if (!cachedDocs) {
                     setDocuments([]);
                 }
 
                 if (facultyResult.status === 'fulfilled') {
                     setFacultyMembers(facultyResult.value.faculty || []);
-                } else if (!shouldSilentRefresh) {
+                } else {
                     setFacultyMembers([]);
                 }
             } finally {
@@ -133,11 +135,7 @@ export default function StudentTimetablePage() {
             <div className="mx-auto max-w-7xl space-y-6">
                 {isLoading ? (
                     <section className="space-y-5">
-                        <div className="rounded-[28px] border border-white/[0.08] bg-zinc-900/45 p-6">
-                            <Skeleton className="h-6 w-40" />
-                            <Skeleton className="mt-3 h-10 w-80" />
-                            <Skeleton className="mt-3 h-4 w-full max-w-3xl" />
-                        </div>
+
                         <div className="rounded-[28px] border border-white/[0.08] bg-zinc-900/45 p-6 space-y-3">
                             {Array.from({ length: 5 }).map((_, idx) => (
                                 <div key={`student-date-skeleton-${idx}`} className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
@@ -197,8 +195,8 @@ export default function StudentTimetablePage() {
                                         <div className="text-sm font-bold text-white truncate">{doc.filename}</div>
                                         <div className="mt-1 flex flex-wrap gap-2 text-xs text-zinc-500">
                                             <span>{doc.doc_type}</span>
-                                            {doc.department ? <span>· {doc.department}</span> : null}
-                                            {doc.course ? <span>· {doc.course}</span> : null}
+                                            {doc.department ? <span>Â· {doc.department}</span> : null}
+                                            {doc.course ? <span>Â· {doc.course}</span> : null}
                                         </div>
                                     </div>
                                     <Button
@@ -219,4 +217,5 @@ export default function StudentTimetablePage() {
         </div>
     );
 }
+
 
