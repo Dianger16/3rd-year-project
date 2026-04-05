@@ -26,8 +26,8 @@ _ACADEMIC_CONTEXT = re.compile(
 def detect_local_moderation(query: str, *, strict: bool = False) -> dict[str, Any]:
     """
     Emergency local moderation fallback.
-    No slur wordlists are used here; detection is structure-based for targeted
-    personal/identity probing about individuals.
+    Keep this narrow and provider-independent: it should only catch obvious
+    targeted abuse or personal attacks when the model path misses or is unavailable.
     """
     text = str(query or "").strip()
     if not text:

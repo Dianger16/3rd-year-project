@@ -538,6 +538,7 @@ def _build_moderation_meta(state: dict[str, Any]) -> dict[str, Any]:
         "appeal_status": appeal_status,
         "appeal_submitted_at": appeal.get("submitted_at"),
         "blocked_at": state.get("blocked_at"),
+        "reason": state.get("reason"),
     }
 
 
@@ -813,12 +814,19 @@ async def build_fast_smalltalk_answer(
         "student": "course notices, deadlines, faculty/course mappings, and policy guidance",
     }.get(role_norm, "role-scoped university workflows")
 
-    mode_instruction = (
-        "The user is in casual conversation. Reply in 1 short line, warm but professional. "
-        "Do not over-greet or restate broad capability lists."
-        if conversation_mode == "casual"
-        else "The user asked for capabilities. Reply in 2 short lines with concrete, role-scoped help areas only."
-    )
+    if conversation_mode == "casual":
+        mode_instruction = (
+            "The user is in casual conversation. If the user is only greeting, reply in 1 short line, warm but professional. "
+            "If the user is asking how you can help, respond in 2 or 3 short sentences with concrete, role-scoped help areas and one simple next-step invitation. "
+            "Do not over-greet, do not sound robotic, and do not restate broad generic capability lists."
+        )
+        max_tokens = 180
+    else:
+        mode_instruction = (
+            "The user asked for capabilities. Reply in 2 or 3 short sentences with concrete, role-scoped help areas only, "
+            "then end with one clear next-step invitation."
+        )
+        max_tokens = 180
     continuity_instruction = (
         "The assistant already replied recently in this conversation. Continue naturally and do not start with greeting words like Hi/Hey."
         if has_recent_assistant_turn
@@ -856,7 +864,7 @@ async def build_fast_smalltalk_answer(
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                max_tokens=110,
+                max_tokens=max_tokens,
                 temperature=0.65,
                 allow_fallback_models=True,
                 max_retries_override=1,
@@ -887,9 +895,9 @@ def fetch_filtered_documents(
         return []
 
     def query_documents(order_column: str):
-        select_columns = "id,filename,doc_type,department,course,tags,created_at"
-        if order_column == "uploaded_at":
-            select_columns = "id,filename,doc_type,department,course,tags,uploaded_at,created_at"
+        select_columns = "id,filename,doc_type,department,course,tags,uploaded_at,updated_at"
+        if order_column == "created_at":
+            select_columns = "id,filename,doc_type,department,course,tags,created_at"
         return (
             supabase.table("documents")
             .select(select_columns)
@@ -901,15 +909,14 @@ def fetch_filtered_documents(
 
     try:
         if _DOCUMENTS_HAS_UPLOADED_AT is False:
-            res = query_documents("created_at")
+            res = query_documents("updated_at")
         else:
             try:
-                # Default to created_at to avoid schema-induced 400s on older tables.
-                res = query_documents("created_at")
-            except Exception as exc:
-                logger.info("Documents query fallback to uploaded_at due to created_at query failure: %s", exc)
                 res = query_documents("uploaded_at")
-                _DOCUMENTS_HAS_UPLOADED_AT = True
+            except Exception as exc:
+                logger.info("Documents query fallback due to uploaded_at query failure: %s", exc)
+                res = query_documents("updated_at")
+                _DOCUMENTS_HAS_UPLOADED_AT = False
     except Exception:
         return []
 
@@ -1245,6 +1252,7 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
     - harassment, insults, demeaning personal attacks, or identity-based targeting
     - direct threats
     - abusive allegations about a specific teacher/faculty/staff/student/person
+    - direct insulting or degrading language about a named individual, even if the person is not referred to by title
     Keep `"is_flagged": false` for normal academic questions, neutral policy questions, mild frustration, general complaints, apologies, or references to moderation itself.
     Task 2 (Conversation Mode): classify whether the query is primarily casual chit-chat/emotional venting or an actionable university data/task query.
     Task 3 (Intent Routing): Extract structured intent metadata so downstream tools can filter data before the main LLM response.
@@ -1263,12 +1271,9 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
     Example 2: {{"conversation_mode":"task","intent_type":"document_date_lookup","document_date":"2026-03-14","is_flagged": false}}
     Example 3: {{"is_flagged": true, "reason": "Severe hate speech"}}
     Example 4: {{"conversation_mode":"casual","intent_type":"general","target_entity":"general","is_flagged": false}}
+    Example 5: {{"is_flagged": true, "reason": "Targeted insulting language about a named individual.", "conversation_mode":"task","intent_type":"general","target_entity":"general"}}
+    Example 6: {{"is_flagged": true, "reason": "Direct degrading language about a named person.", "conversation_mode":"task","intent_type":"general","target_entity":"general"}}
     """
-
-    local_moderation = detect_local_moderation(query)
-    if local_moderation.get("is_flagged"):
-        local_moderation["_intent_source"] = "local_moderation"
-        return local_moderation
 
     if is_fast_smalltalk_query(query):
         return {
@@ -1536,6 +1541,7 @@ async def run_agent_pipeline(
             "warning_count": warning_count,
             "offense_total": offense_total,
             "offensive_messages": offensive_messages,
+            "reason": intent.get("reason"),
         }
 
         if warning_count <= MAX_MODERATION_WARNINGS:
@@ -1803,7 +1809,7 @@ async def run_agent_pipeline(
 
         if doc_count == 0 and (intent_type in {"count_documents", "list_documents", "holiday_check"} or count_request):
             forced_answer = (
-                f"I checked the database for {scope} and found **0 {entity_label}** right now."
+                f"I checked your live UnivGPT document scope for {scope} and found **0 {entity_label}** right now."
             )
         elif doc_count > 0 and (intent_type == "count_documents" or count_request):
             preview_lines = []
