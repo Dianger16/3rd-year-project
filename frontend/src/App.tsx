@@ -11,7 +11,7 @@ import SmoothScroll from '@/components/layout/SmoothScroll';
 import { ToastProvider } from '@/components/ui/ToastProvider';
 import { Suspense, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
-import { authApi } from '@/lib/api';
+import { adminApi, authApi, documentsApi, systemApi } from '@/lib/api';
 import { Loader2 } from 'lucide-react';
 
 const Landing = lazyWithPreload(() => import('@/pages/Landing'));
@@ -81,11 +81,14 @@ function RouteSuspense({ children }: { children: React.ReactNode }) {
   return (
     <Suspense
       fallback={
-        <div className="min-h-[40vh] w-full flex items-center justify-center">
-          <div className="flex items-center gap-3 text-zinc-400">
-            <Loader2 className="w-5 h-5 animate-spin text-orange-400" />
-            <span className="text-sm">Loading page...</span>
+        <div className="min-h-screen w-full bg-black flex flex-col items-center justify-center gap-4">
+          <div className="relative">
+            <div className="w-16 h-16 rounded-3xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center animate-pulse">
+              <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
+            </div>
+            <div className="absolute -inset-4 bg-orange-500/5 blur-2xl rounded-full" />
           </div>
+          <p className="text-zinc-500 font-medium animate-pulse">Loading your workspace...</p>
         </div>
       }
     >
@@ -100,6 +103,25 @@ export default function App() {
   const getCurrentUser = () => useAuthStore.getState().user;
 
   useEffect(() => {
+    const warmRoleCaches = (accessToken: string, role: 'student' | 'faculty' | 'admin') => {
+      const warmers: Array<Promise<unknown>> = [
+        authApi.exportUserData(accessToken),
+        documentsApi.list(accessToken, { page: 1, per_page: role === 'admin' ? 120 : role === 'faculty' ? 60 : 24 }),
+      ];
+
+      if (role === 'student') {
+        warmers.push(authApi.getCourseDirectory(accessToken, 24));
+        warmers.push(authApi.getFacultyDirectory(accessToken, 12));
+      } else if (role === 'faculty') {
+        warmers.push(authApi.getCourseDirectory(accessToken, 24));
+      } else if (role === 'admin') {
+        warmers.push(systemApi.metrics(accessToken));
+        warmers.push(adminApi.getAuditLogs(accessToken, 1, 30));
+      }
+
+      void Promise.allSettled(warmers);
+    };
+
     const syncSessionToBackend = async (session: any, fallbackName: string, options?: { force?: boolean }) => {
       if (!session?.access_token) return;
       const force = Boolean(options?.force);
@@ -110,24 +132,34 @@ export default function App() {
           ? await authApi.refreshMe(session.access_token, getCurrentUser() || undefined)
           : await authApi.getMe(session.access_token, getCurrentUser() || undefined);
         setSession(session.access_token, refreshedUser);
+        if (normalizeRole(refreshedUser.role)) {
+          warmRoleCaches(session.access_token, normalizeRole(refreshedUser.role)!);
+        }
       } catch (err) {
         console.warn('Session sync failed, attempting safe metadata fallback:', err);
+        const currentUser = getCurrentUser();
         const fallbackRole =
-          normalizeRole(getCurrentUser()?.role) ||
+          normalizeRole(currentUser?.role) ||
           normalizeRole(session.user.user_metadata?.role as string);
-        if (!fallbackRole) {
-          lastSyncedTokenRef.current = null;
-          clearSession();
+        if (currentUser && normalizeRole(currentUser.role)) {
+          setSession(session.access_token, currentUser);
+          warmRoleCaches(session.access_token, normalizeRole(currentUser.role)!);
           return;
         }
-        setSession(session.access_token, {
+        if (!fallbackRole) {
+          lastSyncedTokenRef.current = null;
+          return;
+        }
+        const fallbackUser = {
           id: session.user.id,
           email: session.user.email || '',
           full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || fallbackName,
           role: fallbackRole,
           academic_verified: isAcademicEmail(session.user.email || ''),
           identity_provider: session.user.app_metadata?.provider || session.user.app_metadata?.providers?.[0] || 'email',
-        });
+        };
+        setSession(session.access_token, fallbackUser);
+        warmRoleCaches(session.access_token, fallbackRole);
       } finally {
         lastSyncedTokenRef.current = session.access_token;
       }
@@ -137,10 +169,6 @@ export default function App() {
       const persistedState = useAuthStore.getState();
       const persistedToken = persistedState.token;
       const persistedUser = persistedState.user;
-      if (persistedToken && persistedUser) {
-        lastSyncedTokenRef.current = persistedToken;
-        finishInitializing();
-      }
 
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
@@ -148,12 +176,26 @@ export default function App() {
           persistedToken === session.access_token && Boolean(persistedUser);
         if (!hasPersistedMatch) {
           await syncSessionToBackend(session, 'User');
+        } else if (persistedUser && normalizeRole(persistedUser.role)) {
+          setSession(session.access_token, persistedUser);
+          lastSyncedTokenRef.current = session.access_token;
+          warmRoleCaches(session.access_token, normalizeRole(persistedUser.role)!);
+        }
+      } else if (persistedToken && persistedUser) {
+        try {
+          const refreshedUser = await authApi.getMe(persistedToken, persistedUser);
+          setSession(persistedToken, refreshedUser);
+          lastSyncedTokenRef.current = persistedToken;
+          if (normalizeRole(refreshedUser.role)) {
+            warmRoleCaches(persistedToken, normalizeRole(refreshedUser.role)!);
+          }
+        } catch (err) {
+          console.warn('Persisted session bootstrap failed, clearing local session:', err);
+          lastSyncedTokenRef.current = null;
+          clearSession();
         }
       } else {
         lastSyncedTokenRef.current = null;
-        if (persistedToken) {
-          clearSession();
-        }
       }
       finishInitializing();
     };
