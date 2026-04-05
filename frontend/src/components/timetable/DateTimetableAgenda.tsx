@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
-import { CalendarDays, ChevronLeft, ChevronRight, Coffee, Minus, Plus } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Coffee } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { HoverTooltip } from '@/components/ui/tooltip';
 import { Link } from 'react-router-dom';
@@ -174,7 +174,11 @@ export function DateTimetableAgenda({
                             <p className="mt-2 max-w-3xl text-sm text-zinc-400 md:text-[15px]">{subtitle}</p>
                         </div>
                     </div>
-                    {action ? <div className="flex flex-wrap items-center gap-3">{action}</div> : null}
+                    {action ? (
+                        <div className="flex w-full flex-wrap items-center gap-3 lg:ml-auto lg:w-auto lg:shrink-0 lg:justify-end">
+                            {action}
+                        </div>
+                    ) : null}
                 </div>
             </header>
 
@@ -228,7 +232,7 @@ export function DateTimetableAgenda({
                                             return next;
                                         })
                                     }
-                                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-zinc-300 transition hover:border-orange-400/30 hover:text-white"
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-zinc-300 transition hover:border-fuchsia-400/35 hover:bg-fuchsia-500/10 hover:text-white"
                                 >
                                     <ChevronLeft className="h-4 w-4" />
                                 </button>
@@ -248,7 +252,7 @@ export function DateTimetableAgenda({
                                             return next;
                                         })
                                     }
-                                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-zinc-300 transition hover:border-orange-400/30 hover:text-white"
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-zinc-300 transition hover:border-fuchsia-400/35 hover:bg-fuchsia-500/10 hover:text-white"
                                 >
                                     <ChevronRight className="h-4 w-4" />
                                 </button>
@@ -281,7 +285,11 @@ export function DateTimetableAgenda({
                                         </SelectTrigger>
                                         <SelectContent className="border-fuchsia-400/18 bg-[linear-gradient(180deg,rgba(18,19,24,0.98),rgba(24,18,36,0.98))]">
                                             {MONTH_NAMES.map((month, index) => (
-                                                <SelectItem key={month} value={String(index)}>
+                                                <SelectItem
+                                                    key={month}
+                                                    value={String(index)}
+                                                    className="data-[highlighted]:bg-fuchsia-500/16 data-[highlighted]:text-white"
+                                                >
                                                     {month}
                                                 </SelectItem>
                                             ))}
@@ -295,7 +303,7 @@ export function DateTimetableAgenda({
                                             onChange={(event) => setJumpYearValue(event.target.value.replace(/[^\d]/g, '').slice(0, 4))}
                                             className="h-full flex-1 bg-transparent px-3 text-sm font-semibold text-white outline-none"
                                         />
-                                        <div className="mr-1 flex items-center gap-1">
+                                        <div className="mr-1 flex flex-col gap-1">
                                             <button
                                                 type="button"
                                                 onClick={() =>
@@ -305,9 +313,10 @@ export function DateTimetableAgenda({
                                                         return String(nextYear);
                                                     })
                                                 }
-                                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-zinc-300 transition hover:border-fuchsia-300/30 hover:text-white"
+                                                className="inline-flex h-[18px] w-8 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.04] text-zinc-300 transition hover:border-fuchsia-300/30 hover:bg-fuchsia-500/12 hover:text-white"
+                                                aria-label="Increase year"
                                             >
-                                                <Plus className="h-3.5 w-3.5" />
+                                                <ChevronUp className="h-3.5 w-3.5" />
                                             </button>
                                             <button
                                                 type="button"
@@ -318,9 +327,10 @@ export function DateTimetableAgenda({
                                                         return String(nextYear);
                                                     })
                                                 }
-                                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-zinc-300 transition hover:border-fuchsia-300/30 hover:text-white"
+                                                className="inline-flex h-[18px] w-8 items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.04] text-zinc-300 transition hover:border-fuchsia-300/30 hover:bg-fuchsia-500/12 hover:text-white"
+                                                aria-label="Decrease year"
                                             >
-                                                <Minus className="h-3.5 w-3.5" />
+                                                <ChevronDown className="h-3.5 w-3.5" />
                                             </button>
                                         </div>
                                     </div>

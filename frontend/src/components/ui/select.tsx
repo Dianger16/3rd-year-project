@@ -64,13 +64,13 @@ const SelectItem = React.forwardRef<
         className={cn(
             "relative flex h-9 w-full cursor-default select-none items-center rounded-lg px-3 text-sm outline-none transition-colors",
             "data-[disabled]:pointer-events-none data-[disabled]:opacity-40",
-            "data-[highlighted]:bg-orange-500/15 data-[highlighted]:text-white",
+            "data-[highlighted]:bg-fuchsia-500/12 data-[highlighted]:text-white",
             className,
         )}
         {...props}
     >
         <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-        <SelectPrimitive.ItemIndicator className="absolute right-2 inline-flex items-center justify-center text-orange-400">
+        <SelectPrimitive.ItemIndicator className="absolute right-2 inline-flex items-center justify-center text-current">
             <Check className="h-3.5 w-3.5" />
         </SelectPrimitive.ItemIndicator>
     </SelectPrimitive.Item>
