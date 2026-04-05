@@ -39,8 +39,9 @@ from app.services.agent_intent_router import (
 from app.services.agent_directory import (
     fetch_course_faculty_snapshot,
     should_use_course_faculty_snapshot,
+    append_navigation_links,
     append_intent_navigation_links,
-    build_course_faculty_answer,
+    build_course_faculty_context,
 )
 from app.services.agent_admin_snapshot import (
     _format_short_date,
@@ -813,18 +814,24 @@ async def build_fast_smalltalk_answer(
         "faculty": "course notices, class updates, and faculty/course mappings",
         "student": "course notices, deadlines, faculty/course mappings, and policy guidance",
     }.get(role_norm, "role-scoped university workflows")
+    role_followup_prompt = {
+        "admin": "Invite one natural admin follow-up such as audits, user activity, notices, or document governance.",
+        "faculty": "Invite one natural faculty follow-up such as today's classes, course notices, timetable questions, or student-facing documents.",
+        "student": "Invite one natural student follow-up such as notices, deadlines, timetable questions, faculty info, or course guidance.",
+    }.get(role_norm, "Invite one natural university-related follow-up question.")
 
     if conversation_mode == "casual":
         mode_instruction = (
-            "The user is in casual conversation. If the user is only greeting, reply in 1 short line, warm but professional. "
-            "If the user is asking how you can help, respond in 2 or 3 short sentences with concrete, role-scoped help areas and one simple next-step invitation. "
+            "The user is in casual conversation. If the user is only greeting or asking how you are, reply warmly in 1 or 2 short sentences. "
+            "Always end with one natural role-aware follow-up question so the conversation can move into useful university help. "
+            "If the user is asking how you can help, respond in 2 or 3 short sentences with concrete, role-scoped help areas and then one natural follow-up question. "
             "Do not over-greet, do not sound robotic, and do not restate broad generic capability lists."
         )
         max_tokens = 180
     else:
         mode_instruction = (
             "The user asked for capabilities. Reply in 2 or 3 short sentences with concrete, role-scoped help areas only, "
-            "then end with one clear next-step invitation."
+            "then end with one natural follow-up question."
         )
         max_tokens = 180
     continuity_instruction = (
@@ -846,13 +853,15 @@ async def build_fast_smalltalk_answer(
         "You are UnivGPT, the university assistant. "
         f"The user role is `{role_norm}` with {role_guidance}. "
         f"Focus capabilities on: {role_capability_focus}. "
+        f"{role_followup_prompt} "
         f"Profile hints: {profile_hint_text}. "
         f"{mode_instruction} "
         f"{continuity_instruction} "
         "Do not mention the user's name unless they explicitly ask you to. "
         "Do not use bullet points. Keep it concise, natural, and non-repetitive. "
         "Avoid generic filler such as 'I can help with anything' or 'just chatting'. "
-        "Answer the exact user ask directly."
+        "Answer the exact user ask directly. "
+        "When you ask the follow-up question, make it feel like UnivGPT already understands the user's university context."
     )
 
     user_prompt = query
@@ -1684,6 +1693,8 @@ async def run_agent_pipeline(
     context_text = ""
     structured_sources: list[dict[str, Any]] = []
     forced_answer: Optional[str] = None
+    response_directive: Optional[str] = None
+    response_links: list[tuple[str, str]] = []
 
     intent_type = _normalize(intent.get("intent_type"))
     target_entity = _normalize(intent.get("target_entity"))
@@ -1691,17 +1702,10 @@ async def run_agent_pipeline(
     count_request = bool(re.search(r"\b(how many|count|number of|total)\b", query_text))
 
     if _normalize(user_role) == "admin" and not is_admin_scope_intent(intent, query):
-        forced_answer = (
-            "I can help with admin operations queries.\n\n"
-            "Try asking about:\n"
-            "- user counts and role distribution\n"
-            "- document and notice pipeline status\n"
-            "- audit and moderation review context\n"
-            "- course/faculty directory summaries for governance\n\n"
-            "Examples:\n"
-            "- \"Show today's uploads and who uploaded them\"\n"
-            "- \"How many students, faculty, and admins are active?\"\n"
-            "- \"List recent audit actions for admin workflows\""
+        response_directive = (
+            "This admin account asked a non-admin-operational question. "
+            "Politely redirect to admin operations queries only, and suggest the kinds of admin topics this assistant can help with. "
+            "Do not answer outside admin scope."
         )
 
     course_faculty_snapshot: dict[str, Any] = {}
@@ -1727,13 +1731,16 @@ async def run_agent_pipeline(
         ]
 
         if should_route_directory:
-            course_answer = build_course_faculty_answer(
+            directory_context = build_course_faculty_context(
                 query=query,
                 intent=intent,
                 snapshot=course_faculty_snapshot,
             )
-            if course_answer:
-                forced_answer = course_answer
+            if directory_context:
+                context_text += "\n" + str(directory_context.get("context") or "") + "\n"
+                if not response_directive and directory_context.get("directive"):
+                    response_directive = str(directory_context.get("directive"))
+                response_links.extend(directory_context.get("links") or [])
 
         if courses or faculty_by_id:
             faculty_preview_names = []
@@ -1787,6 +1794,19 @@ async def run_agent_pipeline(
             or target_entity in {"users", "students", "faculty", "admins", "audit", "logs", "appeal", "appeals", "moderation"}
         )
     )
+    non_admin_restricted_query = (
+        _normalize(user_role) != "admin"
+        and (
+            intent_type in {"count_users", "count_appeals", "list_appeals", "audit_summary"}
+            or target_entity in {"admins", "users", "audit", "logs", "appeal", "appeals", "moderation"}
+        )
+    )
+
+    if non_admin_restricted_query and forced_answer is None and not response_directive:
+        response_directive = (
+            "This request is outside the user's role because it asks for admin-only workflows. "
+            "Refuse briefly, stay polite, and redirect the user to their role-scoped notices, documents, timetable, courses, and faculty mappings."
+        )
 
     if supabase and doc_lookup_requested and forced_answer is None:
         filtered_docs = fetch_filtered_documents(
@@ -1807,22 +1827,19 @@ async def run_agent_pipeline(
         scope = ", ".join(scope_tokens) if scope_tokens else "your allowed scope"
         entity_label = "notices" if notice_requested else "documents"
 
-        if doc_count == 0 and (intent_type in {"count_documents", "list_documents", "holiday_check"} or count_request):
-            forced_answer = (
-                f"I checked your live UnivGPT document scope for {scope} and found **0 {entity_label}** right now."
+        citation_limit = 0
+        if doc_count == 0 and doc_lookup_requested:
+            response_directive = (
+                f"Answer only from the structured document lookup and explicitly say there are 0 {entity_label} in {scope}. "
+                "Do not imply hidden results or future availability."
             )
+            citation_limit = 0
         elif doc_count > 0 and (intent_type == "count_documents" or count_request):
-            preview_lines = []
-            for row in filtered_docs[:5]:
-                preview_lines.append(
-                    f"- {_format_short_date(row.get('uploaded_at') or row.get('created_at'))} | "
-                    f"{row.get('doc_type') or 'unknown'} | {row.get('filename') or 'untitled'}"
-                )
-            preview_block = "\n".join(preview_lines)
-            forced_answer = (
-                f"I found **{doc_count} {entity_label}** for {scope}.\n\n"
-                f"Recent matches:\n{preview_block}"
+            response_directive = (
+                f"Answer only from the structured document lookup for {scope}. "
+                f"State the exact count of matching {entity_label} and mention up to the top 3 recent matches."
             )
+            citation_limit = min(3, doc_count)
         elif intent_type == "holiday_check":
             holiday_docs = [
                 row
@@ -1830,17 +1847,18 @@ async def run_agent_pipeline(
                 if any(marker in _normalize(row.get("filename")) for marker in ("holiday", "closed"))
                 or any(marker in [str(tag).lower() for tag in (row.get("tags") or [])] for marker in ("holiday", "closed"))
             ]
-            if holiday_docs:
-                top = holiday_docs[0]
-                forced_answer = (
-                    "I found holiday-related documents in scope.\n\n"
-                    f"- Latest: {_format_short_date(top.get('uploaded_at') or top.get('created_at'))} | "
-                    f"{top.get('filename') or 'untitled'}"
-                )
-            else:
-                forced_answer = (
-                    "I checked the available documents and found **0 holiday notices** for the requested scope."
-                )
+            response_directive = (
+                "Answer only from the structured holiday document lookup. "
+                "If there are holiday-related documents, mention the latest relevant one. "
+                "If there are none, clearly say there are 0 holiday notices in the requested scope."
+            )
+            citation_limit = 1 if holiday_docs else 0
+        elif doc_count > 0 and doc_lookup_requested:
+            response_directive = (
+                f"Answer only from the structured document lookup for {scope}. "
+                f"Summarize the most relevant matching {entity_label}, keeping the answer grounded to the listed files only."
+            )
+            citation_limit = min(3, doc_count)
 
         if doc_count == 0:
             context_text += "\n[Structured Lookup: 0 documents matched current filters.]\n"
@@ -1856,7 +1874,7 @@ async def run_agent_pipeline(
                 )
             context_text += "\n" + "\n".join(context_lines) + "\n"
 
-            for row in filtered_docs[:5]:
+            for row in filtered_docs[: max(citation_limit, 0)]:
                 structured_sources.append(
                     {
                         "content": (
@@ -1885,6 +1903,7 @@ async def run_agent_pipeline(
         and not structured_directory_query
         and not non_retrieval_intent
         and not admin_structured_query
+        and not doc_lookup_requested
     )
 
     if should_run_vector_search:
@@ -2004,14 +2023,17 @@ async def run_agent_pipeline(
         if intent_type == "count_users" and not forced_answer:
             users_by_role = admin_snapshot.get("users_by_role", {}) if isinstance(admin_snapshot, dict) else {}
             total_users = (admin_snapshot.get("counts", {}) or {}).get("total_users", 0)
-            if any(marker in target_entity for marker in ("student", "students")):
-                forced_answer = f"There are **{int(users_by_role.get('student', 0))} students** in the current database snapshot."
-            elif any(marker in target_entity for marker in ("faculty", "teacher", "teachers")):
-                forced_answer = f"There are **{int(users_by_role.get('faculty', 0))} faculty users** in the current database snapshot."
-            elif any(marker in target_entity for marker in ("admin", "admins", "administrator")):
-                forced_answer = f"There are **{int(users_by_role.get('admin', 0))} admin users** in the current database snapshot."
-            else:
-                forced_answer = f"There are **{int(total_users or 0)} total users** in the current database snapshot."
+            context_text += (
+                "\n[Structured User Count Snapshot]\n"
+                f"- Total users: {int(total_users or 0)}\n"
+                f"- Students: {int(users_by_role.get('student', 0) or 0)}\n"
+                f"- Faculty: {int(users_by_role.get('faculty', 0) or 0)}\n"
+                f"- Admins: {int(users_by_role.get('admin', 0) or 0)}\n"
+            )
+            response_directive = (
+                "Answer only from the structured user count snapshot. "
+                "Return the exact role-specific count requested by the user, or the total if they asked generally."
+            )
 
         appeal_requested = (
             target_entity in {"appeal", "appeals", "moderation"}
@@ -2050,43 +2072,37 @@ async def run_agent_pipeline(
             total_approved = int(appeals_summary.get("approved", 0) or 0)
             total_rejected = int(appeals_summary.get("rejected", 0) or 0)
 
-            if total_pending == 0:
-                forced_answer = (
-                    "I checked the moderation queue and found **0 pending appeals** right now.\n\n"
-                    "Appeal summary:\n"
-                    f"- Pending: {total_pending}\n"
-                    f"- Approved: {total_approved}\n"
-                    f"- Rejected: {total_rejected}\n\n"
-                    "Quick links:\n"
-                    "- [Open Dean Appeals](/dashboard/dean)\n"
-                    "- [Open Audit Logs](/dashboard/audit)"
+            preview_lines = []
+            for item in pending_appeals[:6]:
+                submitted = _format_short_date(item.get("submitted_at"))
+                user_label = (
+                    item.get("full_name")
+                    or item.get("email")
+                    or "Unknown user"
                 )
-            else:
-                preview_lines = []
-                for item in pending_appeals[:6]:
-                    submitted = _format_short_date(item.get("submitted_at"))
-                    user_label = (
-                        item.get("full_name")
-                        or item.get("email")
-                        or "Unknown user"
-                    )
-                    user_id = str(item.get("user_id") or "").strip()
-                    review_link = (
-                        f"/dashboard/dean?status=pending&user_id={user_id}"
-                        if user_id
-                        else "/dashboard/dean?status=pending"
-                    )
-                    preview_lines.append(
-                        f"- {submitted} | {user_label} | offense_total: {int(item.get('offense_total') or 0)} | [Review]({review_link})"
-                    )
-                forced_answer = (
-                    f"I found **{total_pending} pending appeals** in the moderation queue.\n\n"
-                    "Pending appeals (latest):\n"
-                    f"{chr(10).join(preview_lines)}\n\n"
-                    "Quick links:\n"
-                    "- [Open Dean Appeals](/dashboard/dean?status=pending)\n"
-                    "- [Open Audit Logs](/dashboard/audit)"
+                user_id = str(item.get("user_id") or "").strip()
+                review_link = (
+                    f"/dashboard/dean?status=pending&user_id={user_id}"
+                    if user_id
+                    else "/dashboard/dean?status=pending"
                 )
+                preview_lines.append(
+                    f"- {submitted} | {user_label} | offense_total: {int(item.get('offense_total') or 0)} | review: {review_link}"
+                )
+            context_text += (
+                "\n[Structured Moderation Appeals Snapshot]\n"
+                f"- Pending appeals: {total_pending}\n"
+                f"- Approved appeals: {total_approved}\n"
+                f"- Rejected appeals: {total_rejected}\n"
+                + ("\n".join(preview_lines) + "\n" if preview_lines else "")
+            )
+            response_directive = (
+                "Answer only from the structured moderation appeals snapshot. "
+                "State the exact pending count, summarize the latest pending appeals if any exist, and do not invent review data."
+            )
+            response_links.extend(
+                [("Open Dean Appeals", "/dashboard/dean?status=pending"), ("Open Audit Logs", "/dashboard/audit")]
+            )
 
         audit_requested = (
             not appeal_requested
@@ -2098,32 +2114,35 @@ async def run_agent_pipeline(
         )
         if audit_requested and not forced_answer:
             recent_audits = (admin_snapshot.get("recent_audits") or []) if isinstance(admin_snapshot, dict) else []
-            if not recent_audits:
-                forced_answer = "I checked the latest audit snapshot and found **0 audit events**."
-            else:
-                action_counts: dict[str, int] = {}
-                for row in recent_audits:
-                    key = str(row.get("action") or "unknown")
-                    action_counts[key] = action_counts.get(key, 0) + 1
+            action_counts: dict[str, int] = {}
+            for row in recent_audits:
+                key = str(row.get("action") or "unknown")
+                action_counts[key] = action_counts.get(key, 0) + 1
 
-                top_actions = sorted(action_counts.items(), key=lambda item: item[1], reverse=True)[:4]
-                summary_lines = [
-                    f"- {_humanize_action(action)}: {count}"
-                    for action, count in top_actions
-                ]
-                recent_lines = []
-                for row in recent_audits[:6]:
-                    row_ts = _format_short_date(row.get("timestamp") or row.get("created_at"))
-                    recent_lines.append(
-                        f"- {row_ts} | {_humanize_action(str(row.get('action') or ''))} | user_id: {row.get('user_id') or 'unknown'}"
-                    )
-                forced_answer = (
-                    f"Latest audit summary (showing {len(recent_audits)} recent events):\n\n"
-                    "Top actions:\n"
-                    f"{chr(10).join(summary_lines)}\n\n"
-                    "Most recent events:\n"
-                    f"{chr(10).join(recent_lines)}"
+            top_actions = sorted(action_counts.items(), key=lambda item: item[1], reverse=True)[:4]
+            summary_lines = [
+                f"- {_humanize_action(action)}: {count}"
+                for action, count in top_actions
+            ]
+            recent_lines = []
+            for row in recent_audits[:6]:
+                row_ts = _format_short_date(row.get("timestamp") or row.get("created_at"))
+                recent_lines.append(
+                    f"- {row_ts} | {_humanize_action(str(row.get('action') or ''))} | user_id: {row.get('user_id') or 'unknown'}"
                 )
+            context_text += (
+                "\n[Structured Audit Snapshot]\n"
+                f"- Recent audit event count: {len(recent_audits)}\n"
+                + ("\n".join(summary_lines) + "\n" if summary_lines else "")
+                + ("\n".join(recent_lines) + "\n" if recent_lines else "")
+            )
+            response_directive = (
+                "Answer only from the structured audit snapshot. "
+                "State the exact recent audit event count and summarize the top actions and latest events without inventing missing records."
+            )
+            response_links.extend(
+                [("Open Audit Logs", "/dashboard/audit"), ("Open User Management", "/dashboard/users")]
+            )
 
         system_message = f"""
         You are UnivGPT Admin Assistant, a professional operations assistant for university administrators.
@@ -2157,10 +2176,17 @@ async def run_agent_pipeline(
         - If total_documents is 0, explicitly say "0 documents" instead of "no access."
         - If asked about dates, use the provided Today/Tomorrow fields.
         - If asked "how many students/faculty/admins/users", use Users by role / Total users from the snapshot.
+        - If SPECIAL RESPONSE DIRECTIVE is present, follow it exactly and stay grounded to the structured context.
+
+        SPECIAL RESPONSE DIRECTIVE:
+        {response_directive or "None"}
         """
     else:
-        if intent_type == "count_users" and not forced_answer:
-            forced_answer = "I can provide user counts only to admin accounts. For your role, I can still help with documents, courses, and notices in your allowed scope."
+        if intent_type == "count_users" and not forced_answer and not response_directive:
+            response_directive = (
+                "This user asked for admin-only user counts. "
+                "Refuse briefly, stay polite, and redirect them to the documents, courses, notices, and timetable available in their role scope."
+            )
 
         common_guardrails = """
         1. Never invent internal data. Use only provided context and structured lookup results.
@@ -2209,6 +2235,10 @@ async def run_agent_pipeline(
         - Mention source filenames when citing specific document facts.
         - Do not start every turn with greetings; use direct, context-aware answers.
         - Avoid vague filler like "I can help with anything."
+        - If SPECIAL RESPONSE DIRECTIVE is present, follow it exactly and stay grounded to the structured context.
+
+        SPECIAL RESPONSE DIRECTIVE:
+        {response_directive or "None"}
         """
 
     llm_messages = [{"role": "system", "content": system_message}]
@@ -2230,6 +2260,8 @@ async def run_agent_pipeline(
             )
             answer = "I'm unable to answer right now due to a temporary service issue. Please try again in a moment."
 
+    if response_links:
+        answer = append_navigation_links(answer, response_links)
     answer = append_intent_navigation_links(answer, user_role, intent)
 
     # 4. Persistence in Supabase (Store Conversations)
