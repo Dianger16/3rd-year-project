@@ -197,7 +197,11 @@ function MessageBubble({ message, navigateTo, role }: { message: ChatMessage; na
         setTimeout(() => setCopied(false), 2000);
     };
 
-    const time = message.timestamp ? new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+    const time = message.timestamp
+        ? new Date(message.timestamp)
+            .toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+            .replace(/\s?(am|pm)$/i, (match) => ` ${match.trim().toUpperCase()}`)
+        : '';
     const fallbackAssistantLabel =
         user?.role === 'admin'
             ? 'Admin Assistant'
