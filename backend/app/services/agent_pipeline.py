@@ -211,21 +211,13 @@ def _build_user_facing_provider_message(exc: Optional[Exception], provider_cfg: 
     if response_format == "json":
         return "{}"
 
-    provider_label = provider_cfg.get("provider_label") or "AI provider"
     if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None and exc.response.status_code == 429:
         retry_window = _humanize_retry_window(_parse_retry_after_seconds(exc))
         if retry_window:
-            return (
-                f"I'm temporarily rate-limited by the {provider_label}. "
-                f"Please try again in about {retry_window}."
-            )
-        return (
-            f"I'm temporarily rate-limited by the {provider_label}. "
-            "Please try again a little later."
-        )
+            return f"I'm temporarily unable to answer due to a service limit. Please try again in about {retry_window}."
+        return "I'm temporarily unable to answer due to a service limit. Please try again a little later."
     return (
-        f"I'm unable to answer right now because the {provider_label} is temporarily unavailable. "
-        "Please try again in a moment."
+        "I'm unable to answer right now due to a temporary service issue. Please try again in a moment."
     )
 
 
@@ -1888,8 +1880,8 @@ async def run_agent_pipeline(
             "Refuse briefly, stay polite, and redirect the user to their role-scoped notices, documents, timetable, courses, and faculty mappings."
         )
 
-    if supabase and timetable_query and incomplete_profile_fields and forced_answer is None:
-        timetable_reference_docs = []
+    timetable_reference_docs: list[dict[str, Any]] = []
+    if supabase and timetable_query and forced_answer is None:
         try:
             accessible_docs = fetch_filtered_documents(
                 supabase=supabase,
@@ -1934,18 +1926,31 @@ async def run_agent_pipeline(
                 )
             context_text += "\n" + "\n".join(context_lines) + "\n"
 
-        response_directive = (
-            "The user asked for timetable or today's classes, but their profile is missing required registration fields: "
-            f"{', '.join(incomplete_profile_fields)}. "
-            "Do not invent any personalized class schedule. Briefly state that the in-app profile must be completed first. "
-            "If structured timetable reference files are present in context, mention them as the only timetable references currently visible in the app. "
-            "Recommend only critical next steps the app can support, such as completing the profile and opening the timetable page. "
-            "If official class registration details are still missing, advise checking the official university portal/website for the authoritative timetable."
-        )
         if ("Open Full Timetable", "/dashboard/timetable") not in response_links:
             response_links.append(("Open Full Timetable", "/dashboard/timetable"))
-        if ("Complete Profile", "/dashboard/profile") not in response_links:
-            response_links.append(("Complete Profile", "/dashboard/profile"))
+        if ("Open Notifications", "/dashboard/notifications") not in response_links and _normalize(user_role) == "student":
+            response_links.append(("Open Notifications", "/dashboard/notifications"))
+        if ("Open Courses", "/dashboard/courses") not in response_links:
+            response_links.append(("Open Courses", "/dashboard/courses"))
+
+        if incomplete_profile_fields:
+            response_directive = (
+                "The user asked for timetable or today's classes, but their profile is missing required registration fields: "
+                f"{', '.join(incomplete_profile_fields)}. "
+                "Do not invent any personalized class schedule. Briefly state that the in-app profile must be completed first. "
+                "If structured timetable reference files are present in context, mention them as the timetable references currently visible in the app. "
+                "Recommend only critical next steps the app can support, such as completing the profile, opening the timetable page, and checking relevant notices or courses. "
+                "If official class registration details are still missing, advise checking the official university portal/website for the authoritative timetable."
+            )
+            if ("Complete Profile", "/dashboard/profile") not in response_links:
+                response_links.append(("Complete Profile", "/dashboard/profile"))
+        elif not response_directive:
+            response_directive = (
+                "The user asked for timetable or today's classes. "
+                "Answer only from structured timetable/course context and visible timetable reference files. "
+                "If no personalized timetable records exist, clearly say so, mention any timetable reference files visible in the app, "
+                "and guide the user first to the in-app timetable, notices, and course sections before suggesting the official university portal for anything missing."
+            )
 
     if supabase and doc_lookup_requested and forced_answer is None:
         filtered_docs = fetch_filtered_documents(
