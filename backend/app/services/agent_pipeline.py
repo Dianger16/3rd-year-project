@@ -345,6 +345,36 @@ def _candidate_provider_configs(provider: str, requested_model: Optional[str], a
         candidates = [primary]
     return candidates
 
+
+def _resolve_source_navigation_target(
+    user_role: str,
+    intent: dict[str, Any],
+    source_title: Optional[str],
+    metadata: Optional[dict[str, Any]],
+) -> str:
+    meta = metadata or {}
+    explicit = str(meta.get("navigation_target") or "").strip().lower()
+    if explicit:
+        return explicit
+
+    role_norm = str(user_role or "").strip().lower()
+    intent_type = str(intent.get("intent_type") or "").strip().lower()
+    target_entity = str(intent.get("target_entity") or "").strip().lower()
+    title = str(source_title or "").strip().lower()
+    tags = [str(tag).strip().lower() for tag in (meta.get("tags") or []) if str(tag).strip()]
+    notice_markers = {"notice", "announcement", "served_notice", "served-notice"}
+    is_notice_like = (
+        bool(str(meta.get("notice_type") or "").strip())
+        or target_entity == "notices"
+        or intent_type in {"count_notices", "list_notices"}
+        or any(marker in title for marker in ("notice", "announcement"))
+        or any(tag in notice_markers for tag in tags)
+    )
+
+    if role_norm == "student":
+        return "notifications" if is_notice_like else "courses"
+    return "notices" if is_notice_like else "documents"
+
 def is_network_error(exc: Exception) -> bool:
     message = str(exc).lower()
     if isinstance(exc, httpx.RequestError):
@@ -1892,6 +1922,15 @@ async def run_agent_pipeline(
                             "course": row.get("course"),
                             "tags": row.get("tags") or [],
                             "uploaded_at": row.get("uploaded_at") or row.get("created_at"),
+                            "navigation_target": (
+                                "notifications"
+                                if user_role == "student" and target_entity == "notices"
+                                else "notices"
+                                if target_entity == "notices"
+                                else "courses"
+                                if user_role == "student"
+                                else "documents"
+                            ),
                         },
                     }
                 )
@@ -1937,7 +1976,15 @@ async def run_agent_pipeline(
                         "content": chunk_content,
                         "filename": meta.get("filename", "Unknown"),
                         "document_id": meta.get("document_id"),
-                        "metadata": extra_meta,
+                        "metadata": {
+                            **extra_meta,
+                            "navigation_target": _resolve_source_navigation_target(
+                                user_role,
+                                intent,
+                                meta.get("filename"),
+                                extra_meta,
+                            ),
+                        },
                     }
                 )
 
@@ -2317,7 +2364,15 @@ async def run_agent_pipeline(
                 document_id=str(c.get("document_id", "")),
                 title=c["filename"],
                 snippet=c["content"][:150],
-                metadata=c.get("metadata", {}),
+                metadata={
+                    **(c.get("metadata", {}) or {}),
+                    "navigation_target": _resolve_source_navigation_target(
+                        user_role,
+                        intent,
+                        c.get("filename"),
+                        c.get("metadata", {}) or {},
+                    ),
+                },
             )
             for c in merged_sources
         ],
