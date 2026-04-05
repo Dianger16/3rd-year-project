@@ -38,6 +38,8 @@ type NoticeFilter = 'all' | 'with_updates' | 'without_updates';
 type FacultyFilter = 'all' | 'mapped' | 'unmapped';
 type SortBy = 'recent' | 'title_asc' | 'code_asc';
 
+const COURSES_PER_PAGE = 6;
+
 type DisplayFaculty = {
     id: string;
     full_name: string;
@@ -131,6 +133,7 @@ export default function CoursesPage() {
     const [noticeFilter, setNoticeFilter] = useState<NoticeFilter>('all');
     const [facultyFilter, setFacultyFilter] = useState<FacultyFilter>('all');
     const [sortBy, setSortBy] = useState<SortBy>('recent');
+    const [page, setPage] = useState(1);
     const [courses, setCourses] = useState<CourseDirectoryItem[]>([]);
     const [faculty, setFaculty] = useState<FacultySummary[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -281,6 +284,26 @@ export default function CoursesPage() {
         });
         return sorted;
     }, [normalizedCourses, searchQuery, departmentFilter, noticeFilter, facultyFilter, sortBy]);
+
+    const totalPages = useMemo(
+        () => Math.max(1, Math.ceil(filteredCourses.length / COURSES_PER_PAGE)),
+        [filteredCourses.length],
+    );
+
+    const pagedCourses = useMemo(() => {
+        const start = (page - 1) * COURSES_PER_PAGE;
+        return filteredCourses.slice(start, start + COURSES_PER_PAGE);
+    }, [filteredCourses, page]);
+
+    useEffect(() => {
+        setPage(1);
+    }, [searchQuery, departmentFilter, noticeFilter, facultyFilter, sortBy]);
+
+    useEffect(() => {
+        if (page > totalPages) {
+            setPage(totalPages);
+        }
+    }, [page, totalPages]);
 
     const departmentOptions = useMemo(() => {
         const values = Array.from(
@@ -501,7 +524,7 @@ export default function CoursesPage() {
 
                 {!isLoading && view === 'grid' && filteredCourses.length > 0 && (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {filteredCourses.map((course, idx) => (
+                        {pagedCourses.map((course, idx) => (
                             <motion.div
                                 key={course.id}
                                 initial={{ opacity: 0, scale: 0.95 }}
@@ -609,7 +632,7 @@ export default function CoursesPage() {
 
                 {!isLoading && view === 'list' && filteredCourses.length > 0 && (
                     <div className="bg-white/[0.02] border border-white/[0.06] rounded-[2rem] overflow-hidden">
-                        {filteredCourses.map((course) => (
+                        {pagedCourses.map((course) => (
                             <div
                                 key={course.id}
                                 className="p-6 flex items-center justify-between gap-4 border-b border-white/[0.04] last:border-0 hover:bg-white/[0.01] transition-colors"
@@ -683,6 +706,39 @@ export default function CoursesPage() {
                                 </div>
                             </div>
                         ))}
+                    </div>
+                )}
+
+                {!isLoading && filteredCourses.length > COURSES_PER_PAGE && (
+                    <div className="flex flex-col gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="text-xs text-zinc-500">
+                            Showing{' '}
+                            <span className="font-semibold text-zinc-300">
+                                {(page - 1) * COURSES_PER_PAGE + 1}-{Math.min(page * COURSES_PER_PAGE, filteredCourses.length)}
+                            </span>{' '}
+                            of <span className="font-semibold text-zinc-300">{filteredCourses.length}</span> courses
+                        </div>
+                        <div className="flex items-center gap-2 self-end sm:self-auto">
+                            <Button
+                                variant="outline"
+                                disabled={page === 1}
+                                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                                className="h-10 rounded-xl border-white/[0.08] bg-white/[0.03] px-4 text-xs font-semibold text-zinc-300 hover:text-white disabled:opacity-40"
+                            >
+                                Previous
+                            </Button>
+                            <div className="min-w-[88px] text-center text-xs font-semibold text-zinc-300">
+                                Page {page} / {totalPages}
+                            </div>
+                            <Button
+                                variant="outline"
+                                disabled={page === totalPages}
+                                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                                className="h-10 rounded-xl border-white/[0.08] bg-white/[0.03] px-4 text-xs font-semibold text-zinc-300 hover:text-white disabled:opacity-40"
+                            >
+                                Next
+                            </Button>
+                        </div>
                     </div>
                 )}
             </div>
