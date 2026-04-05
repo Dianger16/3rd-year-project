@@ -19,6 +19,7 @@ import {
     Activity,
     GraduationCap,
     UserRound,
+    SunMedium,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
@@ -226,6 +227,14 @@ export default function StudentDashboard() {
         return buildFallbackFacultyCards(user?.program);
     }, [facultyMembers, user?.program]);
 
+    const facultyLookup = useMemo(
+        () =>
+            Object.fromEntries(
+                facultyMembers.map((faculty) => [faculty.id, faculty]),
+            ),
+        [facultyMembers],
+    );
+
     const timetableSlots = useMemo(
         () =>
             buildLiveTimetableSlots(courses, {
@@ -233,8 +242,9 @@ export default function StudentDashboard() {
                 role: user?.role,
                 department: user?.department,
                 program: user?.program,
+                facultyLookup,
             }),
-        [courses, user?.department, user?.id, user?.program, user?.role],
+        [courses, facultyLookup, user?.department, user?.id, user?.program, user?.role],
     );
 
     const timetableSummary = useMemo(() => summarizeTimetable(timetableSlots), [timetableSlots]);
@@ -424,29 +434,35 @@ export default function StudentDashboard() {
                     </div>
                     <Link to="/dashboard/timetable">
                         <Button variant="outline" className="h-10 rounded-xl border-white/12 bg-white/[0.03] px-4 text-zinc-200 hover:text-white">
-                            <Calendar className="w-4 h-4 mr-2" /> Open Full Timetable
+                            Open Full Timetable
                         </Button>
                     </Link>
                 </div>
 
                 {todaySlots.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-white/[0.08] bg-[radial-gradient(circle_at_top_right,rgba(249,115,22,0.08),transparent_35%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.02))] p-5">
-                        <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-zinc-500">
-                            {todayHoliday ? 'Holiday Marker' : isWeekendToday ? 'Weekend Snapshot' : 'Open Day Snapshot'}
-                        </div>
-                        <div className="mt-2 text-lg font-black text-white">
-                            {todayHoliday
-                                ? `${todayHoliday.name} keeps the class board clear`
-                                : isWeekendToday
-                                    ? 'No class slots are scheduled today'
-                                    : 'Your timetable is clear for today'}
-                        </div>
-                        <div className="mt-2 text-sm text-zinc-400">
-                            {todayHoliday
-                                ? 'This date is marked as a named academic holiday, so your class lanes are paused. Use the day to catch up, plan ahead, or open the full timetable for the next live slot.'
-                                : isWeekendToday
-                                ? 'Enjoy the off-day rhythm, catch up on reading, and use the full timetable to plan the week ahead.'
-                                : 'Nothing is mapped into today’s class blocks. Check the full timetable to plan your next lecture or lab.'}
+                    <div className="overflow-hidden rounded-2xl border border-fuchsia-400/15 bg-[linear-gradient(135deg,rgba(88,28,135,0.18),rgba(24,25,31,0.98) 42%,rgba(124,58,237,0.12))] p-5">
+                        <div className="relative overflow-hidden rounded-2xl border border-fuchsia-300/10 bg-[radial-gradient(circle_at_top_left,rgba(216,180,254,0.10),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] p-6">
+                            <div className="pointer-events-none absolute -right-10 bottom-[-28px] text-fuchsia-200/14">
+                                <SunMedium className="h-36 w-36" />
+                            </div>
+                            <div className="pointer-events-none absolute right-14 top-5 h-16 w-16 rounded-full bg-fuchsia-300/12 blur-2xl" />
+                            <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-fuchsia-200/70">
+                                {todayHoliday ? 'Holiday Window' : isWeekendToday ? 'Weekend Reset' : 'Open Study Window'}
+                            </div>
+                            <div className="mt-3 text-2xl font-black text-white">
+                                {todayHoliday
+                                    ? `${todayHoliday.name} keeps the class board clear`
+                                    : isWeekendToday
+                                        ? 'No class slots are scheduled today'
+                                        : 'Your timetable is clear for today'}
+                            </div>
+                            <div className="mt-3 max-w-2xl text-sm text-zinc-300/90">
+                                {todayHoliday
+                                    ? 'Campus timing is paused for the holiday. Use the day to recharge, skim notices, and get your next class set ready.'
+                                    : isWeekendToday
+                                        ? 'Take the weekend pace as a clean reset. Review notes, tie up pending work, and plan the next study run.'
+                                        : 'No live class is mapped into today, so you can use the time for revision, labs, and upcoming deadlines.'}
+                            </div>
                         </div>
                     </div>
                 ) : (
@@ -456,19 +472,50 @@ export default function StudentDashboard() {
                                 key={`${slot.day}-${slot.start}-${slot.course}`}
                                 className="rounded-2xl border border-white/[0.08] bg-[linear-gradient(180deg,rgba(249,115,22,0.08),rgba(17,24,39,0.64))] p-4"
                             >
-                                <div className="flex items-start justify-between gap-3">
-                                    <span className="inline-flex rounded-full border border-orange-400/20 bg-orange-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-orange-200">
-                                        {slot.type}
-                                    </span>
-                                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
-                                        {slot.code}
-                                    </span>
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="inline-flex rounded-full border border-orange-400/20 bg-orange-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-orange-200">
+                                            {slot.type}
+                                        </span>
+                                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-300">
+                                            {slot.code}
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center justify-end gap-2">
+                                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-300">
+                                            {slot.room}
+                                        </span>
+                                        {slot.department ? (
+                                            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+                                                {slot.department}
+                                            </span>
+                                        ) : null}
+                                    </div>
                                 </div>
                                 <div className="mt-3 text-base font-black leading-tight text-white">{slot.course}</div>
+                                {slot.facultyName ? (
+                                    slot.facultyId ? (
+                                        <Link
+                                            to={`/dashboard/faculty/${slot.facultyId}`}
+                                            className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-orange-100 transition hover:text-white hover:underline"
+                                        >
+                                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[11px] font-bold uppercase text-white/85">
+                                                {slot.facultyName.slice(0, 1)}
+                                            </span>
+                                            {slot.facultyName}
+                                        </Link>
+                                    ) : (
+                                        <div className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-orange-100">
+                                            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[11px] font-bold uppercase text-white/85">
+                                                {slot.facultyName.slice(0, 1)}
+                                            </span>
+                                            {slot.facultyName}
+                                        </div>
+                                    )
+                                ) : null}
                                 <div className="mt-4 text-xs text-zinc-300">
                                     {formatTimetableTime(slot.start)} - {formatTimetableTime(slot.end)}
                                 </div>
-                                <div className="mt-2 text-[11px] text-zinc-500">{slot.room}</div>
                             </div>
                         ))}
                     </div>

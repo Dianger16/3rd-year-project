@@ -1,4 +1,4 @@
-/* Copyright (c) 2026 XynaxDev
+﻿/* Copyright (c) 2026 XynaxDev
  * Contact: akashkumar.cs27@gmail.com
  */
 
@@ -16,6 +16,7 @@ import {
     Activity,
     Megaphone,
     ArrowUpRight,
+    SunMedium,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { Button } from '@/components/ui/button';
@@ -166,8 +167,9 @@ export default function FacultyDashboard() {
                 role: user?.role,
                 department: user?.department,
                 program: user?.program,
+                currentUserName: user?.full_name,
             }),
-        [courses, user?.department, user?.id, user?.program, user?.role],
+        [courses, user?.department, user?.full_name, user?.id, user?.program, user?.role],
     );
 
     const todaySlots = useMemo(
@@ -318,23 +320,29 @@ export default function FacultyDashboard() {
                             ))}
                         </div>
                     ) : (
-                        <div className="rounded-2xl border border-dashed border-white/[0.08] bg-[radial-gradient(circle_at_top_right,rgba(249,115,22,0.08),transparent_35%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.02))] p-5">
-                            <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-zinc-500">
-                                {todayHoliday ? 'Holiday Marker' : isWeekendToday ? 'Weekend Window' : 'Open Academic Window'}
-                            </div>
-                            <div className="mt-2 text-lg font-black text-white">
-                                {todayHoliday
-                                    ? `${todayHoliday.name} keeps the teaching board clear`
-                                    : isWeekendToday
-                                        ? 'No teaching blocks are scheduled today'
-                                        : 'Today is clear on the teaching board'}
-                            </div>
-                            <div className="mt-2 text-sm text-zinc-400">
-                                {todayHoliday
-                                    ? 'This date is marked as a named academic holiday. Use the quieter window for planning, assessment, or course preparation before the next live class block.'
-                                    : isWeekendToday
-                                    ? 'Use the quieter weekend lane for prep, evaluation, and planning before the next workday starts.'
-                                    : 'No mapped classes land on this date. You can review the full timetable or use the open time for mentoring, planning, and notices.'}
+                        <div className="overflow-hidden rounded-2xl border border-fuchsia-400/15 bg-[linear-gradient(135deg,rgba(88,28,135,0.18),rgba(24,25,31,0.98) 42%,rgba(124,58,237,0.12))] p-5">
+                            <div className="relative overflow-hidden rounded-2xl border border-fuchsia-300/10 bg-[radial-gradient(circle_at_top_left,rgba(216,180,254,0.10),transparent_28%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] p-6">
+                                <div className="pointer-events-none absolute -right-10 bottom-[-28px] text-fuchsia-200/14">
+                                    <SunMedium className="h-36 w-36" />
+                                </div>
+                                <div className="pointer-events-none absolute right-14 top-5 h-16 w-16 rounded-full bg-fuchsia-300/12 blur-2xl" />
+                                <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-fuchsia-200/70">
+                                    {todayHoliday ? 'Holiday Window' : isWeekendToday ? 'Weekend Reset' : 'Open Faculty Window'}
+                                </div>
+                                <div className="mt-3 text-2xl font-black text-white">
+                                    {todayHoliday
+                                        ? `${todayHoliday.name} keeps the teaching board clear`
+                                        : isWeekendToday
+                                            ? 'No teaching blocks are scheduled today'
+                                            : 'Today is clear on the teaching board'}
+                                </div>
+                                <div className="mt-3 max-w-2xl text-sm text-zinc-300/90">
+                                    {todayHoliday
+                                        ? 'Campus timing is paused for the holiday. Use the day to prepare lessons, review notices, and reset your teaching flow before the next live block.'
+                                        : isWeekendToday
+                                            ? 'The board is clear for the weekend. Use the breathing room for grading, planning, and next-week class readiness.'
+                                            : 'No mapped classes land on this date. It is a good window for mentoring, notices, and preparing the next session.'}
+                                </div>
                             </div>
                         </div>
                     )}
@@ -349,9 +357,32 @@ export default function FacultyDashboard() {
                         {todaySlots.length > 0 ? (
                             <div className="space-y-2">
                                 {todaySlots.map((slot) => (
-                                    <div key={`${slot.day}-${slot.start}-${slot.course}`} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-                                        <p className="text-xs font-semibold text-white">{slot.course}</p>
-                                        <p className="text-[11px] text-zinc-500 mt-1">{formatTimetableTime(slot.start)} - {formatTimetableTime(slot.end)} | {slot.room}</p>
+                                    <div key={`${slot.day}-${slot.start}-${slot.course}`} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+                                        <div className="flex flex-wrap items-start justify-between gap-2">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="inline-flex rounded-full border border-orange-400/20 bg-orange-500/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-orange-200">
+                                                    {slot.type}
+                                                </span>
+                                                <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-300">
+                                                    {slot.code}
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-wrap items-center justify-end gap-2">
+                                                <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-300">
+                                                    {slot.room}
+                                                </span>
+                                                {slot.department ? (
+                                                    <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+                                                        {slot.department}
+                                                    </span>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                        <p className="mt-3 text-sm font-semibold text-white">{slot.course}</p>
+                                        {slot.facultyName ? (
+                                            <p className="mt-2 text-[11px] font-medium text-orange-100">{slot.facultyName}</p>
+                                        ) : null}
+                                        <p className="text-[11px] text-zinc-500 mt-2">{formatTimetableTime(slot.start)} - {formatTimetableTime(slot.end)}</p>
                                     </div>
                                 ))}
                             </div>
@@ -482,3 +513,6 @@ export default function FacultyDashboard() {
         </div>
     );
 }
+
+
+
