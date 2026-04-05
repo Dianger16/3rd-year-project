@@ -95,38 +95,20 @@ function RouteSuspense({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const { setSession, clearSession, token, user, isInitializing, finishInitializing } = useAuthStore();
+  const { setSession, clearSession, isInitializing, finishInitializing } = useAuthStore();
   const lastSyncedTokenRef = useRef<string | null>(null);
   const getCurrentUser = () => useAuthStore.getState().user;
 
   useEffect(() => {
-    if (!token) return;
-    let cancelled = false;
-
-    const hardSyncProfile = async () => {
-      try {
-        const refreshedUser = await authApi.refreshMe(token, getCurrentUser() || undefined);
-        if (cancelled) return;
-        setSession(token, refreshedUser);
-      } catch {
-        if (cancelled) return;
-        clearSession();
-      }
-    };
-
-    hardSyncProfile();
-    return () => {
-      cancelled = true;
-    };
-  }, [token, setSession, clearSession]);
-
-  useEffect(() => {
-    const syncSessionToBackend = async (session: any, fallbackName: string) => {
+    const syncSessionToBackend = async (session: any, fallbackName: string, options?: { force?: boolean }) => {
       if (!session?.access_token) return;
-      if (lastSyncedTokenRef.current === session.access_token) return;
+      const force = Boolean(options?.force);
+      if (!force && lastSyncedTokenRef.current === session.access_token && getCurrentUser()) return;
 
       try {
-        const refreshedUser = await authApi.refreshMe(session.access_token, getCurrentUser() || undefined);
+        const refreshedUser = force
+          ? await authApi.refreshMe(session.access_token, getCurrentUser() || undefined)
+          : await authApi.getMe(session.access_token, getCurrentUser() || undefined);
         setSession(session.access_token, refreshedUser);
       } catch (err) {
         console.warn('Session sync failed, using metadata fallback:', err);
@@ -162,7 +144,7 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth Event:', event);
       if (session?.access_token) {
-        await syncSessionToBackend(session, 'Google User');
+        await syncSessionToBackend(session, 'Google User', { force: event === 'USER_UPDATED' });
       } else if (event === 'SIGNED_OUT') {
         lastSyncedTokenRef.current = null;
         clearSession();
@@ -171,7 +153,7 @@ export default function App() {
     });
 
     return () => subscription.unsubscribe();
-  }, [setSession, clearSession, finishInitializing, user?.role]);
+  }, [setSession, clearSession, finishInitializing]);
 
   if (isInitializing) {
     return (
