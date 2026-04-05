@@ -46,12 +46,14 @@ class Settings(BaseSettings):
     pinecone_index_name: str = "unigpt-index"
     pinecone_query_timeout_seconds: int = 6
 
-    # LLM (Generation via OpenRouter)
+    # LLM Providers
     openrouter_api_key: str = ""
-    openrouter_model: str = "nvidia/nemotron-3-super-120b-a12b:free"
-    openrouter_intent_model: str = "stepfun/step-3.5-flash:free"
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    openrouter_fallback_models: str = ""
+    openrouter_intent_model: str = ""
+    openrouter_base_url: str = ""
+    openrouter_generation_fallback_models: str = ""
+    ollama_api_key: str = ""
+    ollama_generation_model: str = ""
+    ollama_base_url: str = ""
     openrouter_timeout_seconds: int = 20
     openrouter_max_retries: int = 2
     openrouter_retry_backoff_seconds: float = 0.8
@@ -83,6 +85,12 @@ class Settings(BaseSettings):
         "supabase_service_role_key",
         "supabase_jwt_secret",
         "openrouter_api_key",
+        "openrouter_intent_model",
+        "openrouter_base_url",
+        "openrouter_generation_fallback_models",
+        "ollama_api_key",
+        "ollama_generation_model",
+        "ollama_base_url",
         "smtp_user",
         "smtp_password",
         "smtp_from_email",
@@ -128,8 +136,8 @@ class Settings(BaseSettings):
         return [item.strip() for item in raw.split(",") if item.strip()]
 
     @property
-    def openrouter_fallback_models_list(self) -> List[str]:
-        raw = (self.openrouter_fallback_models or "").strip()
+    def openrouter_generation_fallback_models_list(self) -> List[str]:
+        raw = (self.openrouter_generation_fallback_models or "").strip()
         if not raw:
             return []
         return [item.strip() for item in raw.split(",") if item.strip()]
