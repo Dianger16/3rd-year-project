@@ -200,7 +200,7 @@ export default function StudentDashboard() {
                 const db = new Date(b.uploaded_at || b.created_at || '').getTime() || 0;
                 return db - da;
             })
-            .slice(0, 4)
+            .slice(0, 6)
             .map(mapNotice);
     }, [documents]);
 
@@ -649,37 +649,54 @@ export default function StudentDashboard() {
                 </div>
 
                 <div className="lg:col-span-4">
-                    <div className="rounded-3xl border border-white/[0.08] bg-zinc-900/50 p-5 h-full">
-                        <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                                <Calendar className="w-4 h-4 text-orange-400" /> Upcoming Focus
-                            </h3>
-                            <span className="text-[10px] font-bold text-zinc-600">{toShortDate(exportData?.exportDate)}</span>
-                        </div>
-
-                        <div className="space-y-3 text-xs">
-                            <div className="rounded-xl border border-white/[0.06] bg-black/30 p-3">
-                                <p className="text-zinc-500 uppercase tracking-wider text-[10px]">Program</p>
-                                <p className="text-white font-semibold mt-1">{user?.program || 'Not set'}</p>
+                    <div className="relative h-full overflow-hidden rounded-3xl border border-white/[0.08] bg-[radial-gradient(circle_at_top_right,rgba(249,115,22,0.10),transparent_26%),linear-gradient(180deg,rgba(24,24,29,0.98),rgba(14,15,20,0.98))] p-5">
+                        <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-[linear-gradient(180deg,rgba(251,146,60,0.08),transparent)]" />
+                        <div className="relative z-10 flex h-full flex-col">
+                            <div className="flex items-center justify-between gap-3">
+                                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                                    <Calendar className="w-4 h-4 text-orange-400" /> Upcoming Focus
+                                </h3>
+                                <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[10px] font-bold text-zinc-500">
+                                    {toShortDate(exportData?.exportDate)}
+                                </span>
                             </div>
-                            <div className="rounded-xl border border-white/[0.06] bg-black/30 p-3">
-                                <p className="text-zinc-500 uppercase tracking-wider text-[10px]">Semester & Section</p>
-                                <p className="text-white font-semibold mt-1">
-                                    {user?.semester || 'NA'} / {user?.section || 'NA'}
+
+                            <div className="mt-3 rounded-2xl border border-orange-400/15 bg-[linear-gradient(135deg,rgba(249,115,22,0.12),rgba(255,255,255,0.02))] px-4 py-3.5">
+                                <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-orange-200/80">
+                                    Student Snapshot
+                                </div>
+                                <div className="mt-1.5 text-lg font-black text-white">
+                                    Stay aligned with your current academic lane
+                                </div>
+                                <p className="mt-1.5 text-sm leading-relaxed text-zinc-300">
+                                    Keep your profile, course directory, and timetable context in sync so UnivGPT can guide you more precisely.
                                 </p>
                             </div>
-                            <div className="rounded-xl border border-white/[0.06] bg-black/30 p-3">
-                                <p className="text-zinc-500 uppercase tracking-wider text-[10px]">Role Access</p>
-                                <p className="text-white font-semibold mt-1 capitalize">{user?.role || 'student'}</p>
-                            </div>
-                        </div>
 
-                        <Link to="/dashboard/courses" className="block mt-4">
-                            <Button title="Open courses section" variant="outline" className="w-full border-white/[0.12] bg-white/[0.03] text-zinc-300 hover:text-white rounded-xl h-11 font-semibold text-xs group">
-                                View Course Directory
-                                <ChevronRight className="w-4 h-4 ml-2 text-zinc-600 group-hover:text-orange-400 transition-colors" />
-                            </Button>
-                        </Link>
+                            <div className="mt-3 grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-1">
+                                <div className="rounded-xl border border-white/[0.06] bg-black/30 p-3">
+                                    <p className="text-zinc-500 uppercase tracking-wider text-[10px]">Program</p>
+                                    <p className="mt-1 text-base font-semibold text-white">{user?.program || 'Not set'}</p>
+                                </div>
+                                <div className="rounded-xl border border-white/[0.06] bg-black/30 p-3">
+                                    <p className="text-zinc-500 uppercase tracking-wider text-[10px]">Semester & Section</p>
+                                    <p className="mt-1 text-base font-semibold text-white">
+                                        {user?.semester || 'NA'} / {user?.section || 'NA'}
+                                    </p>
+                                </div>
+                                <div className="rounded-xl border border-white/[0.06] bg-black/30 p-3">
+                                    <p className="text-zinc-500 uppercase tracking-wider text-[10px]">Role Access</p>
+                                    <p className="mt-1 text-base font-semibold capitalize text-white">{user?.role || 'student'}</p>
+                                </div>
+                            </div>
+
+                            <Link to="/dashboard/courses" className="mt-auto block pt-3">
+                                <Button title="Open courses section" variant="outline" className="w-full border-white/[0.12] bg-white/[0.03] text-zinc-300 hover:text-white rounded-xl h-[54px] font-semibold text-xs group">
+                                    View Course Directory
+                                    <ChevronRight className="w-4 h-4 ml-2 text-zinc-600 group-hover:text-orange-400 transition-colors" />
+                                </Button>
+                            </Link>
+                        </div>
                     </div>
                 </div>
             </div>
