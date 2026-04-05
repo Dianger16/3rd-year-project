@@ -29,13 +29,13 @@ from app.services.pinecone_client import pinecone_client
 from app.services.document_processor import get_single_embedding
 from app.services.supabase_client import get_supabase_admin
 from app.services.audit import log_audit_event
-from app.services.agent_moderation import detect_local_moderation
 from app.services.agent_intent_router import (
     is_fast_smalltalk_query,
     should_filter_recent_documents,
     infer_intent_from_query,
     enrich_intent_with_profile,
 )
+from app.services.agent_moderation import detect_local_moderation
 from app.services.agent_directory import (
     fetch_course_faculty_snapshot,
     should_use_course_faculty_snapshot,
@@ -1101,9 +1101,9 @@ async def _call_llm_internal(
         client = get_llm_client(provider_cfg["provider"])
         provider_timeout = float(settings.openrouter_timeout_seconds or 20)
         if provider_cfg["provider"] == "generation" and settings.openrouter_generation_fallback_models_list:
-            provider_timeout = min(max(6.0, provider_timeout / 2), 10.0)
+            provider_timeout = min(max(4.0, provider_timeout / 3), 6.0)
         elif provider_cfg["provider"] == "generation_fallback":
-            provider_timeout = min(max(8.0, provider_timeout), 15.0)
+            provider_timeout = min(max(6.0, provider_timeout), 12.0)
 
         if not selected_model or not base_url or not auth_token:
             if provider_cfg["provider"] == "generation" and settings.openrouter_generation_fallback_models_list:
@@ -1241,6 +1241,7 @@ async def run_backup_moderation_check(query: str, history_context: str = "") -> 
     Set "is_flagged": true when the query contains hate speech, harassment, abusive/disrespectful personal attacks,
     threats, demeaning comments about a person (including teacher/faculty/staff/student),
     degrading vulgar abuse aimed at a university role group like faculty, teachers, staff, or students,
+    direct second-person profanity or insults aimed at another person or the assistant,
     or identity-focused harassment/speculation about a named person or teacher.
     Set "is_flagged": false for normal academic questions, neutral policy questions, and mild non-targeted frustration.
 
@@ -1281,10 +1282,9 @@ async def run_backup_moderation_check(query: str, history_context: str = "") -> 
     except Exception as exc:
         logger.warning("Backup moderation check failed: %s", exc)
 
-    # Provider-independent fallback when moderation model is unavailable or inconclusive.
-    strict_local = detect_local_moderation(query, strict=True)
-    if strict_local.get("is_flagged"):
-        return strict_local
+    local_flag = detect_local_moderation(query, strict=True)
+    if local_flag.get("is_flagged"):
+        return local_flag
 
     return {"is_flagged": False}
 
@@ -1307,6 +1307,7 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
     - abusive allegations about a specific teacher/faculty/staff/student/person
     - direct insulting or degrading language about a named individual, even if the person is not referred to by title
     - degrading vulgar abuse aimed at a university role group (for example faculty, teachers, staff, students, admins), even when no individual is named
+    - direct second-person profanity or insulting abuse aimed at another person or the assistant
     - identity-focused or sexuality-focused speculation/ridicule about a named person or teacher
     Keep `"is_flagged": false` for normal academic questions, neutral policy questions, mild frustration, general complaints without abusive language, apologies, or references to moderation itself.
     Task 2 (Conversation Mode): classify whether the query is primarily casual chit-chat/emotional venting or an actionable university data/task query.
@@ -1328,6 +1329,7 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
     Example 4: {{"conversation_mode":"casual","intent_type":"general","target_entity":"general","is_flagged": false}}
     Example 5: {{"is_flagged": true, "reason": "Targeted insulting language about a named individual.", "conversation_mode":"task","intent_type":"general","target_entity":"general"}}
     Example 6: {{"is_flagged": true, "reason": "Direct degrading language about a named person.", "conversation_mode":"task","intent_type":"general","target_entity":"general"}}
+    Example 7: {{"is_flagged": true, "reason": "Direct abusive profanity aimed at a person or the assistant.", "conversation_mode":"task","intent_type":"general","target_entity":"general"}}
     """
 
     if is_fast_smalltalk_query(query):
@@ -1368,6 +1370,11 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
         try:
             validated = IntentPayload.model_validate(raw)
             result = validated.model_dump(exclude_none=True)
+            if result.get("is_flagged") is not True:
+                local_flag = detect_local_moderation(query, strict=True)
+                if local_flag.get("is_flagged"):
+                    local_flag["_intent_source"] = "local_moderation_fallback"
+                    return local_flag
             if "is_flagged" not in result:
                 backup_flag = await run_backup_moderation_check(query, history_context=history_context)
                 if backup_flag.get("is_flagged"):
@@ -1378,6 +1385,10 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
             result["_intent_source"] = "llm"
             return result
         except Exception:
+            local_flag = detect_local_moderation(query, strict=True)
+            if local_flag.get("is_flagged"):
+                local_flag["_intent_source"] = "local_moderation_fallback"
+                return local_flag
             backup_flag = await run_backup_moderation_check(query, history_context=history_context)
             if backup_flag.get("is_flagged"):
                 backup_flag["_intent_source"] = "backup_moderation"
@@ -1474,12 +1485,9 @@ async def run_agent_pipeline(
             moderation=moderation_meta,
         )
 
-    # Fast deterministic profanity moderation before remote intent extraction.
-    early_moderation = detect_local_moderation(query)
-
-    # Get previous messages for history window (only when not already flagged locally).
+    # Get previous messages for history window.
     messages = []
-    if conversation_storage_enabled and not early_moderation.get("is_flagged"):
+    if conversation_storage_enabled:
         try:
             existing = (
                 _conversation_scope_filter(
@@ -1503,10 +1511,7 @@ async def run_agent_pipeline(
     history_text = "\n".join([f"{m['role']}: {m['content']}" for m in messages[-4:]])
 
     # 1. Intent extraction + deterministic intent hydration.
-    if early_moderation.get("is_flagged"):
-        raw_intent = early_moderation
-    else:
-        raw_intent = await extract_query_intent(query, history_context=history_text)
+    raw_intent = await extract_query_intent(query, history_context=history_text)
     effective_user_profile = user_profile or fetch_user_profile_context(supabase, user_id)
     allow_deterministic_fallback = bool(
         isinstance(raw_intent, dict) and raw_intent.get("_deterministic_fallback")

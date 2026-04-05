@@ -37,10 +37,15 @@ def is_fast_smalltalk_query(query: str) -> bool:
     if any(marker in text for marker in domain_markers):
         return False
 
-    greeting_markers = ("hi", "hii", "hello", "hey", "good morning", "good afternoon", "good evening")
-
-    starts_with_greeting = any(text.startswith(marker) for marker in greeting_markers)
-    return starts_with_greeting
+    pure_smalltalk_patterns = (
+        r"^(?:hi|hii|hello|hey)$",
+        r"^(?:hi|hii|hello|hey)\s+(?:there|bro|buddy|sir|maam|mam|man)$",
+        r"^(?:good morning|good afternoon|good evening)$",
+        r"^(?:how are you|how r u|how are u|how have you been)\??$",
+        r"^(?:hi|hii|hello|hey)[\s,]+(?:how are you|how r u|how are u)\??$",
+        r"^(?:what s up|whats up|sup)\??$",
+    )
+    return any(re.fullmatch(pattern, text, flags=re.IGNORECASE) for pattern in pure_smalltalk_patterns)
 
 
 def should_filter_recent_documents(query: str, intent: dict[str, Any]) -> bool:
