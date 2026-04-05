@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DateTimetableAgenda } from '@/components/timetable/DateTimetableAgenda';
 import { useAuthStore } from '@/store/authStore';
-import { authApi, documentsApi, type CourseDirectoryItem, type DocumentResponse } from '@/lib/api';
+import { authApi, documentsApi, type CourseDirectoryItem, type DocumentResponse, type FacultySummary } from '@/lib/api';
 import { buildLiveTimetableSlots } from '@/lib/timetable';
 import { Download, Sparkles } from 'lucide-react';
 
@@ -35,6 +35,7 @@ export default function FacultyTimetablePage() {
 
     const [courses, setCourses] = useState<CourseDirectoryItem[]>(cachedCourses?.courses || []);
     const [documents, setDocuments] = useState<DocumentResponse[]>(cachedDocs?.documents || []);
+    const [facultyMembers, setFacultyMembers] = useState<FacultySummary[]>([]);
     const [isLoading, setIsLoading] = useState(!(cachedCourses || cachedDocs));
     const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
@@ -47,13 +48,14 @@ export default function FacultyTimetablePage() {
             if (!(cachedCourses || cachedDocs)) setIsLoading(true);
 
             try {
-                const [coursesResult, docsResult] = await Promise.allSettled([
+                const [coursesResult, docsResult, facultyResult] = await Promise.allSettled([
                     cachedCourses
                         ? authApi.getCourseDirectory(token, 48, { force: true })
                         : authApi.getCourseDirectory(token, 48),
                     cachedDocs
                         ? documentsApi.list(token, { page: 1, per_page: 80 }, { force: true })
                         : documentsApi.list(token, { page: 1, per_page: 80 }),
+                    authApi.getFacultyDirectory(token, 60, { force: true }),
                 ]);
 
                 if (!alive) return;
@@ -69,6 +71,12 @@ export default function FacultyTimetablePage() {
                 } else if (!shouldSilentRefresh) {
                     setDocuments([]);
                 }
+
+                if (facultyResult.status === 'fulfilled') {
+                    setFacultyMembers(facultyResult.value.faculty || []);
+                } else if (!shouldSilentRefresh) {
+                    setFacultyMembers([]);
+                }
             } finally {
                 if (alive) setIsLoading(false);
             }
@@ -80,6 +88,14 @@ export default function FacultyTimetablePage() {
         };
     }, [token]);
 
+    const facultyLookup = useMemo(
+        () =>
+            Object.fromEntries(
+                facultyMembers.map((faculty) => [faculty.id, faculty]),
+            ),
+        [facultyMembers],
+    );
+
     const timetableSlots = useMemo(
         () =>
             buildLiveTimetableSlots(courses, {
@@ -87,8 +103,10 @@ export default function FacultyTimetablePage() {
                 role: user?.role,
                 department: user?.department,
                 program: user?.program,
+                currentUserName: user?.full_name,
+                facultyLookup,
             }),
-        [courses, user?.department, user?.id, user?.program, user?.role],
+        [courses, facultyLookup, user?.department, user?.full_name, user?.id, user?.program, user?.role],
     );
 
     const timetableDocs = useMemo(() => {
@@ -180,8 +198,8 @@ export default function FacultyTimetablePage() {
                                         <div className="text-sm font-bold text-white truncate">{doc.filename}</div>
                                         <div className="mt-1 flex flex-wrap gap-2 text-xs text-zinc-500">
                                             <span>{doc.doc_type}</span>
-                                            {doc.department ? <span>Â· {doc.department}</span> : null}
-                                            {doc.course ? <span>Â· {doc.course}</span> : null}
+                                            {doc.department ? <span>· {doc.department}</span> : null}
+                                            {doc.course ? <span>· {doc.course}</span> : null}
                                         </div>
                                     </div>
                                     <Button
@@ -202,3 +220,4 @@ export default function FacultyTimetablePage() {
         </div>
     );
 }
+
