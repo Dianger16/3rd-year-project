@@ -42,7 +42,7 @@ export function NoticePreviewModal({
 
     const title = previewDoc?.notice_title || previewDoc?.filename || pendingTitle || 'Loading notice...';
     const subtitle = previewDoc
-        ? `${previewDoc.course || 'General'} Â· ${previewDoc.department || 'No department'} Â· ${previewDoc.doc_type}`
+        ? `${previewDoc.course || 'General'} · ${previewDoc.department || 'No department'} · ${previewDoc.doc_type}`
         : pendingSubtitle || 'Preparing notice view...';
     const message = previewDoc?.notice_message?.trim() || '';
 
@@ -149,3 +149,4 @@ export function NoticePreviewModal({
 
     return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }
+

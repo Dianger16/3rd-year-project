@@ -30,6 +30,20 @@ const formatDate = (value?: string | null) => {
 const isUuidLike = (value: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 
+const isNoticeLikeDocument = (doc: DocumentResponse) => {
+    const filename = String(doc.filename || '').trim().toLowerCase();
+    const tags = (doc.tags || []).map((tag) => String(tag || '').trim().toLowerCase());
+    return (
+        filename.startsWith('notice_') ||
+        filename.includes('notice') ||
+        filename.includes('announcement') ||
+        tags.includes('notice') ||
+        tags.includes('announcement') ||
+        tags.includes('served_notice') ||
+        tags.includes('served-notice')
+    );
+};
+
 export default function NoticesPage() {
     const { token, user } = useAuthStore();
     const { showToast } = useToastStore();
@@ -138,10 +152,7 @@ export default function NoticesPage() {
             if (active && cachedDocs?.documents?.length) {
                 setAttachmentOptions(
                     (cachedDocs.documents || [])
-                        .filter((doc) => {
-                            const filename = String(doc.filename || '').trim();
-                            return !filename.startsWith('NOTICE_');
-                        })
+                        .filter((doc) => !isNoticeLikeDocument(doc))
                         .slice(0, 120),
                 );
                 return;
@@ -151,10 +162,7 @@ export default function NoticesPage() {
                 if (!active) return;
                 setAttachmentOptions(
                     (response.documents || [])
-                        .filter((doc) => {
-                            const filename = String(doc.filename || '').trim();
-                            return !filename.startsWith('NOTICE_');
-                        })
+                        .filter((doc) => !isNoticeLikeDocument(doc))
                         .slice(0, 120),
                 );
             } catch {
