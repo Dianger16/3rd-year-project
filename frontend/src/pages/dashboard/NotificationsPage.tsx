@@ -105,7 +105,6 @@ export default function NotificationsPage() {
     useEffect(() => {
         if (cachedNotifications) {
             hasLoadedOnceRef.current = true;
-            void loadNotifications(false, true);
             return;
         }
         loadNotifications();

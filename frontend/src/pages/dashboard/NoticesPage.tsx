@@ -31,19 +31,8 @@ const formatDate = (value?: string | null) => {
 const isUuidLike = (value: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
 
-const isNoticeLikeDocument = (doc: DocumentResponse) => {
-    const filename = String(doc.filename || '').trim().toLowerCase();
-    const tags = (doc.tags || []).map((tag) => String(tag || '').trim().toLowerCase());
-    return (
-        filename.startsWith('notice_') ||
-        filename.includes('notice') ||
-        filename.includes('announcement') ||
-        tags.includes('notice') ||
-        tags.includes('announcement') ||
-        tags.includes('served_notice') ||
-        tags.includes('served-notice')
-    );
-};
+const isNoticeLikeDocument = (doc: DocumentResponse) =>
+    String((doc.metadata || {}).notice_type || '').trim().toLowerCase() === 'served';
 
 export default function NoticesPage() {
     const { token, user } = useAuthStore();
@@ -143,7 +132,6 @@ export default function NoticesPage() {
             });
             setItems(sorted);
             setIsLoading(false);
-            void loadNotices(false, true);
             return;
         }
         loadNotices();

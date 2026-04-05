@@ -75,6 +75,36 @@ type NavigateTarget =
         state?: Record<string, unknown>;
     };
 
+function ThinkingText({ seconds }: { seconds: number }) {
+    return (
+        <div className="flex items-center gap-2.5">
+            <motion.span
+                className="relative text-sm font-semibold text-white/90"
+                animate={{
+                    textShadow: [
+                        '0 0 0 rgba(255,255,255,0)',
+                        '0 0 8px rgba(255,255,255,0.18)',
+                        '0 0 0 rgba(255,255,255,0)',
+                    ],
+                    opacity: [0.72, 1, 0.78],
+                }}
+                transition={{ duration: 1.9, repeat: Infinity, ease: 'easeInOut' }}
+            >
+                <span className="relative z-10">Thinking</span>
+                <motion.span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 bg-[linear-gradient(110deg,transparent_0%,rgba(255,255,255,0.08)_40%,rgba(255,255,255,0.55)_50%,rgba(255,255,255,0.08)_60%,transparent_100%)] bg-[length:220%_100%] bg-clip-text text-transparent"
+                    animate={{ backgroundPosition: ['130% 0%', '-40% 0%'] }}
+                    transition={{ duration: 1.85, repeat: Infinity, ease: 'linear' }}
+                >
+                    Thinking
+                </motion.span>
+            </motion.span>
+            <span className="text-xs font-medium text-zinc-500">{seconds}s</span>
+        </div>
+    );
+}
+
 function resolveCitationTarget(source: SourceCitation, role: ChatRole): NavigateTarget {
     const navigationTarget = String(source.metadata?.navigation_target || '').trim().toLowerCase();
     if (navigationTarget === 'notifications') {
@@ -547,16 +577,9 @@ export default function ChatPage() {
                                         <span className="text-xs font-semibold text-orange-400 mb-2 flex items-center gap-1">
                                             UnivGPT
                                         </span>
-                                        <div className="flex items-center gap-3 py-3">
-                                            <div className="flex gap-1">
-                                                <div className="w-2 h-2 bg-orange-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                                                <div className="w-2 h-2 bg-orange-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                                                <div className="w-2 h-2 bg-orange-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                                            </div>
+                                        <div className="py-3">
                                             <div className="min-w-0">
-                                                <div className="text-xs text-zinc-400 font-medium">
-                                                    Thinking{queryStartedAt ? ` · ${queryElapsedSeconds}s` : '...'}
-                                                </div>
+                                                <ThinkingText seconds={queryStartedAt ? queryElapsedSeconds : 0} />
                                                 <div className="text-[11px] text-zinc-600 mt-1">
                                                     {thinkingHint}
                                                 </div>

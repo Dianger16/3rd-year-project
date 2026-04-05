@@ -41,15 +41,20 @@ interface ChatState {
 const CHAT_STORAGE_KEY = 'unigpt-chat-scope-v1';
 
 function canUseSessionStorage() {
-    return typeof window !== 'undefined' && typeof window.sessionStorage !== 'undefined';
+    return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 }
 
 function readScopeCache(scope: string) {
     if (!canUseSessionStorage()) return null;
     try {
-        const raw = window.sessionStorage.getItem(`${CHAT_STORAGE_KEY}:${scope}`);
-        if (!raw) return null;
-        const parsed = JSON.parse(raw) as Pick<ChatState, 'currentConversationId' | 'messages'>;
+        const raw = window.localStorage.getItem(`${CHAT_STORAGE_KEY}:${scope}`);
+        const legacy = window.sessionStorage.getItem(`${CHAT_STORAGE_KEY}:${scope}`);
+        if (!raw && legacy) {
+            window.localStorage.setItem(`${CHAT_STORAGE_KEY}:${scope}`, legacy);
+        }
+        const source = raw || legacy;
+        if (!source) return null;
+        const parsed = JSON.parse(source) as Pick<ChatState, 'currentConversationId' | 'messages'>;
         return parsed;
     } catch {
         return null;
@@ -59,7 +64,7 @@ function readScopeCache(scope: string) {
 function writeScopeCache(scope: string, payload: Pick<ChatState, 'currentConversationId' | 'messages'>) {
     if (!canUseSessionStorage()) return;
     try {
-        window.sessionStorage.setItem(`${CHAT_STORAGE_KEY}:${scope}`, JSON.stringify(payload));
+        window.localStorage.setItem(`${CHAT_STORAGE_KEY}:${scope}`, JSON.stringify(payload));
     } catch {
         // Ignore cache persistence failures.
     }

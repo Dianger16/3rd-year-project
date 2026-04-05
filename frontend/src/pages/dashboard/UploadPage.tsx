@@ -13,6 +13,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useToastStore } from '@/store/toastStore';
 import { documentsApi, type DocumentPreviewResponse, type DocumentResponse } from '@/lib/api';
 import { DocumentPreviewModal } from '@/components/ui/DocumentPreviewModal';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 type UploadStatus = 'pending' | 'uploading' | 'done' | 'error';
 type UploadMode = 'single' | 'batch';
@@ -30,6 +31,8 @@ const ACCEPTED_ATTR = '.pdf,.docx,.txt,.md';
 const UploadPage = () => {
     const { token, user } = useAuthStore();
     const { showToast } = useToastStore();
+    const location = useLocation();
+    const navigate = useNavigate();
 
     const [mode, setMode] = useState<UploadMode>('single');
     const [dragActive, setDragActive] = useState(false);
@@ -59,6 +62,8 @@ const UploadPage = () => {
     const [deleteTarget, setDeleteTarget] = useState<DocumentResponse | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
     const [docsPage, setDocsPage] = useState(1);
+    const [focusedDocumentId, setFocusedDocumentId] = useState<string | null>(null);
+    const [pendingOpenDocumentId, setPendingOpenDocumentId] = useState<string | null>(null);
     const DOCS_PER_PAGE = 8;
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const uploadTimerRef = useRef<number | null>(null);
@@ -255,6 +260,40 @@ const UploadPage = () => {
     useEffect(() => {
         setDocsPage(1);
     }, [documents.length]);
+
+    useEffect(() => {
+        const state = location.state as { focusDocumentId?: string; openDocumentId?: string } | null;
+        const nextId = state?.focusDocumentId || null;
+        const nextOpenId = state?.openDocumentId || null;
+        if (!nextId) return;
+        setFocusedDocumentId(nextId);
+        setPendingOpenDocumentId(nextOpenId);
+        const itemIndex = documents.findIndex((item) => item.id === nextId);
+        if (itemIndex >= 0) {
+            setDocsPage(Math.floor(itemIndex / DOCS_PER_PAGE) + 1);
+        }
+        const timer = window.setTimeout(() => {
+            setFocusedDocumentId(null);
+            navigate(location.pathname, { replace: true, state: {} });
+        }, 2800);
+        return () => window.clearTimeout(timer);
+    }, [location.pathname, location.state, navigate, documents]);
+
+    useEffect(() => {
+        if (!focusedDocumentId) return;
+        const el = document.querySelector(`[data-document-id="${focusedDocumentId}"]`);
+        if (el instanceof HTMLElement) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }, [focusedDocumentId, docsPage, documents]);
+
+    useEffect(() => {
+        if (!pendingOpenDocumentId || !documents.length) return;
+        const match = documents.find((item) => item.id === pendingOpenDocumentId);
+        if (!match) return;
+        setPendingOpenDocumentId(null);
+        void previewDocById(match.id);
+    }, [pendingOpenDocumentId, documents]);
 
     const totalDocPages = Math.max(1, Math.ceil(documents.length / DOCS_PER_PAGE));
     const paginatedDocuments = useMemo(
@@ -761,8 +800,17 @@ const UploadPage = () => {
                         <div className="space-y-2">
                             {paginatedDocuments.map((doc) => {
                                 const isEditing = editingId === doc.id;
+                                const isFocused = focusedDocumentId === doc.id;
                                 return (
-                                    <div key={doc.id} className="rounded-xl border border-white/[0.06] bg-black/40 p-3 space-y-2">
+                                    <div
+                                        key={doc.id}
+                                        data-document-id={doc.id}
+                                        className={`rounded-xl border p-3 space-y-2 transition-colors ${
+                                            isFocused
+                                                ? 'border-orange-500/35 bg-orange-500/[0.06]'
+                                                : 'border-white/[0.06] bg-black/40'
+                                        }`}
+                                    >
                                         <div className="flex items-start justify-between gap-3">
                                             <div className="min-w-0">
                                                 <div className="text-xs font-semibold text-white truncate">{doc.filename}</div>
