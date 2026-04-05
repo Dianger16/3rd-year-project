@@ -219,7 +219,7 @@ export const useAuthStore = create<AuthState>()(
                     const user = await authApi.getMe(token, get().user || undefined);
                     set({ user: hydrateProfileImage({ ...get().user, ...user }) });
                 } catch {
-                    set({ user: null, token: null });
+                    // Keep the current local session on transient sync failures.
                 }
             },
 

@@ -34,6 +34,7 @@ interface RequestOptions {
     token?: string;
     isFormData?: boolean;
     timeoutMs?: number;
+    suppressAuthRedirect?: boolean;
 }
 
 function sanitizeUserFacingErrorMessage(detail: string, status?: number): string {
@@ -62,7 +63,7 @@ function sanitizeUserFacingErrorMessage(detail: string, status?: number): string
 }
 
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-    const { method = 'GET', body, token, isFormData = false } = options;
+    const { method = 'GET', body, token, isFormData = false, suppressAuthRedirect = false } = options;
     const timeoutMs = options.timeoutMs ?? (method === 'GET' ? 45_000 : 90_000);
     const headers: Record<string, string> = {};
     const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
@@ -79,7 +80,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     try {
         const response = await fetch(`${API_BASE}${path}`, config);
         if (!response.ok) {
-            if (response.status === 401 && options.token) {
+            if (response.status === 401 && options.token && !suppressAuthRedirect) {
                 // Auto-logout ONLY if an authenticated request gets rejected (corrupted/expired token).
                 // Do NOT redirect for failed logins.
                 localStorage.removeItem('unigpt-auth');
@@ -254,13 +255,13 @@ export const authApi = {
         normalizeUserProfile(await cachedGet(
             buildCacheKey('user-me', token),
             CACHE_TTL.userMe,
-            () => request<UserProfile>('/user/me', { token, timeoutMs: 20_000 }),
+            () => request<UserProfile>('/user/me', { token, timeoutMs: 20_000, suppressAuthRedirect: true }),
         ), fallbackUser),
     refreshMe: async (token: string, fallbackUser?: Partial<UserProfile>) => {
         const key = buildCacheKey('user-me', token);
         invalidateCacheByPrefix(key);
         return normalizeUserProfile(
-            await request<UserProfile>('/user/me', { token, timeoutMs: 20_000 }),
+            await request<UserProfile>('/user/me', { token, timeoutMs: 20_000, suppressAuthRedirect: true }),
             fallbackUser,
         );
     },
