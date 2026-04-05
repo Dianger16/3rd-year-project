@@ -77,30 +77,30 @@ type NavigateTarget =
 
 function ThinkingText({ seconds }: { seconds: number }) {
     return (
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 text-sm leading-relaxed">
             <motion.span
-                className="relative text-sm font-semibold text-white/90"
+                className="relative font-normal text-zinc-500"
                 animate={{
                     textShadow: [
                         '0 0 0 rgba(255,255,255,0)',
-                        '0 0 8px rgba(255,255,255,0.18)',
+                        '0 0 10px rgba(255,255,255,0.14)',
                         '0 0 0 rgba(255,255,255,0)',
                     ],
-                    opacity: [0.72, 1, 0.78],
+                    opacity: [0.82, 0.98, 0.82],
                 }}
                 transition={{ duration: 1.9, repeat: Infinity, ease: 'easeInOut' }}
             >
-                <span className="relative z-10">Thinking</span>
+                <span className="relative z-10">Thinking...</span>
                 <motion.span
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-0 bg-[linear-gradient(110deg,transparent_0%,rgba(255,255,255,0.08)_40%,rgba(255,255,255,0.55)_50%,rgba(255,255,255,0.08)_60%,transparent_100%)] bg-[length:220%_100%] bg-clip-text text-transparent"
+                    className="pointer-events-none absolute inset-0 bg-[linear-gradient(110deg,transparent_0%,rgba(255,255,255,0.04)_38%,rgba(255,255,255,0.65)_50%,rgba(255,255,255,0.04)_62%,transparent_100%)] bg-[length:220%_100%] bg-clip-text text-transparent"
                     animate={{ backgroundPosition: ['130% 0%', '-40% 0%'] }}
                     transition={{ duration: 1.85, repeat: Infinity, ease: 'linear' }}
                 >
-                    Thinking
+                    Thinking...
                 </motion.span>
             </motion.span>
-            <span className="text-xs font-medium text-zinc-500">{seconds}s</span>
+            <span className="text-sm font-normal text-zinc-500">{seconds}s</span>
         </div>
     );
 }
@@ -230,21 +230,26 @@ function MessageBubble({ message, navigateTo, role }: { message: ChatMessage; na
                 {/* Content */}
                 <div className={cn("flex-1 min-w-0 flex flex-col", isUser ? "items-end text-right" : "items-start text-left")}>
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                        <span className={cn("text-xs font-semibold flex items-center gap-1", isUser ? "text-zinc-400" : "text-orange-400")}>
+                        <span className={cn("text-xs font-semibold", isUser ? "text-zinc-400" : "text-orange-400")}>
                             {isUser ? 'You' : (
                                 message.roleBadge || fallbackAssistantLabel
                             )}
                         </span>
-                        {time && <span className="text-[10px] text-zinc-500 font-medium px-2 py-0.5 rounded-full bg-white/5 border border-white/5">{time}</span>}
+                        {time && (
+                            <>
+                                <span className="text-zinc-600 text-[10px]">|</span>
+                                <span className="text-[10px] text-zinc-500 font-medium">{time}</span>
+                            </>
+                        )}
                     </div>
 
                     <div className={cn(
-                        "rounded-2xl px-4 sm:px-5 py-3 sm:py-4 text-sm leading-relaxed relative",
+                        "text-sm leading-relaxed relative",
                         isUser
-                            ? "bg-white/[0.03] border border-white/[0.08] text-zinc-100"
+                            ? "rounded-2xl px-4 sm:px-5 py-3 sm:py-4 bg-white/[0.03] text-zinc-100"
                             : isSafetyMessage
-                                ? "bg-gradient-to-br from-red-500/14 via-amber-500/10 to-red-500/14 border border-red-400/45 text-red-50 shadow-[0_0_0_1px_rgba(248,113,113,0.12),0_10px_35px_rgba(239,68,68,0.18)]"
-                            : "bg-white/[0.03] border border-white/[0.06] text-zinc-300"
+                                ? "rounded-2xl px-4 sm:px-5 py-3 sm:py-4 bg-gradient-to-br from-red-500/14 via-amber-500/10 to-red-500/14 border border-red-400/45 text-red-50 shadow-[0_0_0_1px_rgba(248,113,113,0.12),0_10px_35px_rgba(239,68,68,0.18)]"
+                            : "px-0 py-0 text-zinc-300"
                     )}>
                         {!isUser && isSafetyMessage && (
                             <div className="mb-3 overflow-hidden rounded-2xl border border-red-400/30 bg-[linear-gradient(135deg,rgba(127,29,29,0.35),rgba(120,53,15,0.22))] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
@@ -363,7 +368,7 @@ function MessageBubble({ message, navigateTo, role }: { message: ChatMessage; na
                             <HoverTooltip content="Copy message" side={isUser ? "left" : "right"}>
                                 <button
                                     onClick={handleCopy}
-                                    className="flex items-center gap-1 text-[10px] font-medium text-zinc-500 hover:text-orange-400 transition-colors bg-zinc-900/50 backdrop-blur-sm px-2 py-1 rounded-lg border border-white/5"
+                                    className="flex items-center gap-1 text-[10px] font-medium text-zinc-500 hover:text-orange-400 transition-colors px-1 py-1 rounded-lg"
                                 >
                                     {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
                                     {copied ? "Copied" : "Copy"}
