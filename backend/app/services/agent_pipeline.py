@@ -307,6 +307,24 @@ def _sanitize_generation_output(text: str) -> str:
     return cleaned
 
 
+def _is_timetable_query(query_text: str) -> bool:
+    text = _normalize(query_text)
+    timetable_markers = (
+        "timetable",
+        "time table",
+        "schedule",
+        "class today",
+        "classes today",
+        "today class",
+        "today's class",
+        "todays class",
+        "period",
+        "slot",
+        "lecture today",
+    )
+    return any(marker in text for marker in timetable_markers)
+
+
 def _provider_cooldown_key(provider: str, model: str) -> str:
     return f"{str(provider or '').strip().lower()}::{str(model or '').strip().lower()}"
 
@@ -1853,12 +1871,81 @@ async def run_agent_pipeline(
             or target_entity in {"admins", "users", "audit", "logs", "appeal", "appeals", "moderation"}
         )
     )
+    timetable_query = _is_timetable_query(query_text)
+    incomplete_profile_fields: list[str] = []
+    if _normalize(user_role) == "student":
+        for field_name in ("department", "program", "semester", "section"):
+            if not str(profile_ctx.get(field_name) or "").strip():
+                incomplete_profile_fields.append(field_name)
+    elif _normalize(user_role) == "faculty":
+        for field_name in ("department", "program"):
+            if not str(profile_ctx.get(field_name) or "").strip():
+                incomplete_profile_fields.append(field_name)
 
     if non_admin_restricted_query and forced_answer is None and not response_directive:
         response_directive = (
             "This request is outside the user's role because it asks for admin-only workflows. "
             "Refuse briefly, stay polite, and redirect the user to their role-scoped notices, documents, timetable, courses, and faculty mappings."
         )
+
+    if supabase and timetable_query and incomplete_profile_fields and forced_answer is None:
+        timetable_reference_docs = []
+        try:
+            accessible_docs = fetch_filtered_documents(
+                supabase=supabase,
+                allowed_types=allowed_types,
+                intent={},
+                context=context,
+                query="timetable",
+            )
+            timetable_reference_docs = [
+                row for row in accessible_docs
+                if "timetable" in _normalize(row.get("filename"))
+                or any("timetable" in str(tag).strip().lower() for tag in (row.get("tags") or []))
+            ][:3]
+        except Exception:
+            timetable_reference_docs = []
+
+        if timetable_reference_docs:
+            context_lines = ["[Structured Timetable Reference Snapshot]"]
+            for row in timetable_reference_docs:
+                row_date = _format_short_date(row.get("uploaded_at") or row.get("created_at"))
+                tags = ", ".join(row.get("tags") or []) if isinstance(row.get("tags"), list) else ""
+                context_lines.append(
+                    f"- {row.get('filename') or 'untitled'} | date: {row_date}"
+                    f"{f' | tags: {tags}' if tags else ''}"
+                )
+                structured_sources.append(
+                    {
+                        "content": (
+                            f"{row.get('filename') or 'untitled'} | "
+                            f"doc_type: {row.get('doc_type') or 'unknown'}, "
+                            f"tags: {tags}"
+                        ),
+                        "filename": row.get("filename") or "Unknown",
+                        "document_id": row.get("id"),
+                        "metadata": {
+                            "doc_type": row.get("doc_type"),
+                            "tags": row.get("tags") or [],
+                            "uploaded_at": row.get("uploaded_at") or row.get("created_at"),
+                            "navigation_target": "timetable",
+                        },
+                    }
+                )
+            context_text += "\n" + "\n".join(context_lines) + "\n"
+
+        response_directive = (
+            "The user asked for timetable or today's classes, but their profile is missing required registration fields: "
+            f"{', '.join(incomplete_profile_fields)}. "
+            "Do not invent any personalized class schedule. Briefly state that the in-app profile must be completed first. "
+            "If structured timetable reference files are present in context, mention them as the only timetable references currently visible in the app. "
+            "Recommend only critical next steps the app can support, such as completing the profile and opening the timetable page. "
+            "If official class registration details are still missing, advise checking the official university portal/website for the authoritative timetable."
+        )
+        if ("Open Full Timetable", "/dashboard/timetable") not in response_links:
+            response_links.append(("Open Full Timetable", "/dashboard/timetable"))
+        if ("Complete Profile", "/dashboard/profile") not in response_links:
+            response_links.append(("Complete Profile", "/dashboard/profile"))
 
     if supabase and doc_lookup_requested and forced_answer is None:
         filtered_docs = fetch_filtered_documents(
