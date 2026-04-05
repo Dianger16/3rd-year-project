@@ -5,7 +5,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { DateTimetableAgenda } from '@/components/timetable/DateTimetableAgenda';
 import { useAuthStore } from '@/store/authStore';
 import { authApi, documentsApi, type CourseDirectoryItem, type DocumentResponse, type FacultySummary } from '@/lib/api';
@@ -133,40 +132,27 @@ export default function StudentTimetablePage() {
     return (
         <div className="h-full overflow-y-auto p-6 md:p-8 w-full">
             <div className="mx-auto max-w-7xl space-y-6">
-                {isLoading ? (
-                    <section className="space-y-5">
-
-                        <div className="rounded-[28px] border border-white/[0.08] bg-zinc-900/45 p-6 space-y-3">
-                            {Array.from({ length: 5 }).map((_, idx) => (
-                                <div key={`student-date-skeleton-${idx}`} className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
-                                    <Skeleton className="h-4 w-40" />
-                                    <Skeleton className="mt-3 h-24 w-full" />
-                                </div>
-                            ))}
-                        </div>
-                    </section>
-                ) : (
-                    <DateTimetableAgenda
-                        slots={timetableSlots}
-                        title={`Class Timetable for ${displayName}`}
-                        subtitle="Date-based student timetable built from your mapped courses. Monday to Friday follows A to D academic blocks, with lunch held between C and D and weekends kept off."
-                        emptyMessage="No student timetable could be derived yet from your current course directory. Once mapped courses are available, your day agenda will appear here."
-                        action={
-                            <>
-                                <Link to="/dashboard/chat">
-                                    <Button className="h-11 rounded-2xl bg-orange-600 px-5 text-white hover:bg-orange-500">
-                                        <Sparkles className="mr-2 h-4 w-4" /> Ask UnivGPT Assistant
-                                    </Button>
-                                </Link>
-                                <Link to="/dashboard">
-                                    <Button variant="outline" className="h-11 rounded-2xl border-white/15 px-5 text-zinc-200 hover:text-white">
-                                        Back To Student Dashboard
-                                    </Button>
-                                </Link>
-                            </>
-                        }
-                    />
-                )}
+                <DateTimetableAgenda
+                    slots={timetableSlots}
+                    title={`Class Timetable for ${displayName}`}
+                    subtitle="Date-based student timetable built from your mapped courses. Monday to Friday follows A to D academic blocks, with lunch held between C and D and weekends kept off."
+                    emptyMessage="No student timetable could be derived yet from your current course directory. Once mapped courses are available, your day agenda will appear here."
+                    isLoading={isLoading}
+                    action={
+                        <>
+                            <Link to="/dashboard/chat">
+                                <Button className="h-11 rounded-2xl bg-orange-600 px-5 text-white hover:bg-orange-500">
+                                    <Sparkles className="mr-2 h-4 w-4" /> Ask UnivGPT Assistant
+                                </Button>
+                            </Link>
+                            <Link to="/dashboard">
+                                <Button variant="outline" className="h-11 rounded-2xl border-white/15 px-5 text-zinc-200 hover:text-white">
+                                    Back To Student Dashboard
+                                </Button>
+                            </Link>
+                        </>
+                    }
+                />
 
                 <section className="rounded-[28px] border border-white/[0.08] bg-zinc-900/50 p-5 sm:p-6">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

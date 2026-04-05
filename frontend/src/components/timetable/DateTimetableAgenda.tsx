@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { HoverTooltip } from '@/components/ui/tooltip';
 import { Link } from 'react-router-dom';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
     TIME_COLUMNS,
     formatTimetableTime,
@@ -41,6 +42,7 @@ type DateTimetableAgendaProps = {
     emptyMessage: string;
     action?: ReactNode;
     className?: string;
+    isLoading?: boolean;
 };
 
 function addDays(date: Date, amount: number) {
@@ -101,6 +103,7 @@ export function DateTimetableAgenda({
     emptyMessage,
     action,
     className,
+    isLoading = false,
 }: DateTimetableAgendaProps) {
     const [selectedDate, setSelectedDate] = useState(() => {
         const today = new Date();
@@ -165,7 +168,7 @@ export function DateTimetableAgenda({
         <section className={cn('space-y-5', className)}>
             <header className="rounded-[28px] border border-white/[0.08] bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.12),transparent_24%),linear-gradient(145deg,rgba(18,19,24,0.98),rgba(11,12,16,0.98))] p-5 sm:p-6">
                 <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
-                    <div className="space-y-3">
+                    <div className="space-y-3 xl:min-w-0 xl:flex-1">
                         <div className="inline-flex items-center gap-2 rounded-full border border-orange-400/15 bg-orange-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.24em] text-orange-200">
                             <CalendarDays className="h-3.5 w-3.5" /> Timetable Desk
                         </div>
@@ -175,7 +178,7 @@ export function DateTimetableAgenda({
                         </div>
                     </div>
                     {action ? (
-                        <div className="flex w-full flex-wrap items-center gap-3 lg:ml-auto lg:w-auto lg:shrink-0 lg:justify-end">
+                        <div className="flex w-full flex-wrap items-center gap-3 xl:ml-auto xl:w-auto xl:max-w-[42%] xl:shrink-0 xl:justify-end">
                             {action}
                         </div>
                     ) : null}
@@ -183,10 +186,38 @@ export function DateTimetableAgenda({
             </header>
 
             <div className="rounded-[28px] border border-white/[0.08] bg-zinc-900/50 p-4 sm:p-5">
-                <div
-                    ref={calendarRef}
-                    className="relative flex items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.02] px-3 py-3 sm:px-4"
-                >
+                {isLoading ? (
+                    <div className="space-y-4">
+                        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <Skeleton className="h-10 w-10 rounded-xl" />
+                                <Skeleton className="h-16 w-48 rounded-2xl" />
+                                <Skeleton className="h-10 w-10 rounded-xl" />
+                            </div>
+                            <div className="mt-4 flex gap-2 overflow-hidden">
+                                {Array.from({ length: 7 }).map((_, idx) => (
+                                    <Skeleton key={`week-pill-${idx}`} className="h-[90px] min-w-[74px] flex-1 rounded-2xl" />
+                                ))}
+                            </div>
+                        </div>
+                        <div className="rounded-[28px] border border-white/[0.08] bg-white/[0.02] p-4 sm:p-6">
+                            <Skeleton className="h-4 w-32 rounded-lg" />
+                            <Skeleton className="mt-3 h-8 w-52 rounded-lg" />
+                            <div className="mt-5 space-y-3">
+                                {Array.from({ length: 3 }).map((_, idx) => (
+                                    <div key={`agenda-skeleton-${idx}`} className="rounded-[24px] border border-white/[0.06] bg-white/[0.02] p-4">
+                                        <Skeleton className="h-24 w-full rounded-2xl" />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        <div
+                            ref={calendarRef}
+                            className="relative flex items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.02] px-3 py-3 sm:px-4"
+                        >
                     <button
                         type="button"
                         onClick={() => setSelectedDate((prev) => addDays(prev, -7))}
@@ -384,9 +415,9 @@ export function DateTimetableAgenda({
                             </div>
                         </div>
                     ) : null}
-                </div>
+                        </div>
 
-                <div className="mt-4 -mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1 md:mx-0 md:grid md:grid-cols-7 md:overflow-visible md:px-0">
+                        <div className="mt-4 -mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1 md:mx-0 md:grid md:grid-cols-7 md:overflow-visible md:px-0">
                     {weekDays.map((date) => {
                         const active = isSameDay(date, selectedDate);
                         const weekend = date.getDay() === 0 || date.getDay() === 6;
@@ -411,9 +442,12 @@ export function DateTimetableAgenda({
                             </button>
                         );
                     })}
-                </div>
+                        </div>
+                    </>
+                )}
             </div>
 
+            {!isLoading && (
             <div className="rounded-[28px] border border-white/[0.08] bg-zinc-900/50 p-4 sm:p-6">
                 <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                     <div>
@@ -472,13 +506,13 @@ export function DateTimetableAgenda({
                                             <div className="mt-2 text-lg font-black text-white">{formatTimetableTime(column.start)}</div>
                                             <div className="text-sm text-zinc-400">to {formatTimetableTime(column.end)}</div>
                                         </div>
-                                        <div className="flex items-center gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-4 py-5">
-                                            <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-amber-300/20 bg-amber-400/12 text-amber-200">
+                                        <div className="flex items-start gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-4 py-4 sm:items-center sm:gap-4 sm:py-5">
+                                            <div className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-amber-300/20 bg-amber-400/12 text-amber-200 sm:h-12 sm:w-12 sm:rounded-2xl">
                                                 <Coffee className="h-5 w-5" />
                                             </div>
-                                            <div>
+                                            <div className="min-w-0">
                                                 <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-100/80">Midday Break</div>
-                                                <div className="mt-1 text-lg font-black text-white">Reserved lunch interval</div>
+                                                <div className="mt-1 text-base font-black leading-snug text-white sm:text-lg">Reserved lunch interval</div>
                                                 <div className="mt-1 text-sm text-zinc-400">Buffer between academic blocks, office hours, and daily reset.</div>
                                             </div>
                                         </div>
@@ -574,6 +608,7 @@ export function DateTimetableAgenda({
                     </div>
                 )}
             </div>
+            )}
         </section>
     );
 }
