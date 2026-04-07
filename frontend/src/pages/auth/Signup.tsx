@@ -3,7 +3,7 @@
  */
 
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/store/authStore';
 import { AuthUI, Label, Input, PasswordInput, Button, OTPInput, Select } from '@/components/ui/auth-fuse';
 import { Loader2, Shield, Zap } from 'lucide-react';
@@ -12,6 +12,13 @@ import { BrandLogo } from '@/components/ui/BrandLogo';
 import { useToastStore } from '@/store/toastStore';
 
 type RoleOption = 'student' | 'faculty' | 'admin';
+type SignupLocationState = {
+    email?: string;
+    password?: string;
+    fullName?: string;
+    selectedRole?: RoleOption;
+    view?: 'signup' | 'otp';
+};
 
 export default function Signup() {
     const [email, setEmail] = useState('');
@@ -24,6 +31,18 @@ export default function Signup() {
     const { showToast } = useToastStore();
     const { signup, verifySignup, resendSignupOtp, googleAuth, isLoading, error, token } = useAuthStore();
     const navigate = useNavigate();
+    const location = useLocation();
+
+    React.useEffect(() => {
+        const state = (location.state || {}) as SignupLocationState;
+        if (!state || Object.keys(state).length === 0) return;
+        if (state.email) setEmail(state.email);
+        if (state.password) setPassword(state.password);
+        if (state.fullName) setFullName(state.fullName);
+        if (state.selectedRole) setSelectedRole(state.selectedRole);
+        if (state.view) setView(state.view);
+        navigate(location.pathname, { replace: true, state: null });
+    }, [location.pathname, location.state, navigate]);
 
     React.useEffect(() => {
         if (token) navigate('/dashboard');

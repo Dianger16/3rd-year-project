@@ -140,6 +140,17 @@ def _auth_user_metadata(user: Any) -> dict[str, Any]:
     return metadata if isinstance(metadata, dict) else {}
 
 
+def _auth_user_timestamp_field(user: Any, *field_names: str) -> str:
+    for field_name in field_names:
+        if isinstance(user, dict):
+            value = user.get(field_name)
+        else:
+            value = getattr(user, field_name, None)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
 def _auth_user_app_metadata(user: Any) -> dict[str, Any]:
     if isinstance(user, dict):
         metadata = user.get("app_metadata")
@@ -192,6 +203,39 @@ def is_google_only_auth_user(user: Any) -> bool:
     if not providers:
         return False
     return "google" in providers and "email" not in providers
+
+
+def is_effectively_verified_auth_user(user: Any) -> bool:
+    providers = auth_user_providers(user)
+    if "google" in providers:
+        return True
+
+    user_metadata = _auth_user_metadata(user)
+    if "is_verified" in user_metadata:
+        return bool(user_metadata.get("is_verified"))
+
+    # Legacy or seed accounts may predate the custom OTP metadata flags.
+    if user_metadata.get("otp_code") or user_metadata.get("otp_expires_at"):
+        return False
+
+    confirmed_at = _auth_user_timestamp_field(
+        user,
+        "email_confirmed_at",
+        "confirmed_at",
+        "confirmed_email_at",
+    )
+    return bool(confirmed_at)
+
+
+def has_pending_signup_verification(user: Any) -> bool:
+    if is_google_only_auth_user(user):
+        return False
+
+    user_metadata = _auth_user_metadata(user)
+    if "is_verified" in user_metadata:
+        return not bool(user_metadata.get("is_verified"))
+
+    return bool(user_metadata.get("otp_code") or user_metadata.get("otp_expires_at"))
 
 
 def find_auth_user_by_email(admin: Any, email: str) -> Any | None:
@@ -745,25 +789,41 @@ async def signup(request: Request, body: InitiateSignupRequest):
         )
 
         if existing_auth_user:
+            if is_google_only_auth_user(existing_auth_user):
+                raise HTTPException(
+                    status_code=400,
+                    detail="This email is already registered with Google sign-in. Please use Continue with Google.",
+                )
+
             user_metadata = _auth_user_metadata(existing_auth_user)
-            # If already verified, they really exist - block it
-            if user_metadata.get("is_verified", False):
+            requested_role = body.role.value if hasattr(body.role, "value") else str(body.role)
+            existing_role = normalize_profile_role(user_metadata.get("role") or requested_role)
+
+            if is_effectively_verified_auth_user(existing_auth_user):
                 raise HTTPException(
                     status_code=400,
                     detail="An account with this email already exists inside UnivGPT. Please try logging in.",
                 )
 
-            # If NOT verified, update their record with new OTP and metadata
+            if existing_role != requested_role:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"This email already has a pending {existing_role} signup. "
+                        "Please continue verification with that role or contact support."
+                    ),
+                )
+
+            # If NOT verified, refresh their pending OTP record and password.
             user_id = _auth_user_id(existing_auth_user)
             admin.auth.admin.update_user_by_id(
                 user_id,
                 {
                     "password": body.password,
                     "user_metadata": {
+                        **user_metadata,
                         "full_name": body.full_name,
-                        "role": body.role.value
-                        if hasattr(body.role, "value")
-                        else body.role,
+                        "role": existing_role,
                         "department": body.department,
                         "otp_code": otp_code,
                         "otp_expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
@@ -780,9 +840,7 @@ async def signup(request: Request, body: InitiateSignupRequest):
                     "email_confirm": True,
                     "user_metadata": {
                         "full_name": body.full_name,
-                        "role": body.role.value
-                        if hasattr(body.role, "value")
-                        else body.role,
+                        "role": requested_role,
                         "department": body.department,
                         "otp_code": otp_code,
                         "otp_expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
@@ -893,11 +951,13 @@ async def login(request: Request, body: LoginRequest):
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         user_id = auth_res.user.id
-        auth_metadata = getattr(auth_res.user, "user_metadata", {}) or {}
-        if not bool(auth_metadata.get("is_verified", False)):
+        if not is_effectively_verified_auth_user(auth_res.user):
             raise HTTPException(
                 status_code=403,
-                detail="Email OTP verification is pending. Please verify your email first.",
+                detail=(
+                    "Email OTP verification is pending. Please verify your email first "
+                    "or request a new signup code."
+                ),
             )
 
         # Fetch/update profile from Supabase so profile email/role/name cannot drift.
@@ -951,6 +1011,12 @@ async def verify_signup(request: Request, body: VerifySignupRequest):
         if not target_user:
             raise HTTPException(
                 status_code=400, detail="User not found. Please sign up first."
+            )
+
+        if is_effectively_verified_auth_user(target_user) and not has_pending_signup_verification(target_user):
+            raise HTTPException(
+                status_code=409,
+                detail="This account is already verified. Please log in with your password.",
             )
 
         user_metadata = _auth_user_metadata(target_user)
@@ -1038,8 +1104,14 @@ async def resend_signup_otp(body: ResendOtpRequest):
         if not target_user:
             return {"status": "success", "message": "If the email exists, OTP has been resent."}
 
+        if is_google_only_auth_user(target_user):
+            raise HTTPException(
+                status_code=400,
+                detail="This email is already linked to Google sign-in. Please use Continue with Google.",
+            )
+
         user_metadata = _auth_user_metadata(target_user)
-        if bool(user_metadata.get("is_verified", False)):
+        if is_effectively_verified_auth_user(target_user):
             return {"status": "success", "message": "Account is already verified. Please login."}
 
         otp_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
@@ -1087,6 +1159,12 @@ async def forgot_password(body: ForgotPasswordRequest):
             raise HTTPException(
                 status_code=400,
                 detail="This account uses Google sign-in. Please use Continue with Google.",
+            )
+
+        if not is_effectively_verified_auth_user(target_user):
+            raise HTTPException(
+                status_code=400,
+                detail="Your account is not verified yet. Please complete signup verification first.",
             )
 
         reset_otp = "".join([str(random.randint(0, 9)) for _ in range(6)])

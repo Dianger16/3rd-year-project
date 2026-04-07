@@ -43,7 +43,18 @@ export default function Login() {
             await login(email, password, selectedRole);
             navigate('/dashboard');
         } catch (err: any) {
-            showToast(err.message || "Invalid credentials.");
+            const message = err.message || "Invalid credentials.";
+            if (message.toLowerCase().includes('verification is pending')) {
+                navigate('/auth/signup', {
+                    state: {
+                        email,
+                        password,
+                        selectedRole,
+                        view: 'otp',
+                    },
+                });
+            }
+            showToast(message);
         }
     };
 
