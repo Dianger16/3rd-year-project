@@ -6,7 +6,7 @@ import React from 'react';
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
     return (
-        <div className="relative min-h-screen w-full bg-black overflow-hidden">
+        <div className="relative min-h-screen w-full bg-black overflow-x-hidden overflow-y-auto">
             {/* 
                 Persistent background across login/signup/etc to prevent flickering.
                 The layout stays mounted while its children (Login/Signup pages) change.

@@ -24,7 +24,7 @@ export default function Signup() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState('');
-    const [selectedRole, setSelectedRole] = useState<RoleOption | ''>('');
+    const [selectedRole, setSelectedRole] = useState<RoleOption>('student');
     const [otp, setOtp] = useState('');
     const [view, setView] = useState<'signup' | 'otp' | 'welcome'>('signup');
     const [resendCountdown, setResendCountdown] = useState(0);
@@ -223,7 +223,7 @@ export default function Signup() {
                         <Label htmlFor="role" className="text-zinc-400 font-medium ml-1">Choose Role</Label>
                         <Select
                             id="role"
-                            value={selectedRole || undefined}
+                            value={selectedRole}
                             onValueChange={(value) => setSelectedRole(value as RoleOption)}
                             placeholder="Select your role"
                             options={[

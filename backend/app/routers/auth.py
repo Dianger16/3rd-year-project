@@ -813,6 +813,7 @@ async def signup(request: Request, body: InitiateSignupRequest):
         existing_auth_user = next(
             (u for u in users_resp if _auth_user_email(u).strip().lower() == target_email), None
         )
+        created_new_auth_user = False
 
         if existing_auth_user:
             if is_google_only_auth_user(existing_auth_user):
@@ -874,6 +875,7 @@ async def signup(request: Request, body: InitiateSignupRequest):
                 }
             )
             user_id = auth_res.user.id
+            created_new_auth_user = True
 
         # 3. Log audit event (Use user_id=None to avoid Profile FK error)
         await log_audit_event(
@@ -888,9 +890,18 @@ async def signup(request: Request, body: InitiateSignupRequest):
                 receiver_email=body.email, otp=otp_code, user_name=body.full_name
             )
         except Exception as smtp_error:
+            if created_new_auth_user and user_id:
+                try:
+                    admin.auth.admin.delete_user(user_id)
+                except Exception:
+                    # Keep the original delivery error as the primary failure reason.
+                    pass
             raise HTTPException(
-                status_code=502,
-                detail=f"OTP email delivery failed: {smtp_error}",
+                status_code=503,
+                detail=(
+                    "We couldn't send your verification code right now. "
+                    "Please try signing up again in a moment."
+                ),
             )
 
         return SignupResponse(
@@ -1155,18 +1166,24 @@ async def resend_signup_otp(body: ResendOtpRequest):
             },
         )
 
-        EmailService.send_otp_email(
-            receiver_email=body.email,
-            otp=otp_code,
-            user_name=str(user_metadata.get("full_name") or "User"),
-        )
+        try:
+            EmailService.send_otp_email(
+                receiver_email=body.email,
+                otp=otp_code,
+                user_name=str(user_metadata.get("full_name") or "User"),
+            )
+        except Exception:
+            raise HTTPException(
+                status_code=503,
+                detail="We couldn't resend the verification code right now. Please try again in a moment.",
+            )
         return {"status": "success", "message": "OTP resent successfully."}
     except Exception as e:
         if isinstance(e, HTTPException):
             raise
         if is_network_error(e):
             raise_supabase_unreachable()
-        raise HTTPException(status_code=502, detail=f"OTP resend failed: {e}")
+        raise HTTPException(status_code=503, detail="We couldn't resend the verification code right now. Please try again in a moment.")
 
 
 @router.post("/auth/forgot-password")
@@ -1207,12 +1224,18 @@ async def forgot_password(body: ForgotPasswordRequest):
                 }
             },
         )
-        EmailService.send_otp_email(
-            receiver_email=body.email,
-            otp=reset_otp,
-            user_name=current_metadata.get("full_name", "User"),
-            purpose="password_reset",
-        )
+        try:
+            EmailService.send_otp_email(
+                receiver_email=body.email,
+                otp=reset_otp,
+                user_name=current_metadata.get("full_name", "User"),
+                purpose="password_reset",
+            )
+        except Exception:
+            raise HTTPException(
+                status_code=503,
+                detail="We couldn't send the password reset code right now. Please try again in a moment.",
+            )
 
         await log_audit_event(
             user_id=_auth_user_id(target_user),
@@ -1224,7 +1247,7 @@ async def forgot_password(body: ForgotPasswordRequest):
             raise
         if is_network_error(e):
             raise_supabase_unreachable()
-        raise HTTPException(status_code=502, detail=f"Recovery OTP delivery failed: {e}")
+        raise HTTPException(status_code=503, detail="We couldn't send the password reset code right now. Please try again in a moment.")
 
 
 @router.post("/auth/reset-password")

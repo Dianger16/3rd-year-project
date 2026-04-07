@@ -218,7 +218,7 @@ export default function DashboardLayout() {
     };
 
     return (
-        <div className="flex h-screen w-full bg-[#050507] text-white overflow-hidden">
+        <div className="flex min-h-[100dvh] w-full overflow-x-hidden bg-[#050507] text-white md:h-screen md:overflow-hidden">
             {/* Sticky Sidebar */}
             <div className="sticky top-0 h-screen shrink-0 z-50 bg-black border-r border-white/[0.07]">
                 <Sidebar open={sidebarOpen} setOpen={setSidebarOpen}>
@@ -267,9 +267,9 @@ export default function DashboardLayout() {
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 flex flex-col min-w-0 min-h-0 pt-0 bg-[#050507] overflow-hidden md:pr-2 md:pb-2">
-                <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-[#06070a] overflow-hidden relative md:rounded-tl-[30px] md:border-l md:border-t md:border-white/[0.07]">
-                    <header className="h-20 flex items-center justify-between px-6 md:px-8 shrink-0 relative z-40 lg:border-b lg:border-white/[0.06] bg-[#06070a]">
+            <div className="flex min-w-0 flex-1 flex-col bg-[#050507] pt-0 md:min-h-0 md:overflow-hidden md:pb-2 md:pr-2">
+                <div className="relative flex flex-1 flex-col bg-[#06070a] md:min-h-0 md:overflow-hidden md:rounded-tl-[30px] md:border-l md:border-t md:border-white/[0.07]">
+                    <header className="sticky top-0 z-40 flex h-20 shrink-0 items-center justify-between bg-[#06070a] px-4 sm:px-6 md:px-8 lg:border-b lg:border-white/[0.06]">
                         <div className="flex items-center gap-4">
                             {/* Mobile Brand Toggle */}
                             <button
@@ -418,7 +418,7 @@ export default function DashboardLayout() {
 
                     {/* Native Scrollable Content */}
                     <div
-                        className="flex-1 min-h-0 w-full mx-auto relative z-10 overflow-y-auto overflow-x-hidden"
+                        className="relative z-10 mx-auto flex-1 w-full overflow-y-auto overflow-x-hidden overscroll-contain"
                         data-lenis-prevent="true"
                     >
                         <AnimatePresence mode="wait">

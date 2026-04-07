@@ -16,7 +16,7 @@ type RoleOption = 'student' | 'faculty' | 'admin';
 export default function Login() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [selectedRole, setSelectedRole] = useState<RoleOption | ''>('');
+    const [selectedRole, setSelectedRole] = useState<RoleOption>('student');
     const [newPassword, setNewPassword] = useState('');
     const [otp, setOtp] = useState('');
     const [view, setView] = useState<'login' | 'forgot' | 'otp' | 'reset'>('login');
@@ -255,7 +255,7 @@ export default function Login() {
                         <Label htmlFor="role" className="text-zinc-400 font-medium ml-1">Choose Role</Label>
                         <Select
                             id="role"
-                            value={selectedRole || undefined}
+                            value={selectedRole}
                             onValueChange={(value) => setSelectedRole(value as RoleOption)}
                             placeholder="Select your role"
                             options={[

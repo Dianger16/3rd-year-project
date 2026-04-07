@@ -533,7 +533,7 @@ export default function ChatPage() {
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-80px)]">
+        <div className="flex min-h-full flex-1 flex-col">
             {/* Messages Area */}
             <div className="flex-1 overflow-y-auto overscroll-contain" data-lenis-prevent="true" style={{ WebkitOverflowScrolling: 'touch' }}>
                 {messages.length === 0 ? (

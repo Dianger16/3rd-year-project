@@ -40,6 +40,14 @@ interface RequestOptions {
 function sanitizeUserFacingErrorMessage(detail: string, status?: number): string {
     const normalized = String(detail || '').trim();
     const lower = normalized.toLowerCase();
+    const otpDeliveryIssue =
+        lower.includes("couldn't send your verification code") ||
+        lower.includes("couldn't resend the verification code") ||
+        lower.includes("couldn't send the password reset code");
+
+    if (otpDeliveryIssue) {
+        return normalized;
+    }
 
     const infraIssue =
         lower.includes('cannot reach supabase') ||
