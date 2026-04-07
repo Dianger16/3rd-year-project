@@ -497,24 +497,6 @@ export default function ChatPage() {
     const isChatBlocked = Boolean(moderationState?.blocked);
     const appealPending = String(moderationState?.appeal_status || '').toLowerCase() === 'pending';
     const hasStreamingAssistant = messages.some((m) => m.role === 'assistant' && m.isStreaming);
-    const incompleteProfileFields = useMemo(() => {
-        if (role === 'student') {
-            return [
-                !user?.department && 'department',
-                !user?.program && 'program',
-                !user?.semester && 'semester',
-                !user?.section && 'section',
-            ].filter(Boolean) as string[];
-        }
-        if (role === 'faculty') {
-            return [
-                !user?.department && 'department',
-                !user?.program && 'program',
-            ].filter(Boolean) as string[];
-        }
-        return [];
-    }, [role, user?.department, user?.program, user?.section, user?.semester]);
-    const shouldShowIncompleteBanner = incompleteProfileFields.length > 0;
     const thinkingHint =
         queryElapsedSeconds >= 8
             ? 'Still working through live scope data and references.'
@@ -552,27 +534,6 @@ export default function ChatPage() {
 
     return (
         <div className="flex flex-col h-[calc(100vh-80px)]">
-            {shouldShowIncompleteBanner && (
-                <div className="px-2 sm:px-6 pt-3 sm:pt-5">
-                    <div className="mx-auto max-w-3xl rounded-2xl border border-amber-400/20 bg-[linear-gradient(135deg,rgba(120,53,15,0.20),rgba(39,39,42,0.92))] px-4 py-3 shadow-[0_12px_40px_rgba(0,0,0,0.16)]">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="min-w-0">
-                                <div className="text-sm font-bold text-amber-100">
-                                    Your profile is incomplete. Complete it to unlock grounded chatbot help for timetable, notices, and course-specific guidance.
-                                </div>
-                                <div className="mt-1 text-xs text-zinc-300">
-                                    Missing: {incompleteProfileFields.join(', ')}. Until then, UnivGPT can only help with limited high-level campus context.
-                                </div>
-                            </div>
-                            <Link to="/dashboard/profile" className="shrink-0">
-                                <Button variant="outline" className="h-9 rounded-xl border-amber-300/25 bg-white/[0.04] px-4 text-amber-50 hover:bg-white/[0.08]">
-                                    Complete Profile
-                                </Button>
-                            </Link>
-                        </div>
-                    </div>
-                </div>
-            )}
             {/* Messages Area */}
             <div className="flex-1 overflow-y-auto overscroll-contain" data-lenis-prevent="true" style={{ WebkitOverflowScrolling: 'touch' }}>
                 {messages.length === 0 ? (

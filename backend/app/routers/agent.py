@@ -27,6 +27,10 @@ from app.services.audit import log_audit_event
 
 router = APIRouter(tags=["Agent"])
 
+
+def _moderation_enabled_for_role(user: AuthenticatedUser) -> bool:
+    return str(user.role or "").strip().lower() == "student"
+
 def is_network_error(exc: Exception) -> bool:
     message = str(exc).lower()
     if isinstance(exc, httpx.RequestError):
@@ -90,6 +94,8 @@ async def get_history(user: AuthenticatedUser = Depends(get_current_user)):
 async def get_moderation_state(
     user: AuthenticatedUser = Depends(get_current_user),
 ):
+    if not _moderation_enabled_for_role(user):
+        return {"moderation": moderation_meta_from_state({})}
     supabase = None if settings.supabase_offline_mode else get_supabase_admin()
     state = get_user_moderation_state(supabase, user.id)
     return {"moderation": moderation_meta_from_state(state)}
@@ -100,6 +106,8 @@ async def submit_appeal(
     body: AgentAppealRequest,
     user: AuthenticatedUser = Depends(get_current_user),
 ):
+    if not _moderation_enabled_for_role(user):
+        raise HTTPException(status_code=403, detail="Moderation appeals are available only for student chat access.")
     if settings.supabase_offline_mode:
         raise HTTPException(status_code=503, detail="Appeal submission unavailable in offline mode.")
     supabase = get_supabase_admin()

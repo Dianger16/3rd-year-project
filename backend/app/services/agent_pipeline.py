@@ -95,6 +95,10 @@ _ADMIN_ALLOWED_TARGETS = {
 }
 
 
+def _moderation_enabled_for_role(user_role: str) -> bool:
+    return _normalize(user_role) == "student"
+
+
 def get_llm_client(provider: str) -> httpx.AsyncClient:
     client = _LLM_CLIENTS.get(provider)
     if client is None:
@@ -1461,9 +1465,17 @@ async def run_agent_pipeline(
         user_id,
         user_role,
     )
-    moderation_state = _load_offense_state(supabase, user_id)
+    moderation_enabled = _moderation_enabled_for_role(user_role)
+    moderation_state = _load_offense_state(supabase, user_id) if moderation_enabled else {
+        "warning_count": 0,
+        "offensive_messages": [],
+        "offense_total": 0,
+        "blocked": False,
+        "blocked_at": None,
+        "appeal": {"status": "none"},
+    }
 
-    if bool(moderation_state.get("blocked")):
+    if moderation_enabled and bool(moderation_state.get("blocked")):
         moderation_meta = _build_moderation_meta(moderation_state)
         appeal_status = str((moderation_state.get("appeal") or {}).get("status") or "none")
         if appeal_status == "pending":
@@ -1579,7 +1591,7 @@ async def run_agent_pipeline(
         )
 
     # Moderation Intercept
-    if intent.get("is_flagged") is True:
+    if moderation_enabled and intent.get("is_flagged") is True:
         logger.warning(f"Flagged query from {user_id}: {query}")
 
         user_email = "Unknown"
@@ -1727,6 +1739,7 @@ async def run_agent_pipeline(
         f"- Program: {profile_ctx.get('program') or '-'}",
         f"- Semester: {profile_ctx.get('semester') or '-'}",
         f"- Section: {profile_ctx.get('section') or '-'}",
+        f"- Roll Number: {profile_ctx.get('roll_number') or '-'}",
     ]
     user_profile_text = "USER PROFILE CONTEXT:\n" + "\n".join(user_profile_lines)
 
@@ -1761,12 +1774,27 @@ async def run_agent_pipeline(
     target_entity = _normalize(intent.get("target_entity"))
     query_text = _normalize(query)
     count_request = bool(re.search(r"\b(how many|count|number of|total)\b", query_text))
+    profile_question = bool(
+        re.search(
+            r"\b(?:what|tell|show|give)\b.*\bmy\b.*\b(?:roll\s*number|roll\s*no|program|semester|section|department|email|name)\b"
+            r"|\bmy\b.*\b(?:roll\s*number|roll\s*no|program|semester|section|department|email|name)\b",
+            query_text,
+        )
+    )
 
     if _normalize(user_role) == "admin" and not is_admin_scope_intent(intent, query):
         response_directive = (
             "This admin account asked a non-admin-operational question. "
             "Politely redirect to admin operations queries only, and suggest the kinds of admin topics this assistant can help with. "
             "Do not answer outside admin scope."
+        )
+    elif profile_question:
+        response_directive = (
+            "The user is asking about their own profile data. "
+            "Answer directly from USER PROFILE CONTEXT only. "
+            "If the requested field is present, provide it clearly. "
+            "If a field is missing, say it is not set yet and suggest updating the in-app profile page. "
+            "Do not claim you lack access if the value exists in USER PROFILE CONTEXT."
         )
 
     course_faculty_snapshot: dict[str, Any] = {}
