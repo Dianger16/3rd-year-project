@@ -371,7 +371,7 @@ function MessageBubble({ message, navigateTo, role }: { message: ChatMessage; na
 
                     <div
                         className={cn(
-                            "mt-3 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-1 group-hover:translate-y-0",
+                            "mt-3 flex min-h-6 items-center gap-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100",
                             isUser ? "justify-end self-end" : "justify-start self-start",
                         )}
                     >
@@ -416,6 +416,7 @@ export default function ChatPage() {
     const navigate = useNavigate();
     const [queryStartedAt, setQueryStartedAt] = useState<number | null>(null);
     const [queryElapsedSeconds, setQueryElapsedSeconds] = useState(0);
+    const previousMessageCountRef = useRef(messages.length);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -452,10 +453,17 @@ export default function ChatPage() {
     }, [token]);
 
     useEffect(() => {
+        const previousCount = previousMessageCountRef.current;
+        previousMessageCountRef.current = messages.length;
+        if (messages.length <= previousCount) return;
+
         const latest = [...messages]
+            .slice(previousCount)
             .reverse()
             .find((m) => m.role === 'assistant' && m.moderation)?.moderation as ModerationMeta | undefined;
-        if (latest) setModerationState(latest);
+        if (latest) {
+            setModerationState(latest);
+        }
     }, [messages]);
 
     useEffect(() => {
@@ -609,7 +617,7 @@ export default function ChatPage() {
             </div>
 
             {/* â”€â”€â”€â”€â”€ Input Bar â€” Premium â”€â”€â”€â”€â”€ */}
-            <div className="mt-auto shrink-0 bg-[#06070a]/95 px-2 pb-2 pt-0 backdrop-blur-sm sm:bg-transparent sm:px-6 sm:pb-6">
+            <div className="shrink-0 bg-[#06070a]/95 px-2 pb-2 pt-0 backdrop-blur-sm sm:px-6 sm:pb-6">
                 <form onSubmit={handleSend} className="max-w-3xl mx-auto">
                     {isChatBlocked && (
                         <div className="mb-3 rounded-2xl border border-red-500/35 bg-red-950/30 p-3 sm:p-4">
@@ -635,11 +643,6 @@ export default function ChatPage() {
                                             {isSubmittingAppeal ? 'Submitting...' : 'Submit Apology Appeal'}
                                         </Button>
                                     </div>
-                                </div>
-                            )}
-                            {appealPending && (
-                                <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-100">
-                                    Appeal already submitted and pending dean review.
                                 </div>
                             )}
                             {appealFeedback && (

@@ -419,7 +419,12 @@ export default function DashboardLayout() {
 
                     {/* Native Scrollable Content */}
                     <div
-                        className="relative z-10 mx-auto flex-1 w-full overflow-y-auto overflow-x-hidden overscroll-contain"
+                        className={cn(
+                            "relative z-10 mx-auto flex-1 w-full overflow-x-hidden",
+                            isChatRoute
+                                ? "min-h-0 overflow-hidden"
+                                : "overflow-y-auto overscroll-contain",
+                        )}
                         data-lenis-prevent="true"
                     >
                         <AnimatePresence mode="wait">
@@ -429,7 +434,7 @@ export default function DashboardLayout() {
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
                                 transition={{ duration: 0.15 }}
-                                className={cn(isChatRoute ? "h-full min-h-0" : "min-h-full")}
+                                className={cn(isChatRoute ? "flex h-full min-h-0 flex-col" : "min-h-full")}
                             >
                                 <Outlet />
                             </motion.div>
