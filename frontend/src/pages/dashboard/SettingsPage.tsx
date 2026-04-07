@@ -171,7 +171,6 @@ const SettingsPage = () => {
         { label: 'Name', value: user?.full_name || 'User', icon: UserCircle2, tone: 'text-sky-300 bg-sky-500/15 border-sky-500/30' },
         { label: 'Role', value: role.charAt(0).toUpperCase() + role.slice(1), icon: ShieldCheck, tone: 'text-orange-300 bg-orange-500/15 border-orange-500/30' },
         { label: 'Department', value: user?.department || 'Not set', icon: Building2, tone: 'text-indigo-300 bg-indigo-500/15 border-indigo-500/30' },
-        { label: 'Verification', value: user?.academic_verified ? 'Verified' : 'Pending', icon: ShieldCheck, tone: 'text-emerald-300 bg-emerald-500/15 border-emerald-500/30' },
         ...(isStudent
             ? [
                   { label: 'Program', value: user?.program || 'Not set', icon: GraduationCap, tone: 'text-violet-300 bg-violet-500/15 border-violet-500/30' },

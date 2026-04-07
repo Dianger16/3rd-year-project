@@ -12,7 +12,6 @@ import {
     Edit2,
     Camera,
     X,
-    CheckCircle2,
     Save,
     GraduationCap,
     BookOpen,
@@ -39,7 +38,6 @@ const iconToneByLabel: Record<string, string> = {
     Email: 'text-cyan-300 bg-cyan-500/15 border-cyan-500/30',
     Role: 'text-orange-300 bg-orange-500/15 border-orange-500/30',
     'Member Since': 'text-violet-300 bg-violet-500/15 border-violet-500/30',
-    'Academic Verification': 'text-emerald-300 bg-emerald-500/15 border-emerald-500/30',
     Program: 'text-indigo-300 bg-indigo-500/15 border-indigo-500/30',
     Semester: 'text-fuchsia-300 bg-fuchsia-500/15 border-fuchsia-500/30',
     Section: 'text-sky-300 bg-sky-500/15 border-sky-500/30',
@@ -273,11 +271,6 @@ const ProfilePage = () => {
                   })
                 : 'Not available',
         },
-        {
-            icon: CheckCircle2,
-            label: 'Academic Verification',
-            value: user?.academic_verified ? 'Verified' : 'Pending',
-        },
     ];
 
     const academicRows = [
@@ -353,11 +346,6 @@ const ProfilePage = () => {
                                         <Badge className={`text-[10px] border px-2.5 py-1 capitalize ${roleBadgeStyles[role]}`}>
                                             {role}
                                         </Badge>
-                                        {user?.academic_verified && (
-                                            <Badge className="text-[10px] border px-2.5 py-1 bg-emerald-500/15 text-emerald-300 border-emerald-500/30">
-                                                Academic Verified
-                                            </Badge>
-                                        )}
                                     </div>
                                 </div>
 
@@ -652,18 +640,6 @@ const ProfilePage = () => {
                                                 day: 'numeric',
                                             })
                                             : 'Not available'}
-                                    </div>
-                                </div>
-
-                                <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
-                                    <div className="flex items-center gap-2 text-[11px] text-zinc-500">
-                                        <span className={`w-5 h-5 rounded-md border flex items-center justify-center ${iconToneByLabel['Academic Verification']}`}>
-                                            <CheckCircle2 className="w-3 h-3" />
-                                        </span>
-                                        Verification
-                                    </div>
-                                    <div className="text-sm font-semibold text-white mt-1.5">
-                                        {user?.academic_verified ? 'Verified' : 'Pending'}
                                     </div>
                                 </div>
 
