@@ -2,46 +2,51 @@
  * Contact: akashkumar.cs27@gmail.com
  */
 
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          'vendor-supabase': ['@supabase/supabase-js'],
-          'vendor-motion': ['framer-motion'],
-          'vendor-markdown': ['react-markdown', 'remark-gfm'],
-          'vendor-icons': ['lucide-react'],
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const devAllowedHosts = (env.VITE_DEV_ALLOWED_HOSTS || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+  const devProxyTarget = (env.VITE_DEV_API_PROXY_TARGET || 'http://localhost:8000').trim()
+
+  return {
+    plugins: [react(), tailwindcss()],
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-supabase': ['@supabase/supabase-js'],
+            'vendor-motion': ['framer-motion'],
+            'vendor-markdown': ['react-markdown', 'remark-gfm'],
+            'vendor-icons': ['lucide-react'],
+          },
         },
       },
     },
-  },
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
-  },
-  server: {
-    port: 5173,
-    allowedHosts: [
-      'localhost',
-      '[IP_ADDRESS]',
-      '7c91-2a09-bac1-36c0-5d8-00-10c-1f.ngrok-free.app',
-    ],
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './src'),
       },
     },
-  },
+    server: {
+      port: 5173,
+      allowedHosts: ['localhost', '127.0.0.1', ...devAllowedHosts],
+      proxy: {
+        '/api': {
+          target: devProxyTarget,
+          changeOrigin: true,
+          rewrite: (requestPath) => requestPath.replace(/^\/api/, ''),
+        },
+      },
+    },
+  }
 })
 
 
