@@ -1296,7 +1296,7 @@ async def run_backup_moderation_check(query: str, history_context: str = "") -> 
     except Exception as exc:
         logger.warning("Backup moderation check failed: %s", exc)
 
-    local_flag = detect_local_moderation(query, strict=True)
+    local_flag = detect_local_moderation(query, strict=True, history_context=history_context)
     if local_flag.get("is_flagged"):
         return local_flag
 
@@ -1385,7 +1385,7 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
             validated = IntentPayload.model_validate(raw)
             result = validated.model_dump(exclude_none=True)
             if result.get("is_flagged") is not True:
-                local_flag = detect_local_moderation(query, strict=True)
+                local_flag = detect_local_moderation(query, strict=True, history_context=history_context)
                 if local_flag.get("is_flagged"):
                     local_flag["_intent_source"] = "local_moderation_fallback"
                     return local_flag
@@ -1399,7 +1399,7 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
             result["_intent_source"] = "llm"
             return result
         except Exception:
-            local_flag = detect_local_moderation(query, strict=True)
+            local_flag = detect_local_moderation(query, strict=True, history_context=history_context)
             if local_flag.get("is_flagged"):
                 local_flag["_intent_source"] = "local_moderation_fallback"
                 return local_flag

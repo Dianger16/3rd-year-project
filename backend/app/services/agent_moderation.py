@@ -21,6 +21,10 @@ _TARGETED_PERSON_STATEMENT = re.compile(
     r"\b(?:dr|prof(?:essor)?|sir|madam|ma['â€™]?am|teacher|faculty|dean)\b.{0,30}\b(?:is|are|was|were)\b.{1,60}$",
     re.IGNORECASE,
 )
+_TARGETED_PERSON_DEGRADING = re.compile(
+    r"\b(?:dr|prof(?:essor)?|sir|madam|ma['â€™]?am|teacher|faculty|dean)\b.{0,45}\b(?:shit(?:ty)?|crap|trash|useless|garbage|pathetic|stupid|idiot(?:ic)?|worthless|piece\s+of\s+shit)\b",
+    re.IGNORECASE,
+)
 _DEGRADING_LANGUAGE = re.compile(
     r"\b(?:shit(?:ty)?|crap|trash|useless|garbage|pathetic|stupid|idiot(?:ic)?|worthless|piece\s+of\s+shit)\b",
     re.IGNORECASE,
@@ -33,13 +37,17 @@ _GROUP_ATTACK_PATTERN = re.compile(
     r"\b(?:why\s+(?:my|the)\s+)?(?:faculty|faculties|teachers?|professors?|staff|students?|admins?|deans?)\b.{0,40}\b(?:is|are|was|were)\b.{0,50}\b(?:shit(?:ty)?|crap|trash|useless|garbage|pathetic|stupid|idiot(?:ic)?|worthless|piece\s+of\s+shit)\b",
     re.IGNORECASE,
 )
+_THIRD_PERSON_DEGRADING = re.compile(
+    r"\b(?:he|she|they|him|her|them)\b.{0,18}\b(?:is|are|was|were|be|being|'s)\b.{0,40}\b(?:shit(?:ty)?|crap|trash|useless|garbage|pathetic|stupid|idiot(?:ic)?|worthless|piece\s+of\s+shit)\b",
+    re.IGNORECASE,
+)
 _ACADEMIC_CONTEXT = re.compile(
     r"\b(?:course|class|lecture|syllabus|subject|exam|deadline|assignment|notice|policy|office\s*hours|department|semester|program|curriculum)\b",
     re.IGNORECASE,
 )
 
 
-def detect_local_moderation(query: str, *, strict: bool = False) -> dict[str, Any]:
+def detect_local_moderation(query: str, *, strict: bool = False, history_context: str = "") -> dict[str, Any]:
     """
     Emergency local moderation fallback.
     Keep this narrow and provider-independent: it should only catch obvious
@@ -54,10 +62,13 @@ def detect_local_moderation(query: str, *, strict: bool = False) -> dict[str, An
     in_academic_context = bool(_ACADEMIC_CONTEXT.search(text))
     has_degrading_language = bool(_DEGRADING_LANGUAGE.search(text))
     identity_targeting = bool(_IDENTITY_TARGETING.search(text))
+    history_has_person_reference = bool(_PERSON_REFERENCE.search(str(history_context or "")))
 
     high_confidence_targeting = bool(_TARGETED_PERSON_QUERY.search(text))
     medium_confidence_targeting = has_person_reference and bool(_TARGETED_PERSON_STATEMENT.search(text))
+    direct_person_degrading = bool(_TARGETED_PERSON_DEGRADING.search(text))
     role_group_attack = bool(_GROUP_ATTACK_PATTERN.search(text))
+    pronoun_followup_attack = bool(_THIRD_PERSON_DEGRADING.search(text))
 
     if high_confidence_targeting and not in_academic_context:
         return {
@@ -71,6 +82,30 @@ def detect_local_moderation(query: str, *, strict: bool = False) -> dict[str, An
         return {
             "is_flagged": True,
             "reason": "Potentially abusive targeted statement about an individual.",
+            "intent_type": "general",
+            "target_entity": "general",
+        }
+
+    if strict and direct_person_degrading and not in_academic_context:
+        return {
+            "is_flagged": True,
+            "reason": "Direct abusive degrading language about an individual.",
+            "intent_type": "general",
+            "target_entity": "general",
+        }
+
+    if strict and has_person_reference and has_degrading_language and not in_academic_context:
+        return {
+            "is_flagged": True,
+            "reason": "Abusive degrading language directed at an individual.",
+            "intent_type": "general",
+            "target_entity": "general",
+        }
+
+    if strict and pronoun_followup_attack and history_has_person_reference and not in_academic_context:
+        return {
+            "is_flagged": True,
+            "reason": "Abusive degrading follow-up directed at an individual referenced in the conversation.",
             "intent_type": "general",
             "target_entity": "general",
         }
