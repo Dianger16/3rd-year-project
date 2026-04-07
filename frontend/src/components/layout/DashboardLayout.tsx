@@ -31,6 +31,7 @@ export default function DashboardLayout() {
     const { showToast } = useToastStore();
     const location = useLocation();
     const navigate = useNavigate();
+    const isChatRoute = location.pathname === '/dashboard/chat';
 
     const role = user?.role || 'student';
     const normalizeDisplayName = (fullName?: string | null) => {
@@ -428,7 +429,7 @@ export default function DashboardLayout() {
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
                                 transition={{ duration: 0.15 }}
-                                className="min-h-full"
+                                className={cn(isChatRoute ? "h-full min-h-0" : "min-h-full")}
                             >
                                 <Outlet />
                             </motion.div>
