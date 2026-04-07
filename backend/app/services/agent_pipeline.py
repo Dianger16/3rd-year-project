@@ -1634,10 +1634,10 @@ async def run_agent_pipeline(
             audit_action = "flagged_query_warning"
             _persist_offense_state(supabase, user_id, next_state)
         else:
-            # Hard-block user after max warnings and reset warning counter.
+            # Hard-block user after the final warning has already been issued.
             next_state["blocked"] = True
             next_state["blocked_at"] = now_iso
-            next_state["warning_count"] = 0
+            next_state["warning_count"] = MAX_MODERATION_WARNINGS
             next_state["appeal"] = {
                 "status": "none",
                 "message": None,
@@ -1664,8 +1664,8 @@ async def run_agent_pipeline(
                 )
             )
             answer = (
-                "SAFETY ALERT: Repeated abusive messages were detected. Your chat access is now blocked. "
-                "Submit an apology appeal and the Dean section can review your case."
+                "SAFETY ALERT: Repeated abusive messages were detected. "
+                "Your chat access is now blocked. Submit an apology appeal and the Dean section can review your case."
             )
             audit_action = "flagged_query_escalated"
 

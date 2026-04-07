@@ -256,7 +256,7 @@ function MessageBubble({ message, navigateTo, role }: { message: ChatMessage; na
                             ? "rounded-2xl px-4 sm:px-5 py-3 sm:py-4 bg-white/[0.03] text-zinc-100"
                             : isSafetyMessage
                                 ? "rounded-2xl px-4 sm:px-5 py-3 sm:py-4 bg-gradient-to-br from-red-500/14 via-amber-500/10 to-red-500/14 border border-red-400/45 text-red-50 shadow-[0_0_0_1px_rgba(248,113,113,0.12),0_10px_35px_rgba(239,68,68,0.18)]"
-                            : "px-0 py-0 text-zinc-300"
+                            : "px-0 py-0 text-zinc-100 sm:text-zinc-300"
                     )}>
                         {!isUser && isSafetyMessage && (
                             <div className="mb-3 overflow-hidden rounded-2xl border border-red-400/30 bg-[linear-gradient(135deg,rgba(127,29,29,0.35),rgba(120,53,15,0.22))] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
@@ -283,7 +283,7 @@ function MessageBubble({ message, navigateTo, role }: { message: ChatMessage; na
                         {isUser ? (
                             <p className="whitespace-pre-wrap">{message.content}</p>
                         ) : (
-                            <div className="prose prose-sm prose-zinc dark:prose-invert prose-p:leading-relaxed prose-a:text-orange-400 prose-headings:font-bold prose-headings:tracking-tight max-w-none">
+                            <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-headings:font-bold prose-headings:tracking-tight prose-strong:text-white prose-a:text-orange-400 text-zinc-100 sm:text-zinc-300">
                                 <ReactMarkdown
                                     remarkPlugins={[remarkGfm]}
                                     components={{
@@ -533,9 +533,9 @@ export default function ChatPage() {
     };
 
     return (
-        <div className="flex min-h-full flex-1 flex-col">
+        <div className="flex h-full min-h-0 flex-1 flex-col">
             {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto overscroll-contain" data-lenis-prevent="true" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" data-lenis-prevent="true" style={{ WebkitOverflowScrolling: 'touch' }}>
                 {messages.length === 0 ? (
                     /* â”€â”€â”€â”€â”€ Premium Empty State â”€â”€â”€â”€â”€ */
                     <div className="flex flex-col items-center min-h-full px-4 sm:px-6 py-10 sm:py-14 text-center">
@@ -577,7 +577,7 @@ export default function ChatPage() {
                     </div>
                 ) : (
                     /* â”€â”€â”€â”€â”€ Messages â”€â”€â”€â”€â”€ */
-                    <div className="px-6 py-4">
+                    <div className="px-4 py-4 sm:px-6">
                         {messages.map((msg, i) => (
                             <MessageBubble key={i} message={msg} navigateTo={handleNavigate} role={role} />
                         ))}
@@ -594,7 +594,7 @@ export default function ChatPage() {
                                         <div className="py-3">
                                             <div className="min-w-0">
                                                 <ThinkingText seconds={queryStartedAt ? queryElapsedSeconds : 0} />
-                                                <div className="text-[11px] text-zinc-600 mt-1">
+                                                <div className="mt-1 text-[11px] text-zinc-500 sm:text-zinc-600">
                                                     {thinkingHint}
                                                 </div>
                                             </div>
@@ -609,7 +609,7 @@ export default function ChatPage() {
             </div>
 
             {/* â”€â”€â”€â”€â”€ Input Bar â€” Premium â”€â”€â”€â”€â”€ */}
-            <div className="px-2 sm:px-6 pb-2 sm:pb-6 pt-0 shrink-0 bg-transparent">
+            <div className="mt-auto shrink-0 bg-[#06070a]/95 px-2 pb-2 pt-0 backdrop-blur-sm sm:bg-transparent sm:px-6 sm:pb-6">
                 <form onSubmit={handleSend} className="max-w-3xl mx-auto">
                     {isChatBlocked && (
                         <div className="mb-3 rounded-2xl border border-red-500/35 bg-red-950/30 p-3 sm:p-4">
