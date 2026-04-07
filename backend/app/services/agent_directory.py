@@ -675,13 +675,13 @@ def build_course_faculty_context(
             row = faculty_by_id.get(fid) or {}
             name = row.get("full_name") or "Faculty"
             context_lines.append(
-                f"- Faculty: {name} | department: {row.get('department') or 'Department not set'} | profile: /dashboard/faculty/{fid}"
+                f"- Faculty: {name} | department: {row.get('department') or 'Department not set'} | profile link: [Open {name} Profile](/dashboard/faculty/{fid})"
             )
         return {
             "context": "\n".join(context_lines),
             "directive": (
                 "Answer using the structured faculty directory snapshot only. "
-                "List relevant faculty in scope and mention profile links only when present in context."
+                "List relevant faculty in scope and render any profile references as markdown links, not raw route strings."
             ),
             "links": [("Open Faculty Directory", "/dashboard/faculty"), ("Open Courses", "/dashboard/courses")],
         }
@@ -696,13 +696,13 @@ def build_course_faculty_context(
             row = faculty_by_id.get(fid) or {}
             name = row.get("full_name") or "Faculty"
             context_lines.append(
-                f"- Faculty: {name} | department: {row.get('department') or 'Department not set'} | profile: /dashboard/faculty/{fid}"
+                f"- Faculty: {name} | department: {row.get('department') or 'Department not set'} | profile link: [Open {name} Profile](/dashboard/faculty/{fid})"
             )
         return {
             "context": "\n".join(context_lines),
             "directive": (
                 "Answer using the structured faculty directory snapshot only. "
-                "If there are 0 faculty records, say that clearly."
+                "If there are 0 faculty records, say that clearly. Render any profile references as markdown links, not raw route strings."
             ),
             "links": [("Open Faculty Directory", "/dashboard/faculty"), ("Open Courses", "/dashboard/courses")],
         }
