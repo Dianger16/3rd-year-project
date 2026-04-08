@@ -3,6 +3,7 @@
 
 import smtplib
 import socket
+import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
@@ -13,6 +14,50 @@ from typing import Optional
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
+
+
+def _connect_preferred_socket(host: str, port: int, timeout: int | float | None) -> socket.socket:
+    infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    # Railway/Gmail can surface unreachable IPv6 routes first; prefer IPv4 when available.
+    ordered = sorted(infos, key=lambda item: 0 if item[0] == socket.AF_INET else 1)
+    last_error: OSError | None = None
+
+    for family, socktype, proto, _, sockaddr in ordered:
+        raw_socket: socket.socket | None = None
+        try:
+            raw_socket = socket.socket(family, socktype, proto)
+            if timeout is not None:
+                raw_socket.settimeout(timeout)
+            raw_socket.connect(sockaddr)
+            return raw_socket
+        except OSError as exc:
+            last_error = exc
+            if raw_socket is not None:
+                try:
+                    raw_socket.close()
+                except Exception:
+                    pass
+
+    if last_error is not None:
+        raise last_error
+    raise OSError(f"Unable to resolve SMTP host {host}:{port}")
+
+
+class IPv4PreferredSMTP(smtplib.SMTP):
+    def _get_socket(self, host, port, timeout):  # type: ignore[override]
+        if timeout is not None and timeout <= 0:
+            raise ValueError("Non-blocking socket (timeout=0) is not supported")
+        return _connect_preferred_socket(host, port, timeout)
+
+
+class IPv4PreferredSMTP_SSL(smtplib.SMTP_SSL):
+    def _get_socket(self, host, port, timeout):  # type: ignore[override]
+        if timeout is not None and timeout <= 0:
+            raise ValueError("Non-blocking socket (timeout=0) is not supported")
+        plain_socket = _connect_preferred_socket(host, port, timeout)
+        context = self.context if getattr(self, "context", None) is not None else ssl.create_default_context()
+        self.sock = context.wrap_socket(plain_socket, server_hostname=host)
+        return self.sock
 
 
 class EmailService:
@@ -72,13 +117,13 @@ class EmailService:
         timeout = settings.smtp_timeout_seconds
 
         def send_with_starttls(host: str, port: int) -> None:
-            with smtplib.SMTP(host, port, timeout=timeout) as server:
+            with IPv4PreferredSMTP(host, port, timeout=timeout) as server:
                 server.starttls()
                 server.login(settings.smtp_user, smtp_password)
                 server.send_message(msg)
 
         def send_with_ssl(host: str, port: int) -> None:
-            with smtplib.SMTP_SSL(host, port, timeout=timeout) as server:
+            with IPv4PreferredSMTP_SSL(host, port, timeout=timeout) as server:
                 server.login(settings.smtp_user, smtp_password)
                 server.send_message(msg)
 
