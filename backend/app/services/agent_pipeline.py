@@ -1256,7 +1256,8 @@ async def run_backup_moderation_check(query: str, history_context: str = "") -> 
     threats, demeaning comments about a person (including teacher/faculty/staff/student),
     degrading vulgar abuse aimed at a university role group like faculty, teachers, staff, or students,
     direct second-person profanity or insults aimed at another person or the assistant,
-    or identity-focused harassment/speculation about a named person or teacher.
+    or identity-focused harassment/speculation about a named person or teacher,
+    or explicit profanity/slurs/abuse in any language or script (including romanized/transliterated spellings).
     Set "is_flagged": false for normal academic questions, neutral policy questions, and mild non-targeted frustration.
 
     Return ONLY valid JSON:
@@ -1303,6 +1304,25 @@ async def run_backup_moderation_check(query: str, history_context: str = "") -> 
     return {"is_flagged": False}
 
 
+def _should_run_secondary_moderation_pass(query: str, intent: Dict[str, Any]) -> bool:
+    text = _normalize(query)
+    if not text or intent.get("is_flagged") is True:
+        return False
+    if is_fast_smalltalk_query(query):
+        return False
+
+    academic_markers = (
+        "course", "class", "lecture", "syllabus", "subject", "exam", "assignment",
+        "deadline", "notice", "policy", "office", "department", "semester", "program",
+        "curriculum", "timetable", "schedule",
+    )
+    has_academic_signal = any(marker in text for marker in academic_markers)
+    token_count = len(re.findall(r"\b\w+\b", text, flags=re.UNICODE))
+    is_short_burst = len(text) <= 140 and token_count <= 12
+    looks_like_statement = "?" not in text
+    return is_short_burst and looks_like_statement and not has_academic_signal
+
+
 async def extract_query_intent(query: str, history_context: str = "") -> Dict[str, Any]:
     """
     Extract dynamic filtering metadata from the user's query.
@@ -1320,10 +1340,11 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
     - direct threats
     - abusive allegations about a specific teacher/faculty/staff/student/person
     - direct insulting or degrading language about a named individual, even if the person is not referred to by title
-    - degrading vulgar abuse aimed at a university role group (for example faculty, teachers, staff, students, admins), even when no individual is named
-    - direct second-person profanity or insulting abuse aimed at another person or the assistant
-    - identity-focused or sexuality-focused speculation/ridicule about a named person or teacher
-    Keep `"is_flagged": false` for normal academic questions, neutral policy questions, mild frustration, general complaints without abusive language, apologies, or references to moderation itself.
+      - degrading vulgar abuse aimed at a university role group (for example faculty, teachers, staff, students, admins), even when no individual is named
+      - direct second-person profanity or insulting abuse aimed at another person or the assistant
+      - identity-focused or sexuality-focused speculation/ridicule about a named person or teacher
+      - explicit profanity, slurs, or abusive terms in any language or script (including romanized/transliterated spellings)
+      Keep `"is_flagged": false` for normal academic questions, neutral policy questions, mild frustration, general complaints without abusive language, apologies, or references to moderation itself.
     Task 2 (Conversation Mode): classify whether the query is primarily casual chit-chat/emotional venting or an actionable university data/task query.
     Task 3 (Intent Routing): Extract structured intent metadata so downstream tools can filter data before the main LLM response.
 
@@ -1389,6 +1410,11 @@ async def extract_query_intent(query: str, history_context: str = "") -> Dict[st
                 if local_flag.get("is_flagged"):
                     local_flag["_intent_source"] = "local_moderation_fallback"
                     return local_flag
+                if _should_run_secondary_moderation_pass(query, result):
+                    backup_flag = await run_backup_moderation_check(query, history_context=history_context)
+                    if backup_flag.get("is_flagged"):
+                        backup_flag["_intent_source"] = "backup_moderation_secondary_pass"
+                        return backup_flag
             if "is_flagged" not in result:
                 backup_flag = await run_backup_moderation_check(query, history_context=history_context)
                 if backup_flag.get("is_flagged"):

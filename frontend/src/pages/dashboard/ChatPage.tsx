@@ -371,14 +371,14 @@ function MessageBubble({ message, navigateTo, role }: { message: ChatMessage; na
 
                     <div
                         className={cn(
-                            "mt-3 flex min-h-6 items-center gap-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100",
+                            "mt-3 flex min-h-6 items-center gap-2 opacity-100 transition-opacity duration-200 md:opacity-0 md:group-hover:opacity-100",
                             isUser ? "justify-end self-end" : "justify-start self-start",
                         )}
                     >
                         <HoverTooltip content="Copy message" side={isUser ? "left" : "right"}>
                             <button
                                 onClick={handleCopy}
-                                className="flex items-center gap-1 text-[10px] font-medium text-zinc-500 hover:text-orange-400 transition-colors px-1 py-1 rounded-lg"
+                                className="flex items-center gap-1 rounded-lg px-1 py-1 text-[10px] font-medium text-zinc-200 transition-colors hover:text-white md:text-zinc-500 md:hover:text-orange-400"
                             >
                                 {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
                                 {copied ? "Copied" : "Copy"}
@@ -564,9 +564,9 @@ export default function ChatPage() {
     };
 
     return (
-        <div className="flex h-[calc(100dvh-5rem)] min-h-[calc(100dvh-5rem)] flex-1 flex-col md:h-full md:min-h-0">
+        <div className="flex h-full min-h-0 flex-1 flex-col">
             {/* Messages Area */}
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" data-lenis-prevent="true" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" data-lenis-prevent="true" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
                 {messages.length === 0 ? (
                     /* â”€â”€â”€â”€â”€ Premium Empty State â”€â”€â”€â”€â”€ */
                     <div className="flex flex-col items-center min-h-full px-4 sm:px-6 py-10 sm:py-14 text-center">
@@ -608,7 +608,7 @@ export default function ChatPage() {
                     </div>
                 ) : (
                     /* â”€â”€â”€â”€â”€ Messages â”€â”€â”€â”€â”€ */
-                    <div className="px-4 py-4 sm:px-6">
+                    <div className="px-4 pb-4 pt-6 sm:px-6">
                         {messages.map((msg, i) => (
                             <MessageBubble key={i} message={msg} navigateTo={handleNavigate} role={role} />
                         ))}
@@ -640,7 +640,7 @@ export default function ChatPage() {
             </div>
 
             {/* â”€â”€â”€â”€â”€ Input Bar â€” Premium â”€â”€â”€â”€â”€ */}
-            <div className="sticky bottom-0 shrink-0 bg-[#06070a]/95 px-2 pb-2 pt-0 backdrop-blur-sm sm:px-6 sm:pb-6">
+            <div className="shrink-0 bg-[#06070a]/95 px-2 pb-2 pt-0 backdrop-blur-sm sm:px-6 sm:pb-6">
                 <form onSubmit={handleSend} className="max-w-3xl mx-auto">
                     {isChatBlocked && (
                         <div className="mb-3 rounded-2xl border border-red-500/35 bg-red-950/30 p-3 sm:p-4">

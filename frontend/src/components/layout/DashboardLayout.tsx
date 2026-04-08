@@ -296,8 +296,8 @@ export default function DashboardLayout() {
             </div>
 
             {/* Content Area */}
-            <div className="flex min-w-0 flex-1 flex-col bg-[#050507] pt-0 h-[100dvh] md:min-h-0 md:overflow-hidden md:pb-2 md:pr-2">
-                <div className="relative flex h-[100dvh] flex-1 flex-col bg-[#06070a] md:min-h-0 md:h-auto md:overflow-hidden md:rounded-tl-[30px] md:border-l md:border-t md:border-white/[0.07]">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[#050507] pt-0 h-[100dvh] md:min-h-0 md:overflow-hidden md:pb-2 md:pr-2">
+                <div className="relative flex min-h-0 h-[100dvh] flex-1 flex-col bg-[#06070a] md:min-h-0 md:h-auto md:overflow-hidden md:rounded-tl-[30px] md:border-l md:border-t md:border-white/[0.07]">
                     <header className="sticky top-0 z-40 flex h-20 shrink-0 items-center justify-between bg-[#06070a] px-4 sm:px-6 md:px-8 lg:border-b lg:border-white/[0.06]">
                         <div className="flex items-center gap-4">
                             {/* Mobile Brand Toggle */}
@@ -448,7 +448,7 @@ export default function DashboardLayout() {
                     {/* Native Scrollable Content */}
                     <div
                         className={cn(
-                            "relative z-10 mx-auto flex-1 w-full overflow-x-hidden",
+                            "relative z-10 mx-auto flex-1 min-h-0 w-full overflow-x-hidden",
                             isChatRoute
                                 ? "min-h-0 overflow-hidden h-[calc(100dvh-5rem)] md:h-auto"
                                 : "overflow-y-auto overscroll-contain touch-pan-y",
