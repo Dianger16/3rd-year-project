@@ -194,6 +194,11 @@ export const SidebarLink = ({
         "flex items-center justify-start px-5.5 group/sidebar py-2.5 rounded-xl transition-all duration-200 w-full relative";
     const activeClasses = "text-orange-400";
     const inactiveClasses = "text-zinc-500 hover:text-white";
+    const iconNode = (
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+            {link.icon}
+        </span>
+    );
 
     if (onClick) {
         return (
@@ -204,7 +209,7 @@ export const SidebarLink = ({
                     onFocus={() => link.prefetch?.()}
                     className={cn(baseClasses, active ? activeClasses : inactiveClasses, className)}
                 >
-                    {link.icon}
+                    {iconNode}
                     <motion.span
                         initial={false}
                         animate={{
@@ -234,7 +239,7 @@ export const SidebarLink = ({
                 {active && (
                     <div className="absolute left-0 top-2 bottom-2 w-[3px] bg-orange-500 rounded-r-full hidden md:block" />
                 )}
-                {link.icon}
+                {iconNode}
                 <motion.span
                     initial={false}
                     animate={{
