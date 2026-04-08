@@ -216,7 +216,7 @@ function MessageBubble({ message, navigateTo, role }: { message: ChatMessage; na
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
         >
-            <div className={cn("flex gap-3 sm:gap-4 py-4 sm:py-5", isUser ? "flex-row-reverse" : "")}>
+            <div className={cn("flex gap-3 py-4 sm:gap-4 sm:py-5", isUser ? "flex-row-reverse pr-1 sm:pr-0" : "pl-1 sm:pl-0")}>
                 {/* Avatar */}
                 <div className="shrink-0 pt-1">
                     {isUser ? (
@@ -371,7 +371,7 @@ function MessageBubble({ message, navigateTo, role }: { message: ChatMessage; na
 
                     <div
                         className={cn(
-                            "mt-3 flex min-h-6 items-center gap-2 opacity-100 transition-opacity duration-200 md:opacity-0 md:group-hover:opacity-100",
+                            "mt-2 flex min-h-6 items-center gap-2 opacity-100 transition-opacity duration-200 md:mt-3 md:opacity-0 md:group-hover:opacity-100",
                             isUser ? "justify-end self-end" : "justify-start self-start",
                         )}
                     >
@@ -381,7 +381,7 @@ function MessageBubble({ message, navigateTo, role }: { message: ChatMessage; na
                                 className="flex items-center gap-1 rounded-lg px-1 py-1 text-[10px] font-medium text-zinc-200 transition-colors hover:text-white md:text-zinc-500 md:hover:text-orange-400"
                             >
                                 {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
-                                {copied ? "Copied" : "Copy"}
+                                <span className="hidden md:inline">{copied ? "Copied" : "Copy"}</span>
                             </button>
                         </HoverTooltip>
                     </div>
@@ -608,7 +608,13 @@ export default function ChatPage() {
                     </div>
                 ) : (
                     /* â”€â”€â”€â”€â”€ Messages â”€â”€â”€â”€â”€ */
-                    <div className="px-4 pb-4 pt-6 sm:px-6">
+                    <div
+                        className="px-4 pb-4 pt-6 sm:px-6"
+                        style={{
+                            paddingLeft: "calc(1rem + env(safe-area-inset-left))",
+                            paddingRight: "calc(1rem + env(safe-area-inset-right))",
+                        }}
+                    >
                         {messages.map((msg, i) => (
                             <MessageBubble key={i} message={msg} navigateTo={handleNavigate} role={role} />
                         ))}
@@ -640,7 +646,10 @@ export default function ChatPage() {
             </div>
 
             {/* â”€â”€â”€â”€â”€ Input Bar â€” Premium â”€â”€â”€â”€â”€ */}
-            <div className="shrink-0 bg-[#06070a]/95 px-2 pb-2 pt-0 backdrop-blur-sm sm:px-6 sm:pb-6">
+            <div
+                className="shrink-0 bg-[#06070a]/95 px-2 pb-2 pt-0 backdrop-blur-sm sm:px-6 sm:pb-6"
+                style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))" }}
+            >
                 <form onSubmit={handleSend} className="max-w-3xl mx-auto">
                     {isChatBlocked && (
                         <div className="mb-3 rounded-2xl border border-red-500/35 bg-red-950/30 p-3 sm:p-4">
