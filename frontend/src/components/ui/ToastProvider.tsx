@@ -17,18 +17,18 @@ export const ToastProvider = () => {
                         const tone =
                             toast.type === 'error'
                                 ? {
-                                    iconWrap: 'text-red-400',
+                                    iconWrap: 'rounded-full bg-red-500/14 text-red-400',
                                     icon: <AlertCircle className="h-4 w-4 shrink-0" />,
                                     className: 'bg-[#16171b]/96 text-zinc-50 shadow-[0_16px_42px_rgba(18,19,24,0.58)]',
                                 }
                                 : toast.type === 'info'
                                     ? {
-                                        iconWrap: 'border border-sky-500/30 bg-sky-500/12 text-sky-300',
+                                        iconWrap: 'rounded-full bg-sky-500/14 text-sky-300',
                                         icon: <Info className="h-4 w-4 shrink-0" />,
                                         className: 'bg-[#16171b]/96 text-zinc-50 border border-sky-500/30 shadow-[0_16px_42px_rgba(7,24,38,0.45)]',
                                     }
                                     : {
-                                        iconWrap: 'border border-emerald-500/30 bg-emerald-500/12 text-emerald-300',
+                                        iconWrap: 'rounded-full bg-emerald-500/16 text-emerald-300',
                                         icon: <CheckCircle2 className="h-4 w-4 shrink-0" />,
                                         className: 'bg-[#16171b]/96 text-zinc-50 border border-emerald-500/28 shadow-[0_16px_42px_rgba(6,24,18,0.42)]',
                                     };
