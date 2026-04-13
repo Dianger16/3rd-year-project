@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FileText, X, Paperclip, ExternalLink, Download, Share2 } from 'lucide-react';
-import { type DocumentPreviewResponse } from '@/lib/api';
+import { documentsApi, type DocumentPreviewResponse } from '@/lib/api';
 
 function buildDocumentBody(previewDoc: DocumentPreviewResponse) {
     if (previewDoc.notice_message?.trim()) {
@@ -49,8 +49,8 @@ export function DocumentPreviewModal({
     const [resolvedDownloadUrl, setResolvedDownloadUrl] = useState<string | null>(null);
     const [objectUrl, setObjectUrl] = useState<string | null>(null);
 
-    const viewerUrl = resolvedViewerUrl || previewDoc?.file_url || previewDoc?.viewer_url || null;
-    const downloadUrl = resolvedDownloadUrl || previewDoc?.download_url || previewDoc?.file_url || previewDoc?.viewer_url || null;
+    const viewerUrl = resolvedViewerUrl || previewDoc?.file_url || null;
+    const downloadUrl = resolvedDownloadUrl || previewDoc?.file_url || null;
 
     const title = previewDoc?.notice_title || previewDoc?.filename || pendingTitle || 'Loading document...';
     const subtitle = previewDoc
@@ -136,7 +136,7 @@ export function DocumentPreviewModal({
             } catch {
                 if (!active) return;
                 setResolvedViewerUrl(null);
-                setResolvedDownloadUrl(previewDoc.download_url || previewDoc.file_url || null);
+                setResolvedDownloadUrl(previewDoc.file_url || null);
             } finally {
                 if (active) setIsViewerLoading(false);
             }
@@ -169,6 +169,32 @@ export function DocumentPreviewModal({
         } catch {
             setShareState('idle');
         }
+    };
+
+    const triggerDirectDownload = (url?: string | null, filename?: string | null) => {
+        if (!url) return;
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = filename || 'document';
+        anchor.rel = 'noreferrer';
+        anchor.target = '_blank';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+    };
+
+    const handleDownload = async () => {
+        const previewId = String(previewDoc?.id || '').trim();
+        const fileName = previewDoc?.filename || 'document';
+        try {
+            if (token && previewId) {
+                await documentsApi.downloadOriginal(token, previewId, fileName);
+                return;
+            }
+        } catch {
+            // Fallback to direct URL if authenticated download fails in browser sandbox/network edge cases.
+        }
+        triggerDirectDownload(downloadUrl || viewerUrl, fileName);
     };
 
     if (!isOpen) return null;
@@ -233,14 +259,14 @@ export function DocumentPreviewModal({
                                     <Share2 className="w-3.5 h-3.5" />
                                     {shareState === 'copied' ? 'Link Copied' : shareState === 'shared' ? 'Shared' : 'Share'}
                                 </button>
-                                <a
-                                    href={downloadUrl || viewerUrl || '#'}
-                                    download={previewDoc?.filename || 'document'}
+                                <button
+                                    type="button"
+                                    onClick={handleDownload}
                                     className="h-9 px-3 rounded-xl border border-white/[0.12] bg-white/[0.03] hover:bg-white/[0.08] text-xs text-white inline-flex items-center gap-1.5"
                                 >
                                     <Download className="w-3.5 h-3.5" />
                                     Download
-                                </a>
+                                </button>
                                 <a
                                     href={viewerUrl}
                                     target="_blank"
@@ -285,14 +311,14 @@ export function DocumentPreviewModal({
                                     <Share2 className="w-3.5 h-3.5" />
                                     {shareState === 'copied' ? 'Link Copied' : shareState === 'shared' ? 'Shared' : 'Share'}
                                 </button>
-                                <a
-                                    href={downloadUrl || viewerUrl || '#'}
-                                    download={previewDoc?.filename || 'document'}
+                                <button
+                                    type="button"
+                                    onClick={handleDownload}
                                     className="h-9 px-3 rounded-xl border border-white/[0.12] bg-white/[0.03] hover:bg-white/[0.08] text-xs text-white inline-flex items-center gap-1.5"
                                 >
                                     <Download className="w-3.5 h-3.5" />
                                     Download
-                                </a>
+                                </button>
                             </div>
                             <div className="rounded-[18px] overflow-hidden bg-black/50 min-h-[60vh] flex items-center justify-center">
                                 <img
@@ -339,14 +365,14 @@ export function DocumentPreviewModal({
                                             <Share2 className="w-3.5 h-3.5" />
                                             {shareState === 'copied' ? 'Link Copied' : shareState === 'shared' ? 'Shared' : 'Share'}
                                         </button>
-                                        <a
-                                            href={downloadUrl || viewerUrl || '#'}
-                                            download={previewDoc?.filename || 'document'}
+                                        <button
+                                            type="button"
+                                            onClick={handleDownload}
                                             className="h-9 px-3 rounded-xl border border-zinc-300 bg-white hover:bg-zinc-50 text-xs text-zinc-900 inline-flex items-center gap-1.5"
                                         >
                                             <Download className="w-3.5 h-3.5" />
                                             Download
-                                        </a>
+                                        </button>
                                         <a
                                             href={viewerUrl}
                                             target="_blank"

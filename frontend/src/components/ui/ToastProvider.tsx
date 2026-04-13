@@ -28,9 +28,9 @@ export const ToastProvider = () => {
                                         className: 'bg-[#16171b]/96 text-zinc-50 border border-sky-500/30 shadow-[0_16px_42px_rgba(7,24,38,0.45)]',
                                     }
                                     : {
-                                        iconWrap: 'rounded-full bg-emerald-500/16 text-emerald-300',
+                                        iconWrap: 'text-emerald-300',
                                         icon: <CheckCircle2 className="h-4 w-4 shrink-0" />,
-                                        className: 'bg-[#16171b]/96 text-zinc-50 border border-emerald-500/28 shadow-[0_16px_42px_rgba(6,24,18,0.42)]',
+                                        className: 'bg-[#16171b]/96 text-zinc-50 shadow-[0_16px_42px_rgba(6,24,18,0.42)]',
                                     };
                         return (
                     <motion.div
