@@ -647,8 +647,8 @@ export default function ChatPage() {
 
             {/* â”€â”€â”€â”€â”€ Input Bar â€” Premium â”€â”€â”€â”€â”€ */}
             <div
-                className="shrink-0 bg-[#06070a]/95 px-2 pb-2 pt-0 backdrop-blur-sm sm:px-6 sm:pb-6"
-                style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))" }}
+                className="shrink-0 bg-[#06070a]/95 px-2 pb-1 pt-0 backdrop-blur-sm sm:px-6 sm:pb-6"
+                style={{ paddingBottom: "max(0.15rem, env(safe-area-inset-bottom))" }}
             >
                 <form onSubmit={handleSend} className="max-w-3xl mx-auto">
                     {isChatBlocked && (
@@ -729,7 +729,7 @@ export default function ChatPage() {
                             </Button>
                         </div>
                     </div>
-                    <p className="text-[10px] text-zinc-700 text-center mt-2.5">
+                    <p className="mt-2.5 hidden text-center text-[10px] text-zinc-700 md:block">
                         <span className="text-zinc-300">UnivGPT</span> can make mistakes. Verify important information with official sources.
                     </p>
                 </form>
