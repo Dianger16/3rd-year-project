@@ -101,6 +101,14 @@ const mapNotice = (doc: DocumentResponse): DashboardNotice => {
     };
 };
 
+const timeToMinutes = (value?: string) => {
+    const [rawHour, rawMinute] = String(value || '').split(':');
+    const hour = Number(rawHour);
+    const minute = Number(rawMinute);
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return -1;
+    return hour * 60 + minute;
+};
+
 const initialsFromName = (name: string) => {
     const clean = name.trim();
     if (!clean) return 'F';
@@ -256,12 +264,27 @@ export default function StudentDashboard() {
     }, []);
     const featuredTodaySlot = useMemo(() => {
         if (todaySlots.length === 0) return null;
-        const upcoming = todaySlots.find((slot) => {
-            const [hours, minutes] = slot.start.split(':').map(Number);
-            return hours * 60 + minutes >= nowMinutes;
+        const liveNow = todaySlots.find((slot) => {
+            const startMinutes = timeToMinutes(slot.start);
+            const endMinutes = timeToMinutes(slot.end);
+            if (startMinutes < 0 || endMinutes < 0) return false;
+            return nowMinutes >= startMinutes && nowMinutes < endMinutes;
         });
-        return upcoming || todaySlots[0];
+        if (liveNow) return liveNow;
+        const upcoming = todaySlots.find((slot) => timeToMinutes(slot.start) > nowMinutes);
+        return upcoming || null;
     }, [nowMinutes, todaySlots]);
+    const featuredSlotStatus = useMemo<'live' | 'upcoming' | null>(() => {
+        if (!featuredTodaySlot) return null;
+        const startMinutes = timeToMinutes(featuredTodaySlot.start);
+        const endMinutes = timeToMinutes(featuredTodaySlot.end);
+        if (startMinutes < 0 || endMinutes < 0) return 'upcoming';
+        return nowMinutes >= startMinutes && nowMinutes < endMinutes ? 'live' : 'upcoming';
+    }, [featuredTodaySlot, nowMinutes]);
+    const lastCompletedTodaySlot = useMemo(() => {
+        if (todaySlots.length === 0 || featuredTodaySlot) return null;
+        return todaySlots[todaySlots.length - 1] || null;
+    }, [featuredTodaySlot, todaySlots]);
 
     const openChatWithPrefill = (prefill: string) => {
         navigate('/dashboard/chat', { state: { prefill } });
@@ -575,8 +598,22 @@ export default function StudentDashboard() {
                                 ) : null}
 
                                 <div className="mt-5 text-sm font-medium text-white/80">
-                                    Next live class for today
+                                    {featuredSlotStatus === 'live' ? 'Live class in progress' : 'Next live class for today'}
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                ) : lastCompletedTodaySlot ? (
+                    <div className="overflow-hidden rounded-2xl border border-emerald-400/18 bg-[linear-gradient(135deg,rgba(20,83,45,0.26),rgba(15,23,42,0.96) 46%,rgba(16,185,129,0.12))] p-5">
+                        <div className="relative overflow-hidden rounded-2xl border border-emerald-300/12 bg-[radial-gradient(circle_at_top_left,rgba(110,231,183,0.10),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] p-6">
+                            <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-emerald-200/75">
+                                Day Wrapped
+                            </div>
+                            <div className="mt-3 text-2xl font-black text-white">
+                                All class slots for today are completed
+                            </div>
+                            <div className="mt-3 max-w-2xl text-sm text-zinc-300/90">
+                                Last class ended at {formatTimetableTime(lastCompletedTodaySlot.end)}. Check tomorrow&apos;s plan in the full timetable.
                             </div>
                         </div>
                     </div>

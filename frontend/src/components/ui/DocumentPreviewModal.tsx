@@ -62,6 +62,15 @@ export function DocumentPreviewModal({
         const filename = String(previewDoc?.filename || '').toLowerCase();
         return Boolean(viewerUrl) && (mime.includes('pdf') || filename.endsWith('.pdf'));
     }, [viewerUrl, previewDoc?.mime_type, previewDoc?.filename]);
+    const pdfViewerUrl = useMemo(() => {
+        if (!isPdfLike || !viewerUrl) return null;
+        const signedFileUrl = String(previewDoc?.file_url || '').trim();
+        // Use Google-style embedded preview when a signed URL is available.
+        if (signedFileUrl) {
+            return `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(signedFileUrl)}`;
+        }
+        return `${viewerUrl}#toolbar=1&navpanes=1&scrollbar=1&view=FitH`;
+    }, [isPdfLike, previewDoc?.file_url, viewerUrl]);
 
     const isImageLike = useMemo(() => {
         const mime = String(previewDoc?.mime_type || '').toLowerCase();
@@ -278,11 +287,12 @@ export function DocumentPreviewModal({
                                 </a>
                             </div>
                             <iframe
-                                key={viewerUrl}
-                                src={`${viewerUrl}#toolbar=1&navpanes=1&scrollbar=1&view=FitH`}
+                                key={pdfViewerUrl || viewerUrl}
+                                src={pdfViewerUrl || viewerUrl}
                                 title={title}
                                 onLoad={() => setIsViewerLoading(false)}
-                                className="w-full h-[78vh] rounded-[18px] bg-white"
+                                className="w-full min-h-[72vh] h-[calc(100vh-14rem)] rounded-[18px] bg-white"
+                                allow="clipboard-read; clipboard-write"
                             />
                             {!isPdfLike && (
                                 <div className="pt-3 text-[11px] text-zinc-500">
